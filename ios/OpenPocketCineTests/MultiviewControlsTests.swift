@@ -1,6 +1,8 @@
 import CoreVideo
+import OpenCineApple
 import OpenPocketViewCore
 import XCTest
+import OpenCineDJIApple
 
 @testable import OpenPocketCine
 
@@ -14,13 +16,14 @@ import XCTest
         XCTAssertTrue(first.session.datalink === a.driver)
         XCTAssertTrue(first.session.decoder === a.decoder)
         first.session.setWhiteBalanceCustom(kelvin: 5600, tint: 0)
-        XCTAssertEqual(first.session.status.whiteBalance, .custom(kelvin: 5600, tint: 0))
+        XCTAssertEqual(first.session.pendingWhiteBalance, .custom(kelvin: 5600, tint: 0))
         XCTAssertNil(first.session.controlNote)
         XCTAssertNil(b.controlsModel)
-        // Unrelated camera traffic must not confirm the active editor's optimistic pin.
+        // Unrelated camera traffic must not confirm the active editor's pending request.
         b.updateSettings(wb(.auto))
         a.updateSettings(wb(.auto))
-        XCTAssertEqual(first.session.status.whiteBalance, .custom(kelvin: 5600, tint: 0))
+        XCTAssertEqual(first.session.pendingWhiteBalance, .custom(kelvin: 5600, tint: 0))
+        XCTAssertEqual(first.session.status.whiteBalance, .auto, "Reported stays the camera's")
         a.updateSettings(wb(.custom(kelvin: 5600, tint: 0)))
         a.updateSettings(wb(.auto))
         XCTAssertEqual(first.session.status.whiteBalance, .auto)
@@ -102,7 +105,7 @@ import XCTest
             switch event {
             case 0: tile.recovering = true
             case 1: tile.camera = nil
-            case 2: tile.driver = DatalinkDriver(port: 9010, tcpPoke: false, pairingToken: "")
+            case 2: tile.driver = DjiAppleDatalink(port: 9010, tcpPoke: false, pairingToken: "")
             default: tile.controlHost = nil
             }
             XCTAssertNil(tile.controlsModel)
@@ -146,7 +149,7 @@ import XCTest
             CVPixelBufferCreate(
                 kCFAllocatorDefault, 2, 2, kCVPixelFormatType_32BGRA,
                 nil, &buffer), kCVReturnSuccess)
-        tile.decoder.onSourceFrame?(buffer!)
+        tile.decoder.onSourceFrame?(DecodedFrameFence().lease(buffer!))
         XCTAssertEqual(sourceCallbacks, 1)
         XCTAssertNotNil(tile.driver)
     }
@@ -170,7 +173,7 @@ import XCTest
     private func fixture() -> MultiviewSession {
         let session = MultiviewUIReview.makeSession(count: 2)
         for (index, tile) in session.tiles.prefix(2).enumerated() {
-            tile.driver = DatalinkDriver(
+            tile.driver = DjiAppleDatalink(
                 port: UInt16(9004 + index), tcpPoke: false, pairingToken: "")
             tile.controlHost = "192.0.2.\(index + 1)"
             tile.recordingAvailable = true

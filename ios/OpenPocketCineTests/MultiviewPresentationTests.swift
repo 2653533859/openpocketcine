@@ -1,7 +1,10 @@
 import MonitorPresentation
+import MonitorUI
+import OpenCineAppKit
 import OpenPocketViewCore
 import SwiftUI
 import XCTest
+import OpenCineDJIApple
 
 @testable import OpenPocketCine
 
@@ -62,7 +65,7 @@ import XCTest
 
     func testRecordingConfirmationRejectsChangedCameraStateAndMembership() {
         let session = MultiviewUIReview.makeSession(count: 2)
-        for tile in session.recordingTiles { tile.recordingAvailable = true }
+        for tile in session.recordingTiles { link(tile) }
         let original = MultiviewRecordContext(session: session)
         XCTAssertTrue(original.canConfirm)
         XCTAssertTrue(original.stopping)
@@ -87,7 +90,7 @@ import XCTest
         let session = MultiviewUIReview.makeSession(count: 1)
         let tile = session.tiles[0]
         XCTAssertFalse(MultiviewRecordContext(session: session, tile: tile).canConfirm)
-        tile.recordingAvailable = true
+        link(tile)
         XCTAssertTrue(MultiviewRecordContext(session: session, tile: tile).canConfirm)
         tile.recovering = true
         XCTAssertFalse(MultiviewRecordContext(session: session, tile: tile).canConfirm)
@@ -152,7 +155,7 @@ import XCTest
             width: 956, height: 440,
             safeArea: .init(leading: 59, bottom: 21),
             arrangement: .centerStage, selected: 0)
-        controller.update(ids: session.tiles.map(\.id), layout: first, roots: roots)
+        controller.update(layout: first, roots: roots)
         controller.view.layoutIfNeeded()
         try await Task.sleep(for: .milliseconds(150))
         let original = try owners()
@@ -174,12 +177,19 @@ import XCTest
                 width: width, height: height,
                 safeArea: .init(bottom: 21, trailing: 59),
                 arrangement: arrangement, selected: selected)
-            controller.update(ids: session.tiles.map(\.id), layout: layout, roots: roots)
+            controller.update(layout: layout, roots: roots)
             controller.view.layoutIfNeeded()
             try await Task.sleep(for: .milliseconds(100))
             XCTAssertEqual(try owners(), original)
             XCTAssertEqual(displayHosts(in: controller.view).count, 4)
             XCTAssertEqual(strip.contentOffset.y, 0, accuracy: 0.01)
         }
+    }
+
+    /// A live control link with a fresh record report, as `openPreview` and the 1 s monitor leave it.
+    private func link(_ tile: MultiviewSession.Tile) {
+        tile.driver = DjiAppleDatalink(port: 9020, tcpPoke: false, pairingToken: "")
+        tile.controlHost = "192.0.2.20"
+        tile.recordingAvailable = true
     }
 }

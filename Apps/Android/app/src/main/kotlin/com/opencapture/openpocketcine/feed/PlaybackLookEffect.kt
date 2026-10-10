@@ -8,6 +8,8 @@ import androidx.media3.common.util.Size
 import androidx.media3.effect.BaseGlShaderProgram
 import androidx.media3.effect.GlEffect
 import androidx.media3.effect.GlShaderProgram
+import com.opencapture.opencine.runtime.FeedEffectsGlProgram
+import com.opencapture.opencine.media.FeedEffectsRenderPlan
 
 /**
  * Media3 video-graph adapter for [FeedEffectsGlProgram].
@@ -31,7 +33,7 @@ private class PlaybackLookShaderProgram(
         /* useHighPrecisionColorComponents= */ false,
         /* texturePoolCapacity= */ 2,
     ) {
-    private val effects = FeedEffectsGlProgram(context, plan, flipInputVertically = false)
+    private val effects = FeedEffectsGlProgram(com.opencapture.opencine.runtime.NativeGlBackend.create(context), plan, flipInputVertically = false)
     private var frameWidth = 1
     private var frameHeight = 1
 

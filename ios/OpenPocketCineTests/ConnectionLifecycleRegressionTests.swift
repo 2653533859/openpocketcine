@@ -3,6 +3,7 @@ import SwiftUI
 import XCTest
 
 @testable import OpenPocketCine
+@testable import OpenCineDJIApple
 
 /// Exercise the actual single-camera screen, including its warmup opacity,
 /// panel coverage and UIViewRepresentable updates. Generic canvas identity
@@ -10,11 +11,15 @@ import XCTest
 @MainActor
 final class ConnectionLifecycleRegressionTests: XCTestCase {
     func testStatsAgingDoesNotReplaceAnEstablishedPictureWithStartupWaiting() async throws {
-        let model = AppModel()
+        let peer = ConnectionDonorPeer(cached: true)
+        let session = CameraSession()
+        // Install OS peers before the original idle native callbacks capture the Run.
+        peer.configureConnection(session)
+        let model = AppModel(session: session)
         let decoder = model.session.decoder
         decoder.effects.histogram = true
         decoder.unlockHardwareDecoder()
-        defer { model.session.disconnect() }
+        defer { model.session.disconnect(); withExtendedLifetime(peer) {} }
         XCTAssertTrue(model.session.isFeedWarming)
         try await presentRollingPictures(model)
         XCTAssertFalse(model.session.isFeedWarming)
@@ -30,8 +35,15 @@ final class ConnectionLifecycleRegressionTests: XCTestCase {
             "An established monitor must keep its held picture instead of returning to startup Waiting"
         )
         XCTAssertEqual(model.session.liveFPS, "—", "Idle test session must lose its cached FPS")
-        model.session.phase = .live
-        model.session.startFeedRecovery { try? await Task.sleep(for: .seconds(30)) }
+        // The original idle-aging picture remains distinct from the admitted
+        // live source. Public connect resets source; qualify a new real rolling
+        // native picture before preserving the recovery/chrome assertions.
+        guard await peer.admitExistingConnection(model.session) else { return }
+        decoder.unlockHardwareDecoder()
+        try await presentRollingPictures(model)
+        XCTAssertGreaterThan(try XCTUnwrap(decoder.lastPresentedAt), heldPicture)
+        XCTAssertEqual(model.session.phase, .live, "The current public run supplies phase")
+        XCTAssertTrue(model.session.startFeedRecovery { _ in try? await Task.sleep(for: .seconds(30)) })
         model.session.refreshLinkHealth(at: Date.timeIntervalSinceReferenceDate + 3)
         XCTAssertEqual(
             model.session.liveFPS, "RECOV", "Recovery must remain visible in its own chrome")
@@ -287,7 +299,7 @@ final class ConnectionLifecycleRegressionTests: XCTestCase {
             CGSize(width: 400, height: 800),
             CGSize(width: 800, height: 400),
         ].enumerated() {
-            model.liveOperatorPanel = index.isMultiple(of: 2) ? .settings : nil
+            if index.isMultiple(of: 2) { model.shell.open(.settings) } else { model.shell.dismissCover() }
             window.frame.size = size
             host.view.frame = window.bounds
             try await settle(host.view)

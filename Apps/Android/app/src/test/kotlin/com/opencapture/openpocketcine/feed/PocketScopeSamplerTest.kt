@@ -1,16 +1,17 @@
 package com.opencapture.openpocketcine.feed
 
-import kotlin.test.BeforeTest
+import com.opencapture.opencine.media.ScopeHistogramDisplay
+import com.opencapture.opencine.media.ScopePoint
+import com.opencapture.opencine.media.ScopeSamples
+import com.opencapture.opencine.media.VectorscopeRaster
+import com.opencapture.opencine.runtime.InspectorPreviewAdmission
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import com.opencapture.opencine.media.MonitorTransfer
+import com.opencapture.opencine.media.MonitorLUTCube
 
 class PocketScopeSamplerTest {
-    @BeforeTest
-    fun resetCeiling() {
-        ScopeExposureCeiling.reset()
-    }
-
     @Test
     fun tapSizeMatchesIosNearestNeighbour() {
         val (w, h) = PocketScopeSampler.tapSize(1280, 720)
@@ -166,7 +167,7 @@ class PocketScopeSamplerTest {
                 }
             }
         }
-        val cube = FeedEffectsCube(size, rgba)
+        val cube = MonitorLUTCube(size, rgba)
         val mapped = cube.map(1f, 0f, 0f)
         assertEquals(1f, mapped.first, 1e-5f)
         assertEquals(0f, mapped.second, 1e-5f)

@@ -1,8 +1,10 @@
 import CoreImage
 import CoreVideo
 import Metal
+import OpenCineApple
 import OpenPocketViewCore
 import XCTest
+import OpenCineMedia
 
 @testable import OpenPocketCine
 
@@ -24,11 +26,11 @@ final class LUTPresentPerfTests: XCTestCase {
             throw XCTSkip("Metal required")
         }
         let cube = BuiltInLook.mono.cube()
-        var fx = LiveImageEffects()
+        var fx = MonitorFrameEffects()
         fx.lutDimension = cube.size
         fx.lutRGBA = cube.rgbaComponents.withUnsafeBytes { Data($0) }
 
-        let baker = FeedFrameBaker(device: device)
+        let baker = MonitorFrameBaker(device: device)
         let drawable = CGSize(width: 1920, height: 1080)
         // First GPU compiles the cube pipeline — discard that hitch.
         _ = measureBake(
@@ -42,7 +44,7 @@ final class LUTPresentPerfTests: XCTestCase {
             skip: 0)
         let identity = measureBake(
             baker: baker, drawable: drawable, width: 1280, height: 720,
-            effects: LiveImageEffects(), frames: 4, skip: 0)
+            effects: MonitorFrameEffects(), frames: 4, skip: 0)
 
         print(
             "LUT present ms proxy=\(String(format: "%.2f", proxy)) 4K=\(String(format: "%.2f", fourK)) identity=\(String(format: "%.2f", identity))"
@@ -64,11 +66,11 @@ final class LUTPresentPerfTests: XCTestCase {
     }
 
     private func measureBake(
-        baker: FeedFrameBaker, drawable: CGSize, width: Int, height: Int,
-        effects: LiveImageEffects, frames: Int, skip: Int
+        baker: MonitorFrameBaker, drawable: CGSize, width: Int, height: Int,
+        effects: MonitorFrameEffects, frames: Int, skip: Int
     ) -> Double {
         let buffer = ScopeTestBuffers.makeFlatBuffer(code: 78, width: width, height: height)
-        let source = CIImage(cvPixelBuffer: buffer, options: LiveMonitorWorkingSpace.imageOptions)
+        let source = CIImage(cvPixelBuffer: buffer, options: MonitorWorkingSpace.imageOptions)
         let display = CIImage(cvPixelBuffer: buffer)
         var total: Double = 0
         var counted = 0

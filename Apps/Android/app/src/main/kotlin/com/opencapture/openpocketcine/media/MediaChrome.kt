@@ -3,16 +3,12 @@ package com.opencapture.openpocketcine.media
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -46,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.opencapture.opencine.cameracontrols.chromeClickable
 import com.opencapture.openpocketcine.ChromeShape
 import com.opencapture.monitorui.MonitorMaterial
 import com.opencapture.monitorui.monitorMaterial
@@ -53,15 +50,12 @@ import com.opencapture.openpocketcine.GlassTier
 import com.opencapture.openpocketcine.LiveDesign
 import com.opencapture.openpocketcine.LiveType
 import com.opencapture.openpocketcine.LocalMonitorGlass
-import com.opencapture.openpocketcine.OpcIcon
-import com.opencapture.openpocketcine.chromeClickable
+import com.opencapture.monitorui.MonitorIcon
 import com.opencapture.openpocketcine.liveChromeGlass
 import com.opencapture.openpocketcine.panelGlass
 import kotlin.math.max
-
-val MediaCapsuleShape: RoundedCornerShape = RoundedCornerShape(percent = 50)
-
-val MediaCornerShape: RoundedCornerShape = ChromeShape
+import com.opencapture.opencine.cameracontrols.MediaCornerShape
+import com.opencapture.opencine.cameracontrols.MediaCapsuleShape
 
 @Composable
 fun Modifier.mediaGlass(shape: Shape = MediaCornerShape): Modifier {
@@ -76,30 +70,6 @@ fun Modifier.playbackFrost(shape: Shape = MediaCornerShape): Modifier =
 fun Modifier.mediaSheetPlate(shape: Shape = MediaCornerShape): Modifier =
     background(LiveDesign.sheetPlate, shape).border(1.dp, LiveDesign.hairlineStrong, shape)
 
-@Composable
-fun MediaCloseButton(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    size: Dp = 37.dp,
-    enabled: Boolean = true,
-) {
-    Box(
-        modifier
-            .size(size)
-            .clip(CircleShape)
-            .mediaGlass(CircleShape)
-            .chromeClickable(enabled = enabled, onClick = onClick)
-            .semantics { contentDescription = "Close" },
-        contentAlignment = Alignment.Center,
-    ) {
-        OpcIcon(
-            icon = OpcIcon.X,
-            contentDescription = null,
-            tint = LiveDesign.text,
-            modifier = Modifier.size(size * 0.30f),
-        )
-    }
-}
 
 @Composable
 fun MediaBackButton(
@@ -116,8 +86,8 @@ fun MediaBackButton(
             .semantics { contentDescription = "Back" },
         contentAlignment = Alignment.Center,
     ) {
-        OpcIcon(
-            icon = OpcIcon.CHEVRON_LEFT,
+        MonitorIcon(
+            icon = MonitorIcon.CHEVRON_LEFT,
             contentDescription = null,
             tint = LiveDesign.text,
             modifier = Modifier.size(size * 0.47f),
@@ -143,8 +113,8 @@ fun MediaFavoriteButton(
             },
         contentAlignment = Alignment.Center,
     ) {
-        OpcIcon(
-            icon = OpcIcon.STAR,
+        MonitorIcon(
+            icon = MonitorIcon.STAR,
             contentDescription = null,
             tint = if (favorite) Color(0xFFE9C35A) else LiveDesign.text,
             modifier = Modifier.size(size * 0.50f),
@@ -153,45 +123,13 @@ fun MediaFavoriteButton(
     }
 }
 
-@Composable
-fun MediaCircleIconButton(
-    icon: OpcIcon,
-    contentDescription: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    size: Dp = 34.dp,
-    iconSize: Dp = size * 0.47f,
-    tint: androidx.compose.ui.graphics.Color = LiveDesign.text,
-    enabled: Boolean = true,
-    highlighted: Boolean = false,
-    filled: Boolean = false,
-) {
-    Box(
-        modifier
-            .size(size)
-            .clip(CircleShape)
-            .then(if (highlighted) Modifier.background(LiveDesign.accentDim, CircleShape) else Modifier)
-            .mediaGlass(CircleShape)
-            .chromeClickable(enabled = enabled, onClick = onClick)
-            .semantics { this.contentDescription = contentDescription },
-        contentAlignment = Alignment.Center,
-    ) {
-        OpcIcon(
-            icon = icon,
-            contentDescription = null,
-            tint = if (!enabled) LiveDesign.faint else if (highlighted) LiveDesign.accent else tint,
-            modifier = Modifier.size(iconSize),
-            filled = filled,
-        )
-    }
-}
 
 @Composable
 fun MediaActionPill(
     title: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    icon: OpcIcon? = null,
+    icon: MonitorIcon? = null,
     active: Boolean = false,
     enabled: Boolean = true,
     badge: Int? = null,
@@ -210,7 +148,7 @@ fun MediaActionPill(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         if (icon != null) {
-            OpcIcon(
+            MonitorIcon(
                 icon = icon,
                 contentDescription = null,
                 tint = if (active) LiveDesign.accent else LiveDesign.muted,
@@ -292,81 +230,6 @@ fun MediaGlassTrack(
                 .clip(shape)
                 .background(LiveDesign.accent, shape),
         )
-    }
-}
-
-@Composable
-fun MediaConfirmPopup(
-    title: String,
-    confirmTitle: String,
-    onDismiss: () -> Unit,
-    onConfirm: () -> Unit,
-    destructive: Boolean = true,
-) {
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.45f))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onDismiss,
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            Modifier
-                .padding(24.dp)
-                .width(320.dp)
-                .clip(MediaCornerShape)
-                .background(LiveDesign.surface, MediaCornerShape)
-                .border(1.dp, LiveDesign.hairline, MediaCornerShape)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = {},
-                )
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Text(title, color = LiveDesign.text, style = LiveType.ui(15f, FontWeight.SemiBold))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .clip(MediaCornerShape)
-                        .border(1.dp, LiveDesign.hairline, MediaCornerShape)
-                        .chromeClickable(onClick = onDismiss)
-                        .padding(vertical = 12.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("Cancel", color = LiveDesign.muted, style = LiveType.ui(14f, FontWeight.SemiBold))
-                }
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .clip(MediaCornerShape)
-                        .background(
-                            if (destructive) LiveDesign.rec.copy(alpha = 0.22f) else LiveDesign.accentDim,
-                            MediaCornerShape,
-                        )
-                        .border(
-                            1.dp,
-                            if (destructive) LiveDesign.rec.copy(alpha = 0.55f) else LiveDesign.accent.copy(alpha = 0.55f),
-                            MediaCornerShape,
-                        )
-                        .chromeClickable(onClick = onConfirm)
-                        .padding(vertical = 12.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        confirmTitle,
-                        color = if (destructive) LiveDesign.rec else LiveDesign.text,
-                        style = LiveType.ui(14f, FontWeight.SemiBold),
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -489,8 +352,8 @@ internal object PlaybackChromeMetrics {
     const val actionChipSize = 44f
     const val actionChipIcon = 18f
     const val actionChipCorner = 14f
-    val hideChromeIcon = OpcIcon.MAXIMIZE
-    val showChromeIcon = OpcIcon.MINIMIZE
+    val hideChromeIcon = MonitorIcon.MAXIMIZE
+    val showChromeIcon = MonitorIcon.MINIMIZE
 
     fun usesDarkenedBars(tier: GlassTier): Boolean = tier == GlassTier.FLAT
 
@@ -508,7 +371,7 @@ internal object PlaybackChromeMetrics {
 
 @Composable
 fun PlaybackActionChip(
-    icon: OpcIcon,
+    icon: MonitorIcon,
     contentDescription: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -546,7 +409,7 @@ fun PlaybackActionChip(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(7.dp),
     ) {
-        OpcIcon(
+        MonitorIcon(
             icon = icon,
             contentDescription = null,
             tint = tint,
@@ -565,7 +428,7 @@ fun PlaybackActionChip(
 
 @Composable
 fun MediaTransportIconButton(
-    icon: OpcIcon,
+    icon: MonitorIcon,
     contentDescription: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -593,7 +456,7 @@ fun MediaTransportIconButton(
             .semantics { this.contentDescription = contentDescription },
         contentAlignment = Alignment.Center,
     ) {
-        OpcIcon(
+        MonitorIcon(
             icon = icon,
             contentDescription = null,
             tint =

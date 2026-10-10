@@ -1,5 +1,6 @@
 import OpenPocketViewCore
 import XCTest
+import OpenCineDJIApple
 
 @testable import OpenPocketCine
 
@@ -29,7 +30,7 @@ import XCTest
     func testTimecodeRequiresCameraReportAndIsHiddenOnNano() {
         let tile = MultiviewSession.Tile()
         for name in ["OsmoPocket3-Test", "OsmoPocket4P-Test", "OsmoNano-Test"] {
-            tile.camera = FoundCamera(
+            tile.camera = DjiAppleSighting(
                 id: UUID(), name: name,
                 model: .resolve(modelId: nil, name: name), modelId: nil)
             tile.settings.timecode = nil
@@ -41,7 +42,7 @@ import XCTest
 
     func testPocketTileCompensatesSelfiePoseOnlyWithCameraFlipOff() {
         let tile = MultiviewSession.Tile()
-        tile.camera = FoundCamera(
+        tile.camera = DjiAppleSighting(
             id: UUID(), name: "Test Pocket",
             model: .resolve(modelId: 0x22, name: "OsmoPocket4P-Test"), modelId: 0x22)
         let yaw = UInt16(bitPattern: Int16(-1800))
@@ -65,11 +66,13 @@ import XCTest
     }
 
     private func assign(_ tile: MultiviewSession.Tile, recording: Bool, available: Bool) {
-        tile.camera = FoundCamera(
+        tile.camera = DjiAppleSighting(
             id: UUID(), name: "Test camera", model: .resolve(modelId: 0x19, name: "OsmoNano-Test"),
             modelId: 0x19)
         tile.recordingObservation = (recording, Date())
         tile.recordingAvailable = available
+        tile.driver = DjiAppleDatalink(port: 9030, tcpPoke: false, pairingToken: "")
+        tile.controlHost = "192.0.2.30"
     }
     func testUnavailableRecordingCameraKeepsStopIntentAndBlocksGroupCommand() {
         let session = MultiviewSession()
@@ -138,7 +141,7 @@ import XCTest
     func testBorrowedLiveViewDoesNotOwnOrCloseTileTransport() {
         let tile = MultiviewSession.Tile()
         assign(tile, recording: false, available: true)
-        let driver = DatalinkDriver(
+        let driver = DjiAppleDatalink(
             port: 9004, tcpPoke: false, pairingToken: "test", stationHost: "192.168.1.10")
         let borrowed = CameraSession(borrowing: tile.decoder)
         borrowed.updateMultiview(camera: tile.camera!, driver: driver, status: tile.settings)
@@ -154,7 +157,7 @@ import XCTest
         decoder.effects.histogram = true
         decoder.unlockHardwareDecoder()
         let borrowed = CameraSession(borrowing: decoder)
-        let driver = DatalinkDriver(
+        let driver = DjiAppleDatalink(
             port: 9004, tcpPoke: false, pairingToken: "test", stationHost: "192.168.1.10")
         defer {
             borrowed.releaseMultiview()
@@ -167,7 +170,7 @@ import XCTest
             try await Task.sleep(for: .milliseconds(20))
         }
         XCTAssertNotNil(decoder.lastPresentedAt)
-        let camera = FoundCamera(
+        let camera = DjiAppleSighting(
             id: UUID(), name: "OsmoPocket4P-Test",
             model: .resolve(modelId: 0x22, name: "OsmoPocket4P-Test"), modelId: 0x22)
         borrowed.updateMultiview(camera: camera, driver: driver, status: CameraStatus())
@@ -175,11 +178,11 @@ import XCTest
             .init(
                 sender: 0, receiver: 0, seq: 1, flags: 0, cmdSet: 4, cmdId: 5,
                 payload: [UInt8](repeating: 0, count: GimbalStick.attitudeLength)))
-        let start = try XCTUnwrap(borrowed.freshGimbalWaypoint)
+        let start = try XCTUnwrap(borrowed.gimbal.freshWaypoint)
         var end = start
         end.yawDeg += 10
         borrowed.gimbalProgram = GimbalProgram(a: start, b: end)
-        borrowed.runProgrammedMove()
+        borrowed.gimbal.runProgrammedMove()
         XCTAssertTrue(borrowed.gimbalMoveRunning, borrowed.controlNote ?? "Move did not start")
         XCTAssertEqual(borrowed.gimbalStartCountdown, 3)
 
@@ -195,7 +198,7 @@ import XCTest
         let model = AppModel()
         model.session = CameraSession(borrowing: HevcDecoder())
         model.session.updateMultiview(
-            camera: FoundCamera(
+            camera: DjiAppleSighting(
                 id: UUID(), name: "OsmoPocket4P-Test",
                 model: .resolve(modelId: 0x22, name: "OsmoPocket4P-Test"), modelId: 0x22),
             driver: nil, status: CameraStatus())
@@ -217,9 +220,9 @@ import XCTest
         let model = AppModel()
         model.session = CameraSession(borrowing: tile.decoder)
         tile.liveModel = model
-        let first = DatalinkDriver(
+        let first = DjiAppleDatalink(
             port: 9004, tcpPoke: false, pairingToken: "test", stationHost: "192.168.1.10")
-        let next = DatalinkDriver(
+        let next = DjiAppleDatalink(
             port: 9004, tcpPoke: false, pairingToken: "test", stationHost: "192.168.1.11")
         model.session.datalink = first
         tile.driver = next

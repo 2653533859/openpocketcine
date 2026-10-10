@@ -5,11 +5,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.opencapture.openpocketcine.ChromeRect
-import com.opencapture.openpocketcine.OpcIcon
-import com.opencapture.openpocketcine.reportChromeFrame
+import com.opencapture.opencine.cameracontrols.reportChromeFrame
+import com.opencapture.monitorui.MonitorRect
+import com.opencapture.monitorui.MonitorIcon
+import com.opencapture.monitorui.MonitorValue
 
-typealias MonitorValue = com.opencapture.monitorui.MonitorValue
 
 /** Adapter boundary for canvas frame reporting; shared rendering owns the layout. */
 @Composable
@@ -20,18 +20,9 @@ fun MonitorCameraValues(values: List<MonitorValue>, enabled: Boolean, portrait: 
     quickPreview: (@Composable (String, com.opencapture.monitorui.MonitorQuickPreview, Float) -> Unit)? = null,
     onQuickActiveChange: (Boolean) -> Unit = {},
     quickBottomClearanceDp: Float = 0f,
-    onOpen: (String) -> Unit, onFrame: (String, ChromeRect) -> Unit) {
+    onOpen: (String) -> Unit, onFrame: (String, MonitorRect) -> Unit) {
     com.opencapture.monitorui.MonitorCameraValues(values, enabled, portrait, modifier,
         itemModifier = { id -> Modifier.reportChromeFrame { onFrame(id, it) } },
         quickControl = quickControl, onQuickCommit = onQuickCommit, quickPreview = quickPreview,
         onQuickActiveChange = onQuickActiveChange, quickBottomClearanceDp = quickBottomClearanceDp, onOpen = onOpen)
-}
-
-@Composable
-fun MonitorIconButton(icon: OpcIcon, label: String, modifier: Modifier = Modifier,
-    selected: Boolean = false, enabled: Boolean = true, side: Dp = 44.dp, iconSize: Dp = 20.dp,
-    onClick: () -> Unit) {
-    com.opencapture.monitorui.MonitorActionButton(label, modifier, selected, enabled, side, onClick) { tint ->
-        OpcIcon(icon, null, Modifier.size(iconSize), tint)
-    }
 }

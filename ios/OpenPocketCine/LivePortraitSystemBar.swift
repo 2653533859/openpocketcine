@@ -1,3 +1,5 @@
+import MonitorUI
+import OpenCineCameraControls
 import SwiftUI
 
 /// OpenZCine portrait system bar (`.axisHorizontal`): lock + DISP on the leading
@@ -16,7 +18,7 @@ struct LivePortraitSystemBar: View {
                     Spacer(minLength: 14)
                     if let exit = model.multiviewExit {
                         Button(action: exit) {
-                            OpcIcon.layoutGrid.frame(width: 22, height: 22).frame(
+                            MonitorIcon.layoutGrid.frame(width: 22, height: 22).frame(
                                 width: 44, height: 44
                             )
                             .contentShape(Rectangle())
@@ -42,13 +44,13 @@ struct LivePortraitSystemBar: View {
                 HStack(spacing: 0) {
                     Spacer(minLength: 14)
                     if model.chromeSectionMounts(.railMedia) && !model.session.isMultiviewBorrowed {
-                        LiveMediaButton { model.liveOperatorPanel = .media }
+                        LiveMediaButton { model.shell.open(.media) }
                             .chromeEditable(.railMedia, editing: editing)
                         Spacer(minLength: 14)
                     }
                     if model.chromeSectionMounts(.railSettings) || model.session.status.isRecording
                     {
-                        LiveSettingsButton { model.liveOperatorPanel = .settings }
+                        LiveSettingsButton { model.shell.open(.settings) }
                             .chromeEditable(.railSettings, editing: editing)
                         Spacer(minLength: 14)
                     }

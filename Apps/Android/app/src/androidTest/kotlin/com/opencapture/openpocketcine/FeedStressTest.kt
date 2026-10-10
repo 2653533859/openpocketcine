@@ -1,5 +1,8 @@
 package com.opencapture.openpocketcine
 
+import com.opencapture.opencine.cameracontrols.CaptureLists
+import com.opencapture.opencine.core.testing.FeedStressFault
+import com.opencapture.opencine.dji.DjiNative
 import android.graphics.Rect
 import android.os.PowerManager
 import android.os.SystemClock
@@ -9,10 +12,9 @@ import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.opencapture.openpocketcine.core.ConnectionPhase
-import com.opencapture.openpocketcine.bridge.SwiftCore
-import com.opencapture.openpocketcine.session.LivePipelineCadence
-import com.opencapture.openpocketcine.session.SessionRecoveryUi
+import com.opencapture.opencine.media.LivePipelineCadence
+import com.opencapture.opencine.vocabulary.ConnectionPhase
+import com.opencapture.opencine.vocabulary.SessionRecoveryUi
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
@@ -92,7 +94,7 @@ class FeedStressTest {
             summary.put("camera_model_id", model.session.connectedCamera?.modelId ?: -1)
             scenario.onActivity {
                 model.session.debugCameraSetResult = { key, ok ->
-                    if (key == SwiftCore.waitKey(SwiftCore.CMD_SET_ISO_INDEX)) {
+                    if (key == DjiNative.waitKey(DjiNative.CMD_SET_ISO_INDEX)) {
                         if (ok) acknowledgments.incrementAndGet() else commandFailures.incrementAndGet()
                     }
                 }

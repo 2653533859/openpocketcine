@@ -1,5 +1,6 @@
 import AVFoundation
 import MonitorPresentation
+import OpenCineApple
 import OpenPocketViewCore
 import XCTest
 
@@ -73,7 +74,7 @@ final class MediaLibraryTests: XCTestCase {
     func testPlaybackCompositionScalesWorkingSizeBackToTheRaster() {
         let working = CGRect(x: 0, y: 0, width: 1440, height: 810)
         let raster = CGRect(x: 0, y: 0, width: 3840, height: 2160)
-        let fitted = working.applying(MediaLUT.transformFitting(working, to: raster))
+        let fitted = working.applying(MonitorMediaExporter.transformFitting(working, to: raster))
         XCTAssertEqual(fitted.width, raster.width, accuracy: 0.5)
         XCTAssertEqual(fitted.height, raster.height, accuracy: 0.5)
         XCTAssertEqual(fitted.minX, 0, accuracy: 0.5)
@@ -88,21 +89,21 @@ final class MediaLibraryTests: XCTestCase {
             AVAssetExportPresetHighestQuality,
         ]
         XCTAssertEqual(
-            MediaLUT.exportPreset(bakingLUT: true, compatible: compatible),
+            MonitorMediaExporter.exportPreset(bakingLUT: true, compatible: compatible),
             AVAssetExportPresetHEVCHighestQuality)
         XCTAssertEqual(
-            MediaLUT.exportPreset(bakingLUT: false, compatible: compatible),
+            MonitorMediaExporter.exportPreset(bakingLUT: false, compatible: compatible),
             AVAssetExportPresetPassthrough)
         XCTAssertNotEqual(
-            MediaLUT.exportPreset(bakingLUT: true, compatible: compatible),
+            MonitorMediaExporter.exportPreset(bakingLUT: true, compatible: compatible),
             AVAssetExportPreset1280x720)
     }
 
     func testExportProgressMapsTheSessionBand() {
-        XCTAssertEqual(MediaLUT.mappedExportProgress(0), 0.05, accuracy: 0.0001)
-        XCTAssertEqual(MediaLUT.mappedExportProgress(0.5), 0.475, accuracy: 0.0001)
-        XCTAssertEqual(MediaLUT.mappedExportProgress(1), 0.90, accuracy: 0.0001)
-        XCTAssertEqual(MediaLUT.mappedExportProgress(1.4), 0.90, accuracy: 0.0001)
+        XCTAssertEqual(MonitorMediaExporter.mappedExportProgress(0), 0.05, accuracy: 0.0001)
+        XCTAssertEqual(MonitorMediaExporter.mappedExportProgress(0.5), 0.475, accuracy: 0.0001)
+        XCTAssertEqual(MonitorMediaExporter.mappedExportProgress(1), 0.90, accuracy: 0.0001)
+        XCTAssertEqual(MonitorMediaExporter.mappedExportProgress(1.4), 0.90, accuracy: 0.0001)
     }
 
     func testShareOverlaySaysExportingWhileTheSessionTicks() {
@@ -123,12 +124,12 @@ final class MediaLibraryTests: XCTestCase {
             thumbPath: "MISC/THM/DJI_001/DJI_20260819000000_0050_D.scr",
             resolution: "3840x2160",
             fps: 50)
-        let source = ConformPreview.probe(listedRate: file.fps.map(Double.init))
-        let availability = ConformPreview.availability(for: source)
+        let source = MonitorConformPreview.probe(listedRate: file.fps.map(Double.init))
+        let availability = MonitorConformPreview.availability(for: source)
         XCTAssertEqual(source.captureRate, 50)
         XCTAssertTrue(availability.targets.contains(25))
         XCTAssertEqual(
-            ConformPreview.targetLabel(captureRate: 50, targetRate: 25), "25 fps · 50%")
+            MonitorConformPreview.targetLabel(captureRate: 50, targetRate: 25), "25 fps · 50%")
         XCTAssertEqual(
             PlaybackVideoLayout.size(fromResolution: file.resolution),
             CGSize(width: 3840, height: 2160))

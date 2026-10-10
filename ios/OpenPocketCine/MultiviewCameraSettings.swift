@@ -1,6 +1,9 @@
 import MonitorUI
+import OpenCineCameraControls
+import OpenCineMulticam
 import OpenPocketViewCore
 import SwiftUI
+import OpenCineMedia
 
 extension MultiviewSession {
     func controlsAvailable(for tile: Tile) -> Bool {
@@ -18,19 +21,28 @@ extension MultiviewSession {
         let editor = CameraSession(borrowing: tile.decoder, controlsOnly: true)
         let model = AppModel(session: editor)
         editor.updateMultiview(camera: camera, driver: tile.driver, status: tile.settings)
+        // The capture drums edit through the shared control model; retiring unbinds it.
+        model.control.bind(editor.control)
         model.frameSamples = tile.sampleBus
         tile.controlsModel = model
         tile.previewDemand = true
-        let driver = tile.driver
-        editor.multiviewControlAdmission = { [weak self, weak tile, weak editor, weak driver] in
-            guard let self, let tile, let editor else { return false }
-            return tile.controlsModel?.session === editor && tile.camera?.id == camera.id
-                && tile.driver === driver && self.controlsAvailable(for: tile)
+        // The engine's editor lease names this tile's session and control epoch: a replaced
+        // link or camera, a lost authority or the next editor retires it (plan 7.5).
+        let lease = try? editorLeases.open(
+            tile.entryID, in: multicamGroup(of: [tile]), at: multicamSnapshot(of: [tile]))
+        editor.multiviewControlAdmission = { [weak self, weak tile, weak editor] in
+            guard let self, let tile, let editor, let lease else { return false }
+            return tile.controlsModel?.session === editor
+                && editorLeases.refusal(
+                    for: lease, in: multicamGroup(of: [tile]), at: multicamSnapshot(of: [tile]))
+                    == nil
+                && controlsAvailable(for: tile)
         }
         return model
     }
 
     func closeCameraSettings() {
+        editorLeases.closeAll()
         for tile in tiles { tile.retireControls() }
     }
 }
@@ -50,6 +62,9 @@ struct MultiviewCameraSettings: View {
     private struct PanelIdentity: Hashable {
         let model: ObjectIdentifier
         let category: CaptureSheet
+        /// The panel captures its field on appear; it appears again once the freshly bound
+        /// controls first describe the camera.
+        let described: Bool
     }
 
     private var cameras: [MultiviewSession.Tile] { session.tiles.filter { $0.camera != nil } }
@@ -98,7 +113,8 @@ struct MultiviewCameraSettings: View {
                                     .environment(model)
                                     .id(
                                         PanelIdentity(
-                                            model: ObjectIdentifier(model), category: category))
+                                            model: ObjectIdentifier(model), category: category,
+                                            described: model.control.snapshot != nil))
                                     notes(tile: tile, model: model)
                                 }
                                 .onGeometryChange(for: CGFloat.self) {
@@ -225,7 +241,7 @@ struct MultiviewCameraSettings: View {
     }
 
     /// The tile's own picture (color and Auto LUT), without scope or sample demand.
-    private func previewEffects(_ tile: MultiviewSession.Tile) -> LiveImageEffects {
+    private func previewEffects(_ tile: MultiviewSession.Tile) -> MonitorFrameEffects {
         var result = tile.effects
         result.inspectorSample = false
         return result

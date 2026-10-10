@@ -1,12 +1,37 @@
 package com.opencapture.openpocketcine.assists
 
-import com.opencapture.openpocketcine.feed.MonitorTransfer
-import com.opencapture.openpocketcine.session.CameraCommands
-import com.opencapture.openpocketcine.session.CameraStatus
+import com.opencapture.opencine.vocabulary.CameraStatus
+import com.opencapture.opencine.media.MonitorTransfer
+import com.opencapture.monitorui.MonitorScopeTraceRaster as ScopeTraceRaster
+import com.opencapture.monitorui.MonitorTrafficLightsGeometry as TrafficLightsAssist
+import com.opencapture.monitorui.MonitorVectorscopeGraticule as VectorscopeGraticule
+import com.opencapture.opencine.dji.DjiScopeExposureCeiling
+import com.opencapture.opencine.dji.DjiMonitorColorProfile
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import com.opencapture.opencine.cameracontrols.audioOverlayChannels
+import com.opencapture.opencine.cameracontrols.audioMetersLeftRight
+import com.opencapture.opencine.cameracontrols.ZebraEditor
+import com.opencapture.opencine.cameracontrols.WaveformAxis
+import com.opencapture.opencine.cameracontrols.WaveformAssist
+import com.opencapture.opencine.cameracontrols.ParadeAssist
+import com.opencapture.opencine.cameracontrols.HistogramAssist
+import com.opencapture.opencine.cameracontrols.FalseColorReference
+import com.opencapture.opencine.cameracontrols.FalseColorBands
+import com.opencapture.opencine.cameracontrols.AudioAssist
+import com.opencapture.monitorui.MonitorFalseColorSelection
+import com.opencapture.monitorui.MonitorZebraUnit
+import com.opencapture.monitorui.MonitorWaveformMode
+import com.opencapture.monitorui.MonitorParadeMode
+import com.opencapture.opencine.media.MonitorCrushClipCompensation
+import com.opencapture.monitorui.MonitorScopePanelMath
+import com.opencapture.monitorui.MonitorScopePanelSize
+import com.opencapture.monitorui.MonitorScopeStoredCenter
+import com.opencapture.monitorui.MonitorScopePoint
+import com.opencapture.monitorui.MonitorScopeSize
+import com.opencapture.monitorui.MonitorScopeRect
 
 class ScopeGeometryTest {
     /** Swift `falseColorClip(.limits)` + `falseColorBands(.limits)` clip edge, probed 2026-09-29. */
@@ -23,7 +48,7 @@ class ScopeGeometryTest {
             )
         for ((key, edge) in swift) {
             val (transfer, rec709) = key
-            val clip = FalseColorBands.bands(FalseColorScale.LIMITS, transfer, rec709)[3]
+            val clip = FalseColorBands.bands(MonitorFalseColorSelection.LIMITS, transfer, rec709, ceiling = DjiScopeExposureCeiling.UNOBSERVED, lookCurve = DjiMonitorColorProfile.value.rec709LookCurves[transfer])[3]
             assertEquals(edge, clip.lowerBound, 0.01, "$transfer rec709=$rec709")
         }
     }
@@ -32,7 +57,7 @@ class ScopeGeometryTest {
     fun waveformPlotGuttersDoNotScaleWithPanelSoIre100StaysOnTheGuide() {
         val d = 3f
         val scale = 1.6f
-        val base = ScopePanelSize.waveform
+        val base = MonitorScopePanelSize.waveform
         val live =
             WaveformAxis.plotRect(base.width * scale * d, base.height * scale * d, d)
         assertEquals(WaveformAxis.TITLE_HEIGHT * d, live.minY, 0.01f)
@@ -49,7 +74,7 @@ class ScopeGeometryTest {
 
     @Test
     fun waveformAxisPinsZeroAndOneHundredOnPlotEdges() {
-        val size = ScopePanelSize.waveform
+        val size = MonitorScopePanelSize.waveform
         val plot = WaveformAxis.plotRect(size.width, size.height)
         assertEquals(WaveformAxis.TITLE_HEIGHT, plot.minY, 0.01f)
         assertEquals(size.height - WaveformAxis.BOTTOM_PAD, plot.maxY, 0.01f)
@@ -64,15 +89,14 @@ class ScopeGeometryTest {
         assertEquals(0.5, WaveformAssist.intensity(200), 1e-9)
         assertEquals(1.0, ParadeAssist.intensity(100), 1e-9)
         assertEquals(2.0, ParadeAssist.intensity(200), 1e-9)
-        assertEquals(1.0, VectorscopeAssist.intensity(100), 1e-9)
-        assertEquals(30.50, WaveformAxis.middleGrayIRE(CameraCommands.COLOR_DLOG2), 0.01)
-        assertEquals(39.88, WaveformAxis.middleGrayIRE(CameraCommands.COLOR_DLOG), 0.01)
-        assertEquals(40.9, WaveformAxis.middleGrayIRE(CameraCommands.COLOR_NORMAL), 0.05)
+        assertEquals(30.50, WaveformAxis.middleGrayIRE(MonitorTransfer.DLOG2), 0.01)
+        assertEquals(39.88, WaveformAxis.middleGrayIRE(MonitorTransfer.DLOG), 0.01)
+        assertEquals(40.9, WaveformAxis.middleGrayIRE(MonitorTransfer.REC709), 0.05)
     }
 
     @Test
     fun histogramPlotUsesGutteredWaveAxis() {
-        val size = ScopePanelSize.histogram
+        val size = MonitorScopePanelSize.histogram
         val plot = HistogramAssist.plotRect(size.width, size.height)
         assertEquals(HistogramAssist.trafficGutter, plot.minX, 0.01f)
         assertEquals(WaveformAxis.TITLE_HEIGHT, plot.minY, 0.01f)
@@ -94,17 +118,17 @@ class ScopeGeometryTest {
 
     @Test
     fun paradeLanesSplitThePlot() {
-        assertEquals(3, ParadeMode.RGB.laneCount)
-        assertEquals(4, ParadeMode.YRGB.laneCount)
+        assertEquals(3, MonitorParadeMode.RGB.laneCount)
+        assertEquals(4, MonitorParadeMode.YRGB.laneCount)
         val plot = WaveformAxis.plotRect(250f, 153f)
-        val w = ParadeAssist.laneWidth(ParadeMode.RGB, plot)
+        val w = ParadeAssist.laneWidth(MonitorParadeMode.RGB, plot)
         assertEquals(plot.width / 3f, w, 0.01f)
     }
 
     @Test
     fun plotGuttersScaleWithDensityLikeIosPoints() {
         val d = 2.75f
-        val size = ScopePanelSize.histogram
+        val size = MonitorScopePanelSize.histogram
         val at1 = HistogramAssist.plotRect(size.width, size.height)
         val atD = HistogramAssist.plotRect(size.width * d, size.height * d, d)
         assertEquals(at1.minX * d, atD.minX, 0.02f)
@@ -120,20 +144,20 @@ class ScopeGeometryTest {
     @Test
     fun traceRasterSkipsEmptyPointLists() {
         val table = FloatArray(256)
-        assertEquals(null, ScopeTraceRaster.waveformArgb(emptyList(), emptyList(), table, WaveformMode.RGB, 1.0))
-        assertEquals(null, ScopeTraceRaster.paradeArgb(emptyList(), emptyList(), table, ParadeMode.RGB, 1.0))
+        assertEquals(null, ScopeTraceRaster.waveformArgb(emptyList(), emptyList(), table, MonitorWaveformMode.RGB, 1.0))
+        assertEquals(null, ScopeTraceRaster.paradeArgb(emptyList(), emptyList(), table, MonitorParadeMode.RGB, 1.0))
     }
 
     @Test
     fun waveformRasterIsPlotSizedAndTransparentWhereEmpty() {
         val table = FloatArray(256) { it * 100f / 255f }
-        val mid = com.opencapture.openpocketcine.feed.ScopePoint(0.5, 0.5, 128, 128, 128, 128)
+        val mid = com.opencapture.opencine.media.ScopePoint(0.5, 0.5, 128, 128, 128, 128)
         val px =
             ScopeTraceRaster.waveformArgb(
                 listOf(mid),
                 emptyList(),
                 table,
-                WaveformMode.LUMA,
+                MonitorWaveformMode.LUMA,
                 WaveformAssist.intensity(100),
             )
         requireNotNull(px)
@@ -147,14 +171,14 @@ class ScopeGeometryTest {
         val table = FloatArray(256) { it * 100f / 255f }
         fun frame(seed: Int) = List(400) { i ->
             val v = (i * 37 + seed * 11) % 256
-            com.opencapture.openpocketcine.feed.ScopePoint((i % 200) / 200.0, 0.5, v, 255 - v, (v * 3) % 256, v)
+            com.opencapture.opencine.media.ScopePoint((i % 200) / 200.0, 0.5, v, 255 - v, (v * 3) % 256, v)
         }
         val a = frame(1)
         val b = frame(2)
         val c = frame(3)
         val intensity = WaveformAssist.intensity(100)
-        val layers = ScopeTraceRaster.TraceLayers()
-        for (mode in WaveformMode.entries) {
+        val layers = com.opencapture.monitorui.MonitorScopeTraceRaster.TraceLayers()
+        for (mode in MonitorWaveformMode.entries) {
             layers.waveformArgb(a, emptyList(), table, mode, intensity)
             // b's trail is a's samples: the retained live layer stands in for a re-splat.
             val reused = requireNotNull(layers.waveformArgb(b, a, table, mode, intensity)).copyOf()
@@ -165,9 +189,9 @@ class ScopeGeometryTest {
             val skippedFresh = requireNotNull(ScopeTraceRaster.waveformArgb(c, a, table, mode, intensity))
             assertTrue(skipped.indices.all { channelsWithin(skipped[it], skippedFresh[it], 1) }, "$mode fallback matches")
         }
-        layers.paradeArgb(a, emptyList(), table, ParadeMode.RGB, intensity)
-        val parade = requireNotNull(layers.paradeArgb(b, a, table, ParadeMode.RGB, intensity)).copyOf()
-        val paradeFresh = requireNotNull(ScopeTraceRaster.paradeArgb(b, a, table, ParadeMode.RGB, intensity))
+        layers.paradeArgb(a, emptyList(), table, MonitorParadeMode.RGB, intensity)
+        val parade = requireNotNull(layers.paradeArgb(b, a, table, MonitorParadeMode.RGB, intensity)).copyOf()
+        val paradeFresh = requireNotNull(ScopeTraceRaster.paradeArgb(b, a, table, MonitorParadeMode.RGB, intensity))
         assertTrue(parade.indices.all { channelsWithin(parade[it], paradeFresh[it], 1) })
     }
 
@@ -176,7 +200,7 @@ class ScopeGeometryTest {
 
     @Test
     fun vectorscopeRasterIsPlotSizedAndTransparentWhereEmpty() {
-        val white = com.opencapture.openpocketcine.feed.ScopePoint(0.5, 0.5, 255, 255, 255, 255)
+        val white = com.opencapture.opencine.media.ScopePoint(0.5, 0.5, 255, 255, 255, 255)
         val px =
             ScopeTraceRaster.vectorscopeArgb(
                 listOf(white),
@@ -192,35 +216,35 @@ class ScopeGeometryTest {
 
     @Test
     fun movablePanelClampSnapAndStoredCenter() {
-        assertEquals(0.6, MovablePanelMath.clampedScale(0.2), 1e-9)
-        assertEquals(1.6, MovablePanelMath.clampedScale(3.0), 1e-9)
-        val size = MovablePanelMath.panelSize(ScopePanelSize.vectorscope, 2.0)
+        assertEquals(0.6, MonitorScopePanelMath.clampedScale(0.2), 1e-9)
+        assertEquals(1.6, MonitorScopePanelMath.clampedScale(3.0), 1e-9)
+        val size = MonitorScopePanelMath.panelSize(MonitorScopePanelSize.vectorscope, 2.0)
         assertEquals(304f, size.width)
         assertEquals(304f, size.height)
-        val snapped = MovablePanelMath.snap(AssistPoint(11f, 23f))
+        val snapped = MonitorScopePanelMath.snap(MonitorScopePoint(11f, 23f))
         assertEquals(12f, snapped.x, 0.01f)
         assertEquals(24f, snapped.y, 0.01f)
 
-        val bounds = AssistRect(0f, 0f, 800f, 400f)
-        val feed = AssistRect(40f, 20f, 720f, 360f)
-        val offFeed = MovablePanelMath.clamp(AssistPoint(30f, 200f), AssistSize(40f, 40f), bounds)
+        val bounds = MonitorScopeRect(0f, 0f, 800f, 400f)
+        val feed = MonitorScopeRect(40f, 20f, 720f, 360f)
+        val offFeed = MonitorScopePanelMath.clamp(MonitorScopePoint(30f, 200f), MonitorScopeSize(40f, 40f), bounds)
         assertEquals(30f, offFeed.x, 0.01f)
         assertTrue(offFeed.x < feed.minX)
-        val stored = StoredCenter(AssistPoint(750f, 125f), AssistRect(0f, 0f, 1000f, 500f))
+        val stored = MonitorScopeStoredCenter(MonitorScopePoint(750f, 125f), MonitorScopeRect(0f, 0f, 1000f, 500f))
         assertEquals(0.75, stored.xFraction, 0.001)
         assertEquals(0.25, stored.yFraction, 0.001)
     }
 
     @Test
     fun unplacedWindowedScopeStartsAtCanvasCenterThenClampsToMovement() {
-        val canvas = AssistRect(0f, 0f, 874f, 402f)
-        val movement = AssistRect(8f, 8f, 858f, 386f)
-        val size = ScopePanelSize.histogram
-        val fallback = AssistPoint(canvas.midX, canvas.midY)
-        val raw = MovablePanelMath.resolvedCenter(null, null, fallback, size, canvas)
+        val canvas = MonitorScopeRect(0f, 0f, 874f, 402f)
+        val movement = MonitorScopeRect(8f, 8f, 858f, 386f)
+        val size = MonitorScopePanelSize.histogram
+        val fallback = MonitorScopePoint(canvas.midX, canvas.midY)
+        val raw = MonitorScopePanelMath.resolvedCenter(null, null, fallback, size, canvas)
         assertEquals(canvas.midX, raw.x, 0.05f)
         assertEquals(canvas.midY, raw.y, 0.05f)
-        val fitted = MovablePanelMath.clampWithGrip(raw, size, movement, MovablePanelMath.GRIP_EXTERIOR_DP)
+        val fitted = MonitorScopePanelMath.clampWithGrip(raw, size, movement, MonitorScopePanelMath.GRIP_EXTERIOR_DP)
         assertEquals(canvas.midX, fitted.x, 0.05f)
         assertEquals(canvas.midY, fitted.y, 0.05f)
         assertTrue(fitted.y + size.height / 2f <= movement.maxY + 0.05f)
@@ -228,9 +252,9 @@ class ScopeGeometryTest {
 
     @Test
     fun audioFreshMeterStartsAtLeftAndCanvasVerticalCenter() {
-        val canvas = AssistRect(40f, 20f, 844f, 390f)
-        val movement = AssistRect(54f, 70f, 812f, 268f)
-        val size = ScopePanelSize.audio
+        val canvas = MonitorScopeRect(40f, 20f, 844f, 390f)
+        val movement = MonitorScopeRect(54f, 70f, 812f, 268f)
+        val size = MonitorScopePanelSize.audio
         val center = AudioAssist.defaultCenter(canvas, movement, size)
         assertEquals(movement.minX + size.width / 2f, center.x, 0.05f)
         assertEquals(canvas.midY, center.y, 0.05f)
@@ -238,10 +262,10 @@ class ScopeGeometryTest {
 
     @Test
     fun trafficLightsCompensationAndNeutralDisplay() {
-        assertEquals(listOf("0", "0.25", "0.5", "0.75", "1.0"), CrushClipCompensation.entries.map { it.label })
-        assertEquals(listOf(0, 2, 5, 7, 10), CrushClipCompensation.entries.map { it.raw })
-        assertEquals(0.025, CrushClipCompensation.QUARTER.pixelFractionThreshold, 1e-12)
-        assertEquals(0.10, CrushClipCompensation.ONE.pixelFractionThreshold, 1e-12)
+        assertEquals(listOf("0", "0.25", "0.5", "0.75", "1.0"), MonitorCrushClipCompensation.entries.map { it.label })
+        assertEquals(listOf(0, 2, 5, 7, 10), MonitorCrushClipCompensation.entries.map { it.raw })
+        assertEquals(0.025, MonitorCrushClipCompensation.QUARTER.pixelFractionThreshold, 1e-12)
+        assertEquals(0.10, MonitorCrushClipCompensation.ONE.pixelFractionThreshold, 1e-12)
         val neutral = TrafficLightsAssist.channelDisplay(0.5)
         assertEquals(TrafficLightsAssist.BarSide.NEUTRAL, neutral.side)
         val over = TrafficLightsAssist.channelDisplay(0.8)
@@ -278,26 +302,26 @@ class ScopeGeometryTest {
     @Test
     fun zebraNativeUnitShows0To255NotIre() {
         val transfer = MonitorTransfer.DLOG2
-        assertEquals(100, ZebraEditor.displayValue(100.0, ZebraUnit.IRE, transfer))
-        assertEquals(100, ZebraEditor.editorMaximum(ZebraUnit.IRE))
-        assertEquals(255, ZebraEditor.editorMaximum(ZebraUnit.NATIVE))
-        val nativeClip = ZebraEditor.displayValue(100.0, ZebraUnit.NATIVE, transfer)
+        assertEquals(100, ZebraEditor.displayValue(100.0, MonitorZebraUnit.IRE, transfer, DjiScopeExposureCeiling.UNOBSERVED))
+        assertEquals(100, ZebraEditor.editorMaximum(MonitorZebraUnit.IRE))
+        assertEquals(255, ZebraEditor.editorMaximum(MonitorZebraUnit.NATIVE))
+        val nativeClip = ZebraEditor.displayValue(100.0, MonitorZebraUnit.NATIVE, transfer, DjiScopeExposureCeiling.UNOBSERVED)
         assertTrue(nativeClip in 240..255, "D-Log2 clip maps near code 247, was $nativeClip")
         assertEquals(
             100.0,
-            ZebraEditor.ireFromDisplay(nativeClip, ZebraUnit.NATIVE, transfer),
+            ZebraEditor.ireFromDisplay(nativeClip, MonitorZebraUnit.NATIVE, transfer, DjiScopeExposureCeiling.UNOBSERVED),
             0.5,
         )
     }
 
     @Test
     fun falseColorVideoRulerUsesVideoModeIre() {
-        assertEquals(FalseColorScale.STOPS, FalseColorScale.fromMenuLabel("Video"))
-        assertEquals(FalseColorScale.STOPS, FalseColorScale.fromPersisted("PStops"))
-        assertEquals(FalseColorScale.STOPS, FalseColorScale.fromPersisted("ZC Stops"))
-        assertEquals("Video", FalseColorScale.STOPS.menuLabel)
+        assertEquals(MonitorFalseColorSelection.STOPS, MonitorFalseColorSelection.fromMenuLabel("Video"))
+        assertEquals(MonitorFalseColorSelection.STOPS, MonitorFalseColorSelection.fromPersisted("PStops"))
+        assertEquals(MonitorFalseColorSelection.STOPS, MonitorFalseColorSelection.fromPersisted("ZC Stops"))
+        assertEquals("Video", MonitorFalseColorSelection.STOPS.menuLabel)
         val transfer = MonitorTransfer.DLOG2
-        val stops = FalseColorReference.segments(FalseColorScale.STOPS, transfer)
+        val stops = FalseColorReference.segments(MonitorFalseColorSelection.STOPS, transfer, ceiling = DjiScopeExposureCeiling.UNOBSERVED)
         assertEquals(9, stops.size)
         assertEquals(0.0, stops[0].lowerFraction, 1e-4)
         assertEquals(0.05, stops[0].upperFraction, 1e-4)
@@ -307,10 +331,10 @@ class ScopeGeometryTest {
         assertTrue(stops[2].upperFraction < stops[3].lowerFraction)
         assertEquals(
             listOf("crush", "18%", "skin", "clip"),
-            FalseColorReference.axisLabels(FalseColorScale.STOPS),
+            FalseColorReference.axisLabels(MonitorFalseColorSelection.STOPS),
         )
-        assertEquals("D-Log2", FalseColorReference.curveKeyLabel(CameraCommands.COLOR_DLOG2))
-        val ire = FalseColorReference.segments(FalseColorScale.IRE, transfer)
+        assertEquals("D-Log2", FalseColorReference.curveKeyLabel(MonitorTransfer.DLOG2))
+        val ire = FalseColorReference.segments(MonitorFalseColorSelection.IRE, transfer, ceiling = DjiScopeExposureCeiling.UNOBSERVED)
         assertEquals(6, ire.size)
         assertEquals(0.0, ire[0].lowerFraction, 1e-4)
         assertEquals(0.025, ire[0].upperFraction, 1e-4)
@@ -324,17 +348,17 @@ class ScopeGeometryTest {
 
     @Test
     fun unknownSavedScaleFallsBackToCineStop() {
-        assertEquals(FalseColorScale.SCENE_STOPS, FalseColorScale.fromPersisted("unknown"))
-        assertEquals(FalseColorScale.SCENE_STOPS, FalseColorScale.fromMenuLabel("unknown"))
+        assertEquals(MonitorFalseColorSelection.SCENE_STOPS, MonitorFalseColorSelection.fromPersisted("unknown"))
+        assertEquals(MonitorFalseColorSelection.SCENE_STOPS, MonitorFalseColorSelection.fromMenuLabel("unknown"))
     }
 
     @Test
     fun savedCineStopKeyKeepsTheVideoScale() {
         // "CineStop" was the Video scale's saved key before the scene-stop scale took the name.
-        assertEquals(FalseColorScale.STOPS, FalseColorScale.fromPersisted("CineStop"))
-        assertEquals(FalseColorScale.SCENE_STOPS, FalseColorScale.fromPersisted("SceneStops"))
-        assertEquals(FalseColorScale.SCENE_STOPS, FalseColorScale.fromMenuLabel("CineStop"))
-        assertEquals("CineStop", FalseColorScale.SCENE_STOPS.menuLabel)
+        assertEquals(MonitorFalseColorSelection.STOPS, MonitorFalseColorSelection.fromPersisted("CineStop"))
+        assertEquals(MonitorFalseColorSelection.SCENE_STOPS, MonitorFalseColorSelection.fromPersisted("SceneStops"))
+        assertEquals(MonitorFalseColorSelection.SCENE_STOPS, MonitorFalseColorSelection.fromMenuLabel("CineStop"))
+        assertEquals("CineStop", MonitorFalseColorSelection.SCENE_STOPS.menuLabel)
     }
 
     @Test
@@ -359,18 +383,18 @@ class ScopeGeometryTest {
         assertEquals(gray.red, gray.green, 0.0)
         assertEquals(gray.green, gray.blue, 0.0)
 
-        val rec709 = FalseColorBands.sceneStopBands(FalseColorBands.clipStops(MonitorTransfer.REC709))
+        val rec709 = FalseColorBands.sceneStopBands(FalseColorBands.clipStops(MonitorTransfer.REC709, ceiling = DjiScopeExposureCeiling.UNOBSERVED))
         assertEquals("+2", rec709.first { it.contains(2.0) }.label)
         assertEquals("clip", rec709.last().label)
 
         assertEquals(
             listOf("−6", "−4", "−2", "18%", "+2", "+4", "+6", "+8", "clip"),
-            FalseColorReference.sceneStopMarkers(MonitorTransfer.DLOG2).map { it.label },
+            FalseColorReference.sceneStopMarkers(MonitorTransfer.DLOG2, ceiling = DjiScopeExposureCeiling.UNOBSERVED).map { it.label },
         )
         assertEquals(
             listOf("−6", "−4", "−2", "18%", "clip"),
-            FalseColorReference.sceneStopMarkers(MonitorTransfer.REC709).map { it.label },
+            FalseColorReference.sceneStopMarkers(MonitorTransfer.REC709, ceiling = DjiScopeExposureCeiling.UNOBSERVED).map { it.label },
         )
-        assertTrue(FalseColorReference.axisLabels(FalseColorScale.SCENE_STOPS).isEmpty())
+        assertTrue(FalseColorReference.axisLabels(MonitorFalseColorSelection.SCENE_STOPS).isEmpty())
     }
 }

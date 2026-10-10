@@ -1,12 +1,19 @@
 import MonitorPresentation
+import OpenCineCameraControls
 import OpenPocketViewCore
 import SwiftUI
 import XCTest
+import OpenCineDJIApple
 
 @testable import OpenPocketCine
 
 @MainActor
 final class CapturePanelRenderComparisonTests: XCTestCase {
+    /// main's strip held ISO and shutter at the camera's report until it answered.
+    func testStripShowsTheReportedValueWhileARequestIsPending() {
+        XCTAssertFalse(AppModel().captureStripShowsPendingEdits)
+    }
+
     /// Renders both production hosts. Tap keeps the full details drawer; hold
     /// is the compact dial at the same bottom-center well.
     func testTappedISOWhiteBalanceAndFocusKeepFullDetailsWhileHoldIsCompact() async throws {
@@ -23,7 +30,13 @@ final class CapturePanelRenderComparisonTests: XCTestCase {
         status.whiteBalanceTint = 0
         status.focusMode = .continuous
         status.focusTrack = .subjectLock
-        model.session.status = status
+        // A body with focus: the FOCUS drum comes from its capability projection.
+        model.session.updateMultiview(
+            camera: DjiAppleSighting(
+                id: UUID(), name: "OsmoPocket4P-Test",
+                model: .resolve(modelId: 0x22, name: "OsmoPocket4P-Test"), modelId: 0x22),
+            driver: nil, status: status)
+        model.control.bind(model.session.control)
         let size = CGSize(width: 874, height: 402)
         let host = UIHostingController(
             rootView: CaptureComparisonCanvas(model: model, held: false, size: size))

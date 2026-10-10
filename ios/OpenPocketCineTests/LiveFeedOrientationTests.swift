@@ -1,11 +1,14 @@
 import CoreImage
 import Metal
+import OpenCineApple
+import OpenCineCameraVocabulary
 import OpenPocketViewCore
 import XCTest
+import OpenCineMedia
 
 @testable import OpenPocketCine
 
-/// LUT / peaking / false colour / zebra share `needsGPUFeed` → `FeedFrameBaker` →
+/// LUT / peaking / false colour / zebra share `needsGPUFeed` → `MonitorFrameBaker` →
 /// texel-for-texel blit. A leftover `scaleY: -1` anywhere in that chain inverted
 /// all four versus the clean HEVC layer. `LiveFeedPresent` is gone — the present
 /// is now a plain blit — so the testable seam is the baker's texture orientation.
@@ -15,9 +18,9 @@ final class LiveFeedOrientationTests: XCTestCase {
         XCTAssertTrue(Self.zebra.needsGPUFeed)
         XCTAssertTrue(Self.falseColor.needsGPUFeed)
         XCTAssertTrue(Self.lut.needsGPUFeed)
-        XCTAssertFalse(LiveImageEffects().needsGPUFeed)
-        XCTAssertFalse(LiveImageEffects().needsSample)
-        var face = LiveImageEffects()
+        XCTAssertFalse(MonitorFrameEffects().needsGPUFeed)
+        XCTAssertFalse(MonitorFrameEffects().needsSample)
+        var face = MonitorFrameEffects()
         face.faceAF = true
         XCTAssertTrue(face.needsSample)
         XCTAssertFalse(face.needsGPUFeed)
@@ -27,7 +30,7 @@ final class LiveFeedOrientationTests: XCTestCase {
         XCTAssertFalse(Self.lut.needsOverlayFeed)
         XCTAssertFalse(Self.falseColor.replacesIdentityFeed)
         XCTAssertTrue(Self.lut.replacesIdentityFeed)
-        var splitOnly = LiveImageEffects()
+        var splitOnly = MonitorFrameEffects()
         splitOnly.splitComparison = true
         XCTAssertFalse(
             splitOnly.needsGPUFeed,
@@ -105,7 +108,7 @@ final class LiveFeedOrientationTests: XCTestCase {
         guard let device = MTLCreateSystemDefaultDevice() else {
             throw XCTSkip("Metal required")
         }
-        let baker = FeedFrameBaker(device: device)
+        let baker = MonitorFrameBaker(device: device)
         let source = Self.verticalMarker()
         let drawable = CGSize(width: 64, height: 64)
         let done = expectation(description: "bake")
@@ -127,30 +130,30 @@ final class LiveFeedOrientationTests: XCTestCase {
             "bake must land in drawable orientation — a leftover flip inverts the feed")
     }
 
-    private static var peaking: LiveImageEffects {
-        var fx = LiveImageEffects()
+    private static var peaking: MonitorFrameEffects {
+        var fx = MonitorFrameEffects()
         fx.peaking = true
         return fx
     }
 
-    private static var zebra: LiveImageEffects {
-        var fx = LiveImageEffects()
+    private static var zebra: MonitorFrameEffects {
+        var fx = MonitorFrameEffects()
         fx.zebra = true
         fx.zebraHighlight = true
         fx.zebraMidtone = false
         return fx
     }
 
-    private static var falseColor: LiveImageEffects {
-        var fx = LiveImageEffects()
+    private static var falseColor: MonitorFrameEffects {
+        var fx = MonitorFrameEffects()
         fx.falseColor = true
         fx.falseColorScale = .ire
         return fx
     }
 
-    private static var lut: LiveImageEffects {
+    private static var lut: MonitorFrameEffects {
         let cube = BuiltInLook.mono.cube()
-        var fx = LiveImageEffects()
+        var fx = MonitorFrameEffects()
         fx.lutDimension = cube.size
         fx.lutRGBA = cube.rgbaComponents.withUnsafeBytes { Data($0) }
         return fx
@@ -168,11 +171,15 @@ final class LiveFeedOrientationTests: XCTestCase {
     /// False colour cubes are async. Earlier tests in a full suite already warm
     /// them; isolation still needs a short wait so IRE paint actually runs.
     private static func warmFalseColorCubes() {
-        PocketFalseColorMap.warm(scale: .ire, mode: .normal)
+        // Unstamped effects (the compositor here) read the reference ceiling.
+        let clip = DJIScopeExposureCeiling.referenceClipByte(transfer: .rec709)
+        PocketFalseColorMap.warm(scale: .ire, mode: .normal, rec709: false, clipByte: clip)
         let deadline = Date().addingTimeInterval(5)
         while Date() < deadline {
-            if PocketFalseColorMap.overlayPaintData(scale: .ire, mode: .normal) != nil,
-                PocketFalseColorMap.overlayWeightData(scale: .ire, mode: .normal) != nil
+            if PocketFalseColorMap.overlayPaintData(
+                scale: .ire, mode: .normal, rec709: false, clipByte: clip) != nil,
+                PocketFalseColorMap.overlayWeightData(
+                    scale: .ire, mode: .normal, rec709: false, clipByte: clip) != nil
             {
                 return
             }
@@ -213,7 +220,7 @@ final class LiveFeedOrientationTests: XCTestCase {
         return CGFloat(bestRow) > e.height / 2
     }
 
-    /// CI top-center maps to Metal y = 0 (`FeedFrameBaker.metalOriginTransform`).
+    /// CI top-center maps to Metal y = 0 (`MonitorFrameBaker.metalOriginTransform`).
     private static func metalTopIsBrighter(texture: MTLTexture, device: MTLDevice) -> Bool {
         guard let queue = device.makeCommandQueue(),
             let commandBuffer = queue.makeCommandBuffer(),

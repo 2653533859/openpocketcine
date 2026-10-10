@@ -2,13 +2,19 @@ import CoreImage
 import CoreVideo
 import OpenPocketViewCore
 import XCTest
+import OpenCineApple
+import OpenCineMedia
 
 @testable import OpenPocketCine
 
 @MainActor
 final class AssistInspectorPreviewTests: XCTestCase {
+    /// This test's monitored source (XCTest makes a fresh one per test).
+    private let ceiling = OpenCineMedia.ScopeExposureCeiling(
+        profile: PocketMonitorCalibration.clipProfile)
+
     func testInspectorRequestsSamplingWithoutEnablingPictureEffects() {
-        let original = LiveImageEffects()
+        let original = MonitorFrameEffects()
         let image = original.withInspectorDemand(.peaking)
         XCTAssertTrue(image.needsSample)
         XCTAssertFalse(image.needsGPUFeed)
@@ -84,7 +90,7 @@ final class AssistInspectorPreviewTests: XCTestCase {
         assist.falseColor = false
         assist.zebra = true
         let preview = AssistInspectorPreviewPolicy.imageEffects(
-            assist: assist, tool: .peaking, transfer: .dlog2)
+            assist: assist, tool: .peaking, transfer: .dlog2, ceiling: ceiling)
         XCTAssertTrue(preview.peaking)
         XCTAssertFalse(preview.zebra)
         XCTAssertFalse(preview.falseColor)
@@ -95,12 +101,12 @@ final class AssistInspectorPreviewTests: XCTestCase {
     }
 
     func testPreviewImageIsBoundedBeforeRendering() async throws {
-        let renderer = AssistInspectorImageRenderer()
+        let renderer = MonitorInspectorImageRenderer()
         let owner = UUID()
         renderer.activate(owner: owner)
         let buffer = try Self.buffer(width: 640, height: 360)
         let result = await renderer.render(
-            owner: owner, source: buffer, effects: { LiveImageEffects() })
+            owner: owner, source: buffer, effects: { MonitorFrameEffects() })
         XCTAssertEqual(result?.image.width, 320)
         XCTAssertEqual(result?.image.height, 180)
     }
@@ -110,20 +116,20 @@ final class AssistInspectorPreviewTests: XCTestCase {
         assist.lutEnabled = false
         assist.splitComparison = false
         let beforeSplit = AssistInspectorPreviewPolicy.imageOptions(
-            assist: assist, tool: .lut, transfer: .rec709)
+            assist: assist, tool: .lut, transfer: .rec709, ceiling: ceiling)
         assist.splitComparison = true
         let afterSplit = AssistInspectorPreviewPolicy.imageOptions(
-            assist: assist, tool: .lut, transfer: .rec709)
+            assist: assist, tool: .lut, transfer: .rec709, ceiling: ceiling)
         XCTAssertNotEqual(beforeSplit, afterSplit)
         XCTAssertTrue(afterSplit.splitComparison)
         XCTAssertEqual(afterSplit.lutDimension, 0, "Observation must not prepare a preview LUT")
 
         assist.desqueezeFactor = 1.33
         let beforeStretch = AssistInspectorPreviewPolicy.imageOptions(
-            assist: assist, tool: .desqueeze, transfer: .rec709)
+            assist: assist, tool: .desqueeze, transfer: .rec709, ceiling: ceiling)
         assist.desqueezeFactor = 2
         let afterStretch = AssistInspectorPreviewPolicy.imageOptions(
-            assist: assist, tool: .desqueeze, transfer: .rec709)
+            assist: assist, tool: .desqueeze, transfer: .rec709, ceiling: ceiling)
         XCTAssertNotEqual(beforeStretch, afterStretch)
         XCTAssertEqual(afterStretch.desqueezeFactor, 2)
     }
@@ -136,7 +142,7 @@ final class AssistInspectorPreviewTests: XCTestCase {
         assist.configureTool = .lut
         XCTAssertEqual(assist.effects.lutDimension, 0)
         let preview = AssistInspectorPreviewPolicy.imageEffects(
-            assist: assist, tool: .lut, transfer: .rec709)
+            assist: assist, tool: .lut, transfer: .rec709, ceiling: ceiling)
         XCTAssertGreaterThan(preview.lutDimension, 1)
         XCTAssertFalse(preview.lutRGBA.isEmpty)
         XCTAssertFalse(assist.lutEnabled)
@@ -154,7 +160,7 @@ final class AssistInspectorPreviewTests: XCTestCase {
             CIContext().createCGImage(
                 CIImage(color: .white).cropped(to: CGRect(x: 0, y: 0, width: 1, height: 1)),
                 from: CGRect(x: 0, y: 0, width: 1, height: 1)))
-        let renderer = AssistInspectorImageRenderer(
+        let renderer = MonitorInspectorImageRenderer(
             now: { clock.now },
             operation: { _, _ in
                 if invocations.increment() == 1 {
@@ -170,7 +176,7 @@ final class AssistInspectorPreviewTests: XCTestCase {
         renderer.activate(owner: owner)
         let buffer = try Self.buffer(width: 8, height: 8)
         let first = Task {
-            await renderer.render(owner: owner, source: buffer, effects: { LiveImageEffects() })
+            await renderer.render(owner: owner, source: buffer, effects: { MonitorFrameEffects() })
         }
         defer {
             first.cancel()
@@ -178,7 +184,7 @@ final class AssistInspectorPreviewTests: XCTestCase {
         }
         try await started.wait()
         let dropped = await renderer.render(
-            owner: owner, source: buffer, effects: { LiveImageEffects() })
+            owner: owner, source: buffer, effects: { MonitorFrameEffects() })
         XCTAssertNil(dropped, "A busy preview must not retain a queued second source")
         XCTAssertEqual(invocations.value, 1, "Dropped work must never enter the renderer")
         first.cancel()
@@ -186,7 +192,7 @@ final class AssistInspectorPreviewTests: XCTestCase {
         renderer.activate(owner: remountedOwner)
         clock.now = 200_000_000
         let remounted = await renderer.render(
-            owner: remountedOwner, source: buffer, effects: { LiveImageEffects() })
+            owner: remountedOwner, source: buffer, effects: { MonitorFrameEffects() })
         XCTAssertNil(remounted, "Cancellation/remount must not release the running operation")
         XCTAssertEqual(invocations.value, 1)
         release.signal()
@@ -195,7 +201,7 @@ final class AssistInspectorPreviewTests: XCTestCase {
         XCTAssertEqual(invocations.value, 1, "Cancellation must not drain queued work")
 
         let resumed = await renderer.render(
-            owner: remountedOwner, source: buffer, effects: { LiveImageEffects() })
+            owner: remountedOwner, source: buffer, effects: { MonitorFrameEffects() })
         XCTAssertNotNil(resumed, "Cancellation must release admission for the next inspector")
         XCTAssertEqual(
             invocations.value, 2, "Exactly one fresh request is admitted after cancellation")
@@ -205,12 +211,12 @@ final class AssistInspectorPreviewTests: XCTestCase {
         let clock = InspectorPreviewTestClock()
         let invocations = InspectorRenderInvocationCounter()
         var preparations = 0
-        let prepare: @MainActor () -> LiveImageEffects = {
+        let prepare: @MainActor () -> MonitorFrameEffects = {
             preparations += 1
-            return LiveImageEffects()
+            return MonitorFrameEffects()
         }
         let reference = try Self.referenceImage()
-        let renderer = AssistInspectorImageRenderer(
+        let renderer = MonitorInspectorImageRenderer(
             now: { clock.now },
             operation: { _, _ in
                 _ = invocations.increment()
@@ -252,7 +258,7 @@ final class AssistInspectorPreviewTests: XCTestCase {
         let sourceStarted = InspectorPreviewTestSignal("Source render started")
         let invocations = InspectorRenderInvocationCounter()
         let reference = try Self.referenceImage()
-        let renderer = AssistInspectorImageRenderer(
+        let renderer = MonitorInspectorImageRenderer(
             now: { clock.now },
             operation: { _, _ in
                 if invocations.increment() == 1 {
@@ -269,7 +275,7 @@ final class AssistInspectorPreviewTests: XCTestCase {
         let owner = UUID()
         renderer.activate(owner: owner)
         let optionTask = Task {
-            await renderer.render(owner: owner, source: buffer, effects: { LiveImageEffects() })
+            await renderer.render(owner: owner, source: buffer, effects: { MonitorFrameEffects() })
         }
         try await optionStarted.wait()
         renderer.invalidate(owner: owner)
@@ -279,7 +285,7 @@ final class AssistInspectorPreviewTests: XCTestCase {
 
         clock.now = 200_000_000
         let sourceTask = Task {
-            await renderer.render(owner: owner, source: buffer, effects: { LiveImageEffects() })
+            await renderer.render(owner: owner, source: buffer, effects: { MonitorFrameEffects() })
         }
         try await sourceStarted.wait()
         renderer.invalidate(owner: owner)
@@ -292,18 +298,20 @@ final class AssistInspectorPreviewTests: XCTestCase {
         let bus = LiveFrameSampleBus()
         let camera = try Self.buffer(width: 8, height: 8)
         let clip = try Self.buffer(width: 16, height: 8)
-        bus.publish(source: camera, transfer: .rec709, colorMode: .normal, bundle: nil)
-        bus.usesPlaybackSource = true
+        let cameraSource = bus.openSource(.live)
+        bus.publish(
+            cameraSource, source: camera, transfer: .rec709, reportedTransfer: .rec709, bundle: nil)
+        let clipSource = bus.openSource(.playback)
         XCTAssertNil(bus.inspectorSource)
-        bus.playbackSourcePixelBuffer = clip
-        bus.playbackSourceTransfer = .dlog2
+        bus.publish(
+            clipSource, source: clip, transfer: .dlog2, reportedTransfer: .dlog2, bundle: nil)
         XCTAssertTrue(bus.inspectorSource?.buffer === clip)
         XCTAssertEqual(bus.inspectorSource?.transfer, .dlog2)
-        bus.clearPlaybackSource()
+        bus.clearPlaybackSource(clipSource)
         XCTAssertNil(bus.inspectorSource)
-        bus.usesPlaybackSource = false
+        bus.closeSource(clipSource)
         XCTAssertTrue(bus.inspectorSource?.buffer === camera)
-        bus.reset()
+        bus.closeSource(cameraSource)
         XCTAssertNil(bus.inspectorSource)
     }
 

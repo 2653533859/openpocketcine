@@ -4,11 +4,15 @@ import MonitorPresentation
 import MonitorUI
 import OpenPocketViewCore
 import XCTest
+import OpenCineMedia
 
 @testable import OpenPocketCine
 
 @MainActor
 final class MonitorBackdropLifecycleTests: XCTestCase {
+    /// This test's monitored source (XCTest makes a fresh one per test).
+    private let ceiling = OpenCineMedia.ScopeExposureCeiling(
+        profile: PocketMonitorCalibration.clipProfile)
     private let step = MonitorBackdropPolicy.minimumIntervalNanoseconds
     func testUnchangedInputSkipsNativeWorkAndPublicationWithoutResettingCadence() async throws {
         let clock = InspectorPreviewTestClock()
@@ -254,9 +258,7 @@ final class MonitorBackdropLifecycleTests: XCTestCase {
     }
 
     func testZebraReusesAHeldSourceUntilItsExposureCeilingChanges() async throws {
-        ScopeExposureCeiling.reset()
-        defer { ScopeExposureCeiling.reset() }
-        ScopeExposureCeiling.setISO(1600)
+        ceiling.setISO(1600)
         let clock = InspectorPreviewTestClock()
         let calls = BackdropTestCounter()
         let snapshot = try makeSnapshot()
@@ -264,7 +266,7 @@ final class MonitorBackdropLifecycleTests: XCTestCase {
         var zebra = try makeSource()
         zebra.effects.zebra = true
         zebra.effects.colorMode = .dLog2
-        let source = zebra
+        let zebraSource = zebra
         let renderer = MonitorVideoBackdropRenderer(
             clock: { clock.now },
             operation: { _, _ in
@@ -275,6 +277,9 @@ final class MonitorBackdropLifecycleTests: XCTestCase {
         renderer.activate(owner)
         func render() async throws -> MonitorVideoBackdropRenderer.Result {
             clock.now += step
+            // Like `HevcDecoder.backdropEffects`: each frame carries its source's own ceiling.
+            var source = zebraSource
+            source.effects.clipByte = ceiling.clipByte(transfer: .dlog2)
             let result = await renderer.render(owner: owner, canvasSize: snapshot.canvasSize) {
                 [stable, source]
             }
@@ -282,7 +287,7 @@ final class MonitorBackdropLifecycleTests: XCTestCase {
         }
         let first = try await render()
         let held = try await render()
-        ScopeExposureCeiling.setISO(400)
+        ceiling.setISO(400)
         let moved = try await render()
         let settled = try await render()
         XCTAssertFalse(first.isUnchanged)
@@ -322,7 +327,7 @@ final class MonitorBackdropLifecycleTests: XCTestCase {
     private func makeSource(buffer: CVPixelBuffer? = nil) throws -> MonitorVideoBackdropSource {
         let rect = CGRect(x: 0, y: 0, width: 8, height: 8)
         return MonitorVideoBackdropSource(
-            buffer: try buffer ?? makeBuffer(), effects: LiveImageEffects(), frame: rect, clip: rect
+            buffer: try buffer ?? makeBuffer(), effects: MonitorFrameEffects(), frame: rect, clip: rect
         )
     }
 
@@ -434,7 +439,7 @@ final class MonitorBackdropLifecycleTests: XCTestCase {
         let zoom = MonitorVideoBackdropSource.fittedFrame(
             aspect: 2, in: rect, zoom: 2, offset: CGSize(width: 20, height: -10))
         XCTAssertEqual(zoom, CGRect(x: -30, y: 190, width: 600, height: 300))
-        var effects = LiveImageEffects()
+        var effects = MonitorFrameEffects()
         effects.desqueezeFactor = 2
         let stretched = MonitorVideoBackdropSource.displayedFrame(
             sourceAspect: 2, effects: effects, in: rect, fill: true)

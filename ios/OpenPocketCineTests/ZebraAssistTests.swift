@@ -1,6 +1,10 @@
 import CoreImage
+import OpenCineCameraVocabulary
 import OpenPocketViewCore
+import OpenCineCameraControls
 import XCTest
+import OpenCineApple
+import OpenCineMedia
 
 @testable import OpenPocketCine
 
@@ -8,17 +12,19 @@ import XCTest
 /// (OperatorPreferences.swift, MonitorPanels.swift, MonitorControls.swift,
 /// ImageEffectsCompositor.swift).
 final class ZebraAssistTests: XCTestCase {
+    /// This test's monitored source (XCTest makes a fresh one per test).
+    private let ceiling = DJIScopeExposureCeiling()
     private let assistKey = "OpenPocketCine.Assist.v1"
+    private let unitKey = "OpenPocketCine.zebraUnit"
     private var savedAssist: Data?
     private var savedUnit: String?
 
     override func setUp() {
         super.setUp()
-        ScopeExposureCeiling.reset()
         savedAssist = UserDefaults.standard.data(forKey: assistKey)
-        savedUnit = UserDefaults.standard.string(forKey: ZebraAssist.unitDefaultsKey)
+        savedUnit = UserDefaults.standard.string(forKey: unitKey)
         UserDefaults.standard.removeObject(forKey: assistKey)
-        UserDefaults.standard.removeObject(forKey: ZebraAssist.unitDefaultsKey)
+        UserDefaults.standard.removeObject(forKey: unitKey)
     }
 
     override func tearDown() {
@@ -28,104 +34,45 @@ final class ZebraAssistTests: XCTestCase {
             UserDefaults.standard.removeObject(forKey: assistKey)
         }
         if let savedUnit {
-            UserDefaults.standard.set(savedUnit, forKey: ZebraAssist.unitDefaultsKey)
+            UserDefaults.standard.set(savedUnit, forKey: unitKey)
         } else {
-            UserDefaults.standard.removeObject(forKey: ZebraAssist.unitDefaultsKey)
+            UserDefaults.standard.removeObject(forKey: unitKey)
         }
         super.tearDown()
     }
 
-    func testUnitEditorLabelsRoundTrip() {
-        XCTAssertEqual(ZebraAssist.unitOptions, ZebraAssist.Unit.allCases.map(\.editorLabel))
-        for unit in ZebraAssist.Unit.allCases {
-            XCTAssertEqual(ZebraAssist.Unit.fromEditorLabel(unit.editorLabel), unit, "\(unit)")
-        }
-    }
-
-    func testIREDisplayIsIdentity() {
-        var options = ZebraAssist.Options.default
-        options.unit = .ire
-        XCTAssertEqual(options.displayValue(for: 100, transfer: .dlog2), 100)
-        XCTAssertEqual(options.displayValue(for: 55, transfer: .dlog2), 55)
-        options.setHighlight(fromDisplay: 88, transfer: .dlog2)
-        XCTAssertEqual(options.highlightIRE, 88)
-        options.setMidtone(fromDisplay: 42, transfer: .rec709)
-        XCTAssertEqual(options.midtoneIRE, 42)
-        options.setHighlight(fromDisplay: 150, transfer: .dlog2)
-        XCTAssertEqual(options.highlightIRE, 100)
-        options.setMidtone(fromDisplay: -4, transfer: .dlog2)
-        XCTAssertEqual(options.midtoneIRE, 0)
-    }
-
-    func testNativeDisplayUsesEncodedCode() {
-        // Native display: IRE 100 → live-tap ceiling 247, IRE 0 → paper black 16.
-        var options = ZebraAssist.Options.default
-        options.unit = .native
-        XCTAssertEqual(options.editorMaximum, 255)
-        XCTAssertEqual(options.displayValue(for: 100, transfer: .dlog2), 247)
-        XCTAssertEqual(options.displayValue(for: 0, transfer: .dlog2), 16)
-        let midNative = Int(
-            (ScopeDisplayScale.signalNative(monitorPercent: 55, transfer: .dlog2) * 255)
-                .rounded())
-        XCTAssertEqual(options.displayValue(for: 55, transfer: .dlog2), midNative)
-
-        options.setHighlight(fromDisplay: 247, transfer: .dlog2)
-        XCTAssertEqual(options.highlightIRE, 100, accuracy: 0.01)
-        options.setMidtone(fromDisplay: midNative, transfer: .dlog2)
-        XCTAssertEqual(options.midtoneIRE, 55, accuracy: 0.25)
-
-        XCTAssertEqual(options.displayValue(for: 100, transfer: .dlog), 223)
-        XCTAssertEqual(options.displayValue(for: 0, transfer: .dlog), 24)
-        options.setHighlight(fromDisplay: 223, transfer: .dlog)
-        XCTAssertEqual(options.highlightIRE, 100, accuracy: 0.01)
-    }
-
-    func testUnitDoesNotChangeOverlayThresholds() {
-        var options = ZebraAssist.Options.default
-        options.highlightIRE = 88
-        options.midtoneIRE = 50
-        let ireOverlay = ZebraAssist.overlay(from: options)
-        options.unit = .native
-        let nativeOverlay = ZebraAssist.overlay(from: options)
-        XCTAssertEqual(ireOverlay.highlightIRE, nativeOverlay.highlightIRE)
-        XCTAssertEqual(ireOverlay.midtoneIRE, nativeOverlay.midtoneIRE)
-        XCTAssertEqual(ireOverlay.highlightIRE, 88)
-        XCTAssertTrue(ireOverlay.highlightEnabled)
-        XCTAssertTrue(ireOverlay.midtoneEnabled)
-    }
-
     /// Per-tool needsGPUFeed / needsOverlayFeed live in LiveFeedOrientationTests.
     func testZebraAloneOverlaysIdentityInsteadOfRemakingThePicture() {
-        var zebra = LiveImageEffects()
+        var zebra = MonitorFrameEffects()
         zebra.zebra = true
         XCTAssertFalse(zebra.replacesIdentityFeed)
 
-        var peaking = LiveImageEffects()
+        var peaking = MonitorFrameEffects()
         peaking.peaking = true
         XCTAssertFalse(peaking.replacesIdentityFeed)
 
-        var both = LiveImageEffects()
+        var both = MonitorFrameEffects()
         both.zebra = true
         both.peaking = true
         XCTAssertTrue(both.needsOverlayFeed)
         XCTAssertFalse(both.replacesIdentityFeed)
 
         let cube = BuiltInLook.mono.cube()
-        var lutAndZebra = LiveImageEffects()
+        var lutAndZebra = MonitorFrameEffects()
         lutAndZebra.zebra = true
         lutAndZebra.lutDimension = cube.size
         lutAndZebra.lutRGBA = cube.rgbaComponents.withUnsafeBytes { Data($0) }
         XCTAssertTrue(lutAndZebra.replacesIdentityFeed)
         XCTAssertFalse(lutAndZebra.needsOverlayFeed)
 
-        var lutAndFalseColor = LiveImageEffects()
+        var lutAndFalseColor = MonitorFrameEffects()
         lutAndFalseColor.falseColor = true
         lutAndFalseColor.lutDimension = cube.size
         lutAndFalseColor.lutRGBA = lutAndZebra.lutRGBA
         XCTAssertTrue(lutAndFalseColor.replacesIdentityFeed)
         XCTAssertFalse(lutAndFalseColor.needsOverlayFeed)
 
-        var falseAndZebra = LiveImageEffects()
+        var falseAndZebra = MonitorFrameEffects()
         falseAndZebra.zebra = true
         falseAndZebra.falseColor = true
         XCTAssertFalse(falseAndZebra.replacesIdentityFeed)
@@ -136,7 +83,7 @@ final class ZebraAssistTests: XCTestCase {
         // D-Log2 18% grey is outside highlight 100 and midtone 55 ± 5.
         let buffer = ScopeTestBuffers.makeFlatBuffer(code: 78)
         let source = CIImage(cvPixelBuffer: buffer)
-        var fx = LiveImageEffects()
+        var fx = MonitorFrameEffects()
         fx.zebra = true
         fx.zebraHighlight = true
         fx.zebraMidtone = false
@@ -151,7 +98,7 @@ final class ZebraAssistTests: XCTestCase {
     func testAssistOverlayPaintsHighlightWithAlpha() {
         let buffer = ScopeTestBuffers.makeFlatBuffer(code: 255)
         let source = CIImage(cvPixelBuffer: buffer)
-        var fx = LiveImageEffects()
+        var fx = MonitorFrameEffects()
         fx.zebra = true
         fx.zebraHighlight = true
         fx.zebraMidtone = false
@@ -172,7 +119,7 @@ final class ZebraAssistTests: XCTestCase {
     func testHighlightPaintsTintedHotPixelThatWaveShowsAtCeiling() {
         let buffer = ScopeTestBuffers.makeFlatBuffer(red: 170, green: 215, blue: 247)
         let source = CIImage(cvPixelBuffer: buffer)
-        var fx = LiveImageEffects()
+        var fx = MonitorFrameEffects()
         fx.zebra = true
         fx.zebraHighlight = true
         fx.zebraMidtone = false
@@ -184,22 +131,24 @@ final class ZebraAssistTests: XCTestCase {
             "a channel at the live-tap ceiling is clip; luma under it must not hide it")
     }
 
+    @MainActor
     func testFreshAssistUsesDefaultZebraOptions() {
         let assist = LiveAssistState()
-        XCTAssertEqual(assist.zebraOptions, ZebraAssist.Options.default)
+        XCTAssertEqual(assist.zebraOptions(stores: .app), ZebraAssist.Options.default)
         XCTAssertEqual(ZebraAssist.Options.default.highlightIRE, LiveZebra.highlightIRE)
     }
 
+    @MainActor
     func testZoneTogglesAndColorsRoundTrip() {
         let assist = LiveAssistState()
-        var options = assist.zebraOptions
+        var options = assist.zebraOptions(stores: .app)
         options.highlightEnabled = false
         options.midtoneEnabled = false
         options.highlightColor = .red
         options.midtoneColor = .cyan
         options.highlightIRE = 92
         options.midtoneIRE = 48
-        assist.zebraOptions = options
+        assist.setZebraOptions(options, stores: .app)
 
         XCTAssertFalse(assist.zebraHighlight)
         XCTAssertFalse(assist.zebraMidtone)
@@ -218,21 +167,23 @@ final class ZebraAssistTests: XCTestCase {
         XCTAssertEqual(assist.effects.zebraOptions.unit, .ire)
     }
 
+    @MainActor
     func testUnitPersistsBesideAssistSnapshot() {
-        ZebraAssist.persistedUnit = .ire
-        XCTAssertEqual(ZebraAssist.persistedUnit, .ire)
-        ZebraAssist.persistedUnit = .native
-        XCTAssertEqual(ZebraAssist.persistedUnit, .native)
+        let stores = AssistPanelStores.app
+        stores.zebraUnit = .ire
+        XCTAssertEqual(stores.zebraUnit, .ire)
+        stores.zebraUnit = .native
+        XCTAssertEqual(stores.zebraUnit, .native)
         XCTAssertEqual(
-            UserDefaults.standard.string(forKey: ZebraAssist.unitDefaultsKey),
+            UserDefaults.standard.string(forKey: unitKey),
             ZebraAssist.Unit.native.rawValue)
 
         let assist = LiveAssistState()
-        XCTAssertEqual(assist.zebraUnit, .native)
-        var options = assist.zebraOptions
+        XCTAssertEqual(assist.zebraOptions(stores: stores).unit, .native)
+        var options = assist.zebraOptions(stores: stores)
         options.unit = .ire
-        assist.zebraOptions = options
-        XCTAssertEqual(ZebraAssist.persistedUnit, .ire)
+        assist.setZebraOptions(options, stores: stores)
+        XCTAssertEqual(stores.zebraUnit, .ire)
     }
 
     private static func maxAlpha(_ image: CIImage) -> Float {
@@ -243,7 +194,7 @@ final class ZebraAssistTests: XCTestCase {
             by: CGAffineTransform(
                 scaleX: CGFloat(w) / max(image.extent.width, 1),
                 y: CGFloat(h) / max(image.extent.height, 1)))
-        let context = CIContext(options: LiveMonitorWorkingSpace.contextOptions)
+        let context = CIContext(options: MonitorWorkingSpace.contextOptions)
         context.render(
             scaled, toBitmap: &data, rowBytes: w * 4,
             bounds: CGRect(x: 0, y: 0, width: w, height: h),
@@ -256,7 +207,7 @@ final class ZebraAssistTests: XCTestCase {
     }
 
     private static func sampleRGB(_ image: CIImage) -> (Float, Float, Float) {
-        let context = CIContext(options: LiveMonitorWorkingSpace.contextOptions)
+        let context = CIContext(options: MonitorWorkingSpace.contextOptions)
         var bytes = [UInt8](repeating: 0, count: 4)
         context.render(
             image, toBitmap: &bytes, rowBytes: 4,

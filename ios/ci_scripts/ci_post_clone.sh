@@ -43,6 +43,12 @@ install_xcodegen() {
 if ! command -v xcodegen >/dev/null 2>&1; then
   install_xcodegen
 fi
+# Candidate: Package.swift and ios/project.yml take the shared UI, OpenCineCore (incl. OpenCineMedia),
+# OpenCineDJI and OpenCineMulticam from the one OpenCine checkout at ../OpenCine, pinned by SHA in
+# opencine-pins.txt. Works only once that repository is published and Xcode Cloud may read it.
+# Delete when the app pins it by url + version.
+step "check out pinned OpenCine next to the repository"
+scripts/checkout-opencine.sh
 step "xcodegen $(xcodegen --version 2>/dev/null) generate"
 (cd ios && xcodegen generate)
 step "sync Package.resolved"

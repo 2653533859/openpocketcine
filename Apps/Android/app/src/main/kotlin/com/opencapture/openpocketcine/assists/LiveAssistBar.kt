@@ -1,5 +1,7 @@
 package com.opencapture.openpocketcine.assists
 
+import com.opencapture.opencine.cameracontrols.reportChromeFrame
+import com.opencapture.monitorui.LiveChromeMetrics
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
@@ -15,8 +17,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import com.opencapture.openpocketcine.ChromeRect
-import com.opencapture.openpocketcine.reportChromeFrame
+import com.opencapture.monitorui.MonitorRect
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -28,6 +29,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import com.opencapture.openpocketcine.LiveDesign
 import com.opencapture.openpocketcine.monitorGlass
+import com.opencapture.opencine.cameracontrols.AssistToolCell
+import com.opencapture.monitorui.MonitorAssistTool
+import com.opencapture.opencine.appkit.MonitorAssistState
 
 /**
  * OpenZCine landscape assist strip: glass pill, tools in groups of three,
@@ -36,9 +40,9 @@ import com.opencapture.openpocketcine.monitorGlass
 @Composable
 fun LiveAssistBar(
     enabled: Boolean,
-    on: Set<LiveAssistTool>,
+    on: Set<MonitorAssistTool>,
     modifier: Modifier = Modifier,
-    onToggle: (LiveAssistTool) -> Unit,
+    onToggle: (MonitorAssistTool) -> Unit,
 ) {
     LiveAssistBarRow(
         locked = !enabled,
@@ -51,19 +55,19 @@ fun LiveAssistBar(
 
 @Composable
 fun LiveAssistBar(
-    state: LiveAssistState,
+    state: MonitorAssistState,
     locked: Boolean,
-    onLongPress: (LiveAssistTool) -> Unit,
+    onLongPress: (MonitorAssistTool) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val frames = remember { mutableStateMapOf<LiveAssistTool, ChromeRect>() }
+    val frames = remember { mutableStateMapOf<MonitorAssistTool, MonitorRect>() }
     LiveAssistBarRow(
         locked = locked,
         isOn = { state.isOn(it) },
         onClick = { state.toggle(it) },
         onLongPress = { tool ->
             if (tool.hasConfiguration) {
-                frames[tool]?.let { state.longPressAnchor = it }
+                frames[tool]?.let { state.longPressAnchor = com.opencapture.monitorui.MonitorRect(it.x, it.y, it.width, it.height) }
                 state.configureTool = tool
                 onLongPress(tool)
             }
@@ -79,8 +83,8 @@ fun LiveAssistBar(
  */
 @Composable
 fun PlaybackAssistBar(
-    state: LiveAssistState,
-    onLongPress: (LiveAssistTool) -> Unit,
+    state: MonitorAssistState,
+    onLongPress: (MonitorAssistTool) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scroll = rememberScrollState()
@@ -88,7 +92,7 @@ fun PlaybackAssistBar(
         modifier.horizontalScroll(scroll),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        LiveAssistTool.toolbarGroups.forEachIndexed { groupIndex, group ->
+        MonitorAssistTool.toolbarGroups.forEachIndexed { groupIndex, group ->
             if (groupIndex > 0) AssistDivider()
             group.forEach { tool ->
                 AssistToolCell(
@@ -110,11 +114,11 @@ fun PlaybackAssistBar(
         }
         AssistDivider()
         AssistToolCell(
-            tool = LiveAssistTool.AUDIO,
-            isOn = state.isPlaybackVisible(LiveAssistTool.AUDIO),
+            tool = MonitorAssistTool.AUDIO,
+            isOn = state.isPlaybackVisible(MonitorAssistTool.AUDIO),
             enabled = true,
             onLongClick = null,
-            onClick = { state.togglePlayback(LiveAssistTool.AUDIO) },
+            onClick = { state.togglePlayback(MonitorAssistTool.AUDIO) },
         )
     }
 }
@@ -122,18 +126,18 @@ fun PlaybackAssistBar(
 @Composable
 private fun LiveAssistBarRow(
     locked: Boolean,
-    isOn: (LiveAssistTool) -> Boolean,
-    onClick: (LiveAssistTool) -> Unit,
-    onLongPress: (LiveAssistTool) -> Unit,
+    isOn: (MonitorAssistTool) -> Boolean,
+    onClick: (MonitorAssistTool) -> Unit,
+    onLongPress: (MonitorAssistTool) -> Unit,
     modifier: Modifier = Modifier,
-    onToolFrame: (LiveAssistTool, ChromeRect) -> Unit = { _, _ -> },
+    onToolFrame: (MonitorAssistTool, MonitorRect) -> Unit = { _, _ -> },
 ) {
     val scroll = rememberScrollState()
     val leadingFade = scroll.canScrollBackward
     val trailingFade = scroll.canScrollForward
     Box(
         modifier
-            .height(LiveDesign.CONTROL_HEIGHT_DP.dp)
+            .height(LiveChromeMetrics.CONTROL_HEIGHT_DP.dp)
             .fillMaxWidth()
             .monitorGlass(),
     ) {
@@ -174,7 +178,7 @@ private fun LiveAssistBarRow(
                 .horizontalScroll(scroll, enabled = !locked),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            LiveAssistTool.toolbarGroups.forEachIndexed { groupIndex, group ->
+            MonitorAssistTool.toolbarGroups.forEachIndexed { groupIndex, group ->
                 if (groupIndex > 0) AssistDivider()
                 group.forEach { tool ->
                 AssistToolCell(
@@ -194,11 +198,11 @@ private fun LiveAssistBarRow(
             }
             AssistDivider()
             AssistToolCell(
-                tool = LiveAssistTool.AUDIO,
-                isOn = isOn(LiveAssistTool.AUDIO),
+                tool = MonitorAssistTool.AUDIO,
+                isOn = isOn(MonitorAssistTool.AUDIO),
                 enabled = !locked,
                 onLongClick = null,
-                onClick = { onClick(LiveAssistTool.AUDIO) },
+                onClick = { onClick(MonitorAssistTool.AUDIO) },
             )
         }
         AssistScrollChevron(

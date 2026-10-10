@@ -1,9 +1,10 @@
 package com.opencapture.openpocketcine.multiview
 
-import com.opencapture.openpocketcine.LiveSheet
-import com.opencapture.openpocketcine.session.CameraCommands
-import com.opencapture.openpocketcine.session.CameraModel
-import com.opencapture.openpocketcine.session.CameraStatus
+import com.opencapture.opencine.cameracontrols.LiveSheet
+import com.opencapture.opencine.dji.fromJson
+import com.opencapture.opencine.vocabulary.CameraCommands
+import com.opencapture.opencine.vocabulary.CameraModel
+import com.opencapture.opencine.vocabulary.CameraStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -11,7 +12,7 @@ import kotlin.test.assertTrue
 
 class MultiviewSettingsPolicyTest {
     @Test fun nativeCategoriesFollowCameraCapabilitiesAndShootingMode() {
-        val pocket = CameraModel("Osmo Pocket 4")
+        val pocket = CameraModel.fromJson("""{"name":"Osmo Pocket 4","family":"pocket","supportsFocusMode":true,"supportsTapFocus":true}""")
         val video = CameraStatus(shootingMode = CameraCommands.SHOOT_VIDEO)
         assertEquals(listOf(LiveSheet.ISO, LiveSheet.SHUTTER, LiveSheet.EXPO, LiveSheet.WB,
             LiveSheet.FOCUS, LiveSheet.FORMAT, LiveSheet.COLOR, LiveSheet.MODE, LiveSheet.AUDIO),
@@ -22,7 +23,7 @@ class MultiviewSettingsPolicyTest {
         val nano = CameraModel("Osmo Nano", family = "nano", supportsFocusMode = false, supportsTapFocus = false)
         assertFalse(LiveSheet.FOCUS in multiviewSettingsCategories(nano, video))
         assertFalse(LiveSheet.APERTURE in multiviewSettingsCategories(pocket, video))
-        assertTrue(LiveSheet.APERTURE in multiviewSettingsCategories(CameraModel("Osmo Action 6"), video))
+        assertTrue(LiveSheet.APERTURE in multiviewSettingsCategories(CameraModel.fromJson("""{"name":"Osmo Action 6","family":"other","supportsFocusMode":false,"supportsAperture":true}"""), video))
     }
 
     @Test fun recordingLocksModeFormatAndColorButKeepsExposureControls() {

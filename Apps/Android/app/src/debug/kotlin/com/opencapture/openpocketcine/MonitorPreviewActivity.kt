@@ -1,5 +1,9 @@
 package com.opencapture.openpocketcine
 
+import com.opencapture.opencine.cameracontrols.*
+import com.opencapture.opencine.appkit.ShellModel
+import com.opencapture.monitorui.portraitZones
+import com.opencapture.monitorui.portraitOnFeedControls
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
@@ -33,15 +37,29 @@ import androidx.core.graphics.scale
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import com.opencapture.monitorui.MonitorCapabilities
+import com.opencapture.opencine.cameracontrols.LiveGimbalPanel
+import com.opencapture.opencine.cameracontrols.LiveGimbalSheetHost
+import com.opencapture.opencine.cameracontrols.LivePickerHost
+import com.opencapture.opencine.cameracontrols.LiveSheet
+import com.opencapture.opencine.vocabulary.CameraCommands
+import com.opencapture.opencine.vocabulary.CameraModel
+import com.opencapture.opencine.vocabulary.CameraStatus
 import com.opencapture.openpocketcine.assists.MonitorAssistInspector
-import com.opencapture.openpocketcine.session.CameraCommands
-import com.opencapture.openpocketcine.session.CameraStatus
+import com.opencapture.opencine.core.MonitorLayoutCapabilities
+import com.opencapture.opencine.dji.ControlWireEvent
+import com.opencapture.opencine.dji.DjiCameraSessionAdapter
+import com.opencapture.opencine.dji.PocketControlPort
+import com.opencapture.opencine.dji.PocketControlState
+import kotlinx.coroutines.MainScope
+import com.opencapture.opencine.cameracontrols.PortraitFeedAspect
+import com.opencapture.monitorui.LiveMonitorLayout
+import com.opencapture.monitorui.MonitorRect
 
 /**
  * Debug-only, deterministic visual review of production chrome. This activity
  * never starts discovery, connects a camera, starts a decoder, or fabricates a
- * connected session. Intents choose the fixture capabilities and source aspect.
+ * connected session. Intents choose the review body (`--es body nano`, else Pocket 4 Pro) and
+ * source aspect; the body reaches the chrome only as the DJI integration's projection.
  */
 class MonitorPreviewActivity : ComponentActivity() {
     private lateinit var model: AppModel
@@ -52,7 +70,8 @@ class MonitorPreviewActivity : ComponentActivity() {
             // Preview the real layout without reading or changing reporting consent.
             setContent {
                 OpenPocketCineTheme {
-                    com.opencapture.openpocketcine.diagnostics.AutomaticReportsPrompt(
+                    com.opencapture.opencine.appkit.diagnostics.AutomaticReportsPrompt(
+                        product = com.opencapture.openpocketcine.diagnostics.AppDiagnostics.host.product,
                         onPrivacy = {}, onEnable = {}, onNotNow = {},
                     )
                 }
@@ -65,12 +84,7 @@ class MonitorPreviewActivity : ComponentActivity() {
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
         model = AppModel(applicationContext)
-        val capabilities = MonitorCapabilities(
-            gimbal = intent.getBooleanExtra("gimbal", true),
-            zoom = intent.getBooleanExtra("zoom", true),
-            focus = intent.getBooleanExtra("focus", true),
-            timecode = intent.getBooleanExtra("timecode", true),
-        )
+        val capabilities = reviewLayout(intent.getStringExtra("body"))
         val sourceAspect = intent.getFloatExtra("aspect", 16f / 9f).takeIf { it > 0f } ?: 16f / 9f
         setContent {
             OpenPocketCineTheme {
@@ -82,10 +96,10 @@ class MonitorPreviewActivity : ComponentActivity() {
                             intent.getFloatExtra("safeTop", 0f), intent.getFloatExtra("safeBottom", 0f),
                             intent.getBooleanExtra("patterned", false))
                     }
-                    when (model.liveOperatorPanel) {
-                        LiveOperatorPanel.SETTINGS -> OperatorSetupScreen(model) { model.liveOperatorPanel = null }
-                        LiveOperatorPanel.MEDIA -> com.opencapture.openpocketcine.media.MediaLibraryScreen(model) {
-                            model.liveOperatorPanel = null
+                    when (model.shellState.cover) {
+                        ShellModel.Cover.SETTINGS -> OperatorSetupScreen(model) { model.shell.dismissCover() }
+                        ShellModel.Cover.MEDIA -> com.opencapture.openpocketcine.media.MediaLibraryScreen(model) {
+                            model.shell.dismissCover()
                         }
                         null -> Unit
                     }
@@ -101,7 +115,7 @@ class MonitorPreviewActivity : ComponentActivity() {
 }
 
 @Composable
-private fun ReviewMonitor(model: AppModel, capabilities: MonitorCapabilities, sourceAspect: Float,
+private fun ReviewMonitor(model: AppModel, capabilities: MonitorLayoutCapabilities, sourceAspect: Float,
     safeTop: Float, safeBottom: Float, patterned: Boolean = false) {
     val status = remember(capabilities) {
         CameraStatus(batteryPercent = 80, storageTotalMb = 131072, storageFreeMb = 109568,
@@ -111,11 +125,10 @@ private fun ReviewMonitor(model: AppModel, capabilities: MonitorCapabilities, so
             resolutionCode = CameraCommands.RES_4K, fps = 25, fpsIndex = 2,
             wbMode = 6, wbKelvin = 5600, focusMode = 2, focusTrack = 0, audioChannel = 2, audioMetersLeft = -21.0, audioMetersRight = -14.0)
     }
-    LaunchedEffect(model.liveOperatorPanel) {
-        if (model.liveOperatorPanel != null) model.assist.configureTool = null
+    LaunchedEffect(model.shellState.cover) {
+        if (model.shellState.cover != null) model.assist.configureTool = null
     }
-    var locked by remember { mutableStateOf(false) }
-    var sheet by remember { mutableStateOf<LiveSheet?>(null) }
+    val liveState = remember(model) { MonitorOperatorLiveState() }
     val context = LocalContext.current
     val image = remember(context, patterned) {
         if (patterned) context.assets.open("monitor_backdrop_reference.png").use { BitmapFactory.decodeStream(it) } else null
@@ -128,51 +141,49 @@ private fun ReviewMonitor(model: AppModel, capabilities: MonitorCapabilities, so
         LocalMonitorBackdrops provides if (image != null) listOf(backdrop) else emptyList(),
         com.opencapture.monitorui.LocalMonitorReadoutRegions provides readoutRegions,
     ) {
-    BoxWithConstraints(Modifier.fillMaxSize().background(LiveDesign.background)) {
-        val width = maxWidth.value
-        val height = maxHeight.value
-        val portrait = height > width
-        val zones = if (portrait) portraitZones(width, height, safeTop, safeBottom,
-            model.assistClean, sourceAspect < 1f || model.portraitFeedAspect == PortraitFeedAspect.FILL,
-            0f, sourceAspect) else null
-        val fitted = LiveMonitorLayout.fit(width, height, 0f, 0f, safeTop, safeBottom,
-            !model.assistClean, pictureAspect = sourceAspect)
-        val layout = if (zones != null) fitted.copy(feed = zones.feed, picture = zones.feed, topDeck = zones.topBar, capture = zones.controls) else fitted
-        val cluster = if (zones != null) portraitOnFeedControls(width, zones.assistToolbar.minY,
-            capabilities.gimbal) else layout.gimbalCluster(capabilities.gimbal)
-        // Optional pattern exercises the production widgets against a passive sampled source.
-        if (image != null) Image(image.asImageBitmap(), null,
-            Modifier.liveModuleFrame(layout.onFeed).monitorBackdropSource(backdrop), contentScale = ContentScale.FillBounds)
-        else Box(Modifier.liveModuleFrame(layout.onFeed).background(Color(0xFF4A4C48)))
-        com.opencapture.openpocketcine.assists.LiveAssistLayer(model.assist, status, focus = null,
-            feedFrame = layout.onFeed, placementFrame = ChromeRect(6f, safeTop + 6f, width - 12f,
-                (zones?.systemBar?.minY ?: (height - safeBottom)) - safeTop - 12f), locked = locked,
-            onOpenOptions = { tool, frame -> model.assist.longPressAnchor = frame; model.assist.configureTool = tool })
-        if (zones != null) {
-            LivePortraitChrome(model, layout, zones, status, locked, { locked = !locked }, sheet,
-                { sheet = it }, model.assist, { model.assist.configureTool = it }, true, false, false, {},
-                fpsLabel = "25", bars = 4, sourceIsVertical = sourceAspect < 1f,
-                capabilities = capabilities)
-        } else {
-            LandscapeChrome(model, layout, status, locked, { locked = !locked }, sheet,
-                { sheet = it }, model.assist, { model.assist.configureTool = it }, true, false,
-                "25", 4, false, {}, cluster.zoom, cluster.stick, cluster.controls, false, {},
-                1.0, false, capabilities = capabilities)
-        }
-        if (!locked) sheet?.let {
-            LivePickerHost(it, width, height, 0f, 0f, safeTop, safeBottom, zones?.systemBar?.minY,
-                model, status, false, { sheet = it }, zones?.topBar?.maxY)
-        }
-        if (!locked && capabilities.gimbal && model.liveGimbalPanel == LiveGimbalPanel.SHEET) {
-            LiveGimbalSheetHost(model, layout, cluster, 0f, 0f, 0f, 0f)
-        }
-        if (!locked && model.liveOperatorPanel == null) model.assist.configureTool?.let { tool ->
-            MonitorAssistInspector(tool, model.assist, model, status.colorMode,
-                width, height, 0f, 0f, 0f, zones?.controls?.minY ?: height,
-                onDismiss = { model.assist.configureTool = null })
+        BoxWithConstraints(Modifier.fillMaxSize().background(LiveDesign.background)) {
+            val geometry = monitorOperatorLiveLayout(
+                MonitorOperatorViewport(maxWidth.value, maxHeight.value, 0f, 0f, safeTop, safeBottom, 1f, safeTop > 0f),
+                model.assist, model::chromeSectionMounts, model.portraitFeedAspect, sourceAspect, sourceAspect < 1f,
+                model.virtualJoystickSize, false)
+            MonitorOperatorLiveSurface(rememberOperatorChromeSource(model, status), geometry, liveState,
+                MonitorOperatorLivePresentation(status, capabilities, "25", 4,
+                    model.phoneBatteryPercent.takeIf { it >= 0 }, true, sourceAspect < 1f, false, false, false, false, null),
+                model.assist, rememberOperatorAssistSource(model, status),
+                MonitorOperatorFocusObservation(null, com.opencapture.opencine.vocabulary.TrackingHud(), false, false, false, false),
+                MonitorOperatorFocusActions({ _, _ -> }, {}, { false }, { false }, {}, { false }, {}, {}, {}),
+                level = null, levelViewFlip = false, readExposure = { -1 }, exposureAvailable = false,
+                vpnActive = { false }, clearNote = {}, lockedChanged = {}, nativeInputBlocked = {},
+                picture = {
+                    if (image != null) Image(image.asImageBitmap(), null,
+                        Modifier.liveModuleFrame(geometry.pictureContent).monitorBackdropSource(backdrop),
+                        contentScale = ContentScale.FillBounds)
+                    else Box(Modifier.liveModuleFrame(geometry.pictureContent).background(Color(0xFF4A4C48)))
+                })
         }
     }
+}
+
+/**
+ * The review body's layout through the same mapping as a connected camera: a DJI seam over a port
+ * that only names the body (flags as the Swift facade sends them) and never sends anything.
+ */
+private fun reviewLayout(body: String?): MonitorLayoutCapabilities {
+    val nano = body == "nano"
+    val model = CameraModel(
+        name = if (nano) "Osmo Nano" else "Osmo Pocket 4 Pro", family = if (nano) "nano" else "pocket",
+        hasGimbal = !nano, supportsZoom = !nano, supportsFocusMode = !nano, supportsTapFocus = !nano,
+    )
+    val port = object : PocketControlPort {
+        override fun controlState() = PocketControlState(model = model)
+        override fun setIsoIndex(index: Int, onStage: ((ControlWireEvent) -> Unit)?) = Unit
+        override fun setWhiteBalanceAuto(tint: Int?, onStage: ((ControlWireEvent) -> Unit)?) = Unit
+        override fun setWhiteBalance(kelvin: Int, tint: Int, onStage: ((ControlWireEvent) -> Unit)?) = Unit
+        override fun setRecording(start: Boolean, onStage: ((ControlWireEvent) -> Unit)?) = Unit
+        override fun takePhoto() = Unit
+        override fun noteControlRejection(note: String) = Unit
     }
+    return DjiCameraSessionAdapter(port, MainScope()).layout(appLayoutBase)
 }
 
 /** Real shared card layouts with identical data and different optional actions. */

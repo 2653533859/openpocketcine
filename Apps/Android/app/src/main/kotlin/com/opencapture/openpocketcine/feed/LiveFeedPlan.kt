@@ -7,24 +7,26 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import com.opencapture.opencine.vocabulary.CameraStatus
 import com.opencapture.openpocketcine.OperatorPrefs
-import com.opencapture.openpocketcine.assists.LiveAssistState
-import com.opencapture.openpocketcine.lut.PlaybackLutColor
-import com.opencapture.openpocketcine.session.CameraStatus
+import com.opencapture.opencine.appkit.MonitorAssistState
+import com.opencapture.opencine.vocabulary.PlaybackLutColor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.opencapture.monitorui.MonitorAssistTool
+import com.opencapture.opencine.media.FeedEffectsRenderPlan
 
 /** Bakes the live GPU look off the UI thread when operator state or color mode changes. */
 @Composable
 internal fun rememberLiveFeedEffectsPlan(
-    assist: LiveAssistState,
+    assist: MonitorAssistState,
     lutSelection: String,
     status: CameraStatus,
     family: String,
     cameraName: String?,
     playback: Boolean = false,
     clipColorMode: Int = -1,
-    previewTool: com.opencapture.openpocketcine.assists.LiveAssistTool? = null,
+    previewTool: com.opencapture.monitorui.MonitorAssistTool? = null,
 ): FeedEffectsRenderPlan {
     val context = LocalContext.current
     var plan by remember { mutableStateOf(FeedEffectsRenderPlan.IDENTITY) }

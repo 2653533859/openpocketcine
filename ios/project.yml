@@ -15,6 +15,13 @@ packages:
     exactVersion: 9.24.0
   OpenPocketViewCore:
     path: ..
+  # The OpenCine platform package (shared UI MonitorUI/MonitorPresentation, OpenCineCore and its
+  # optional products, OpenCineDJI, OpenCineMulticam): a sibling checkout of OpenCine next to this
+  # repository, pinned in opencine-pins.txt. One package identity: Package.swift's ../OpenCine is
+  # the same directory. Listed here because Xcode links a re-exported package product only into
+  # targets that name it. Swap to the published URL + exact version when it has a remote.
+  OpenCine:
+    path: ../../OpenCine
 
 targets:
   OpenPocketCine:
@@ -31,10 +38,46 @@ targets:
         product: Sentry
       - package: OpenPocketViewCore
         product: OpenPocketViewCore
-      - package: OpenPocketViewCore
+      - package: OpenCine
+        product: OpenCineMedia
+      - package: OpenCine
+        product: OpenCineMotion
+      - package: OpenCine
+        product: OpenCineRelay
+      - package: OpenCine
+        product: OpenCineRelayApple
+      - package: OpenCine
+        product: OpenCineWatch
+      - package: OpenCine
         product: MonitorUI
-      - package: OpenPocketViewCore
+      - package: OpenCine
         product: MonitorPresentation
+      - package: OpenCine
+        product: OpenCineCore
+      # Optional Frame.io delivery (OpenCine plan OPTIONAL-01). Pocket keeps OAuth UI, the
+      # callback scheme, client ID and its keychain namespace (Frameio/FrameioCredentials.swift).
+      - package: OpenCine
+        product: OpenCineFrameIO
+      # Apple media runtime (OpenCine plan MEDIA-02): the VideoToolbox decoder runtime under
+      # HevcDecoder and decoded-frame leases. iOS app only; the watch never decodes live video.
+      - package: OpenCine
+        product: OpenCineApple
+      - package: OpenCine
+        product: OpenCineCameraVocabulary
+      - package: OpenCine
+        product: OpenCineAppKitApple
+      - package: OpenCine
+        product: OpenCineCameraControls
+      - package: OpenCine
+        product: OpenCineDJI
+      - package: OpenCine
+        product: OpenCineDJIApple
+      - package: OpenCine
+        product: OpenCineMulticam
+      # The shared app shell (SHELL-02): saved-camera store, cameras model and the cameras and
+      # pair screens over the DJI integration.
+      - package: OpenCine
+        product: OpenCineAppKit
       - target: OpenPocketCineWatch
         embed: true
         codeSign: true
@@ -104,9 +147,33 @@ targets:
     sources:
       - OpenPocketCineTests
     dependencies:
+      # OpenCineAppKit comes from the host app: linking it here too would make it a framework
+      # with a second MonitorUI (a second theme accent) inside.
       - target: OpenPocketCine
       - package: OpenPocketViewCore
         product: OpenPocketViewCore
+      - package: OpenCine
+        product: OpenCineCore
+      - package: OpenCine
+        product: OpenCineMedia
+      - package: OpenCine
+        product: OpenCineFrameIO
+      - package: OpenCine
+        product: OpenCineMotion
+      - package: OpenCine
+        product: OpenCineRelay
+      - package: OpenCine
+        product: OpenCineRelayApple
+      - package: OpenCine
+        product: OpenCineApple
+      - package: OpenCine
+        product: OpenCineCameraVocabulary
+      - package: OpenCine
+        product: OpenCineDJI
+      - package: OpenCine
+        product: OpenCineDJIApple
+      - package: OpenCine
+        product: OpenCineMulticam
     settings:
       base:
         SWIFT_VERSION: "5.0"
@@ -125,6 +192,9 @@ targets:
     dependencies:
       - package: OpenPocketViewCore
         product: OpenPocketViewCore
+      # The wrist monitor and its WatchConnectivity client (OpenCineWatch).
+      - package: OpenCine
+        product: OpenCineWatch
     configFiles:
       Debug: OpenPocketCineWatch/Watch.xcconfig
       Release: OpenPocketCineWatch/Watch.xcconfig
@@ -151,6 +221,9 @@ targets:
       - OpenPocketCineUITests
     dependencies:
       - target: OpenPocketCine
+      # The UI tests every app shares (OpenCine OpenCineAppUITesting).
+      - package: OpenCine
+        product: OpenCineAppUITesting
     settings:
       base:
         SWIFT_VERSION: "5.0"

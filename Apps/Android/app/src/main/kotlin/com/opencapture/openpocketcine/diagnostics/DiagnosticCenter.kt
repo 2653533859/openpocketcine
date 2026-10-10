@@ -1,5 +1,8 @@
 package com.opencapture.openpocketcine.diagnostics
 
+import com.opencapture.opencine.appkit.MediaShare
+import com.opencapture.opencine.appkit.diagnostics.ManualProblemReport
+import com.opencapture.opencine.appkit.diagnostics.ManualProblemReportEnvelope
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -11,17 +14,21 @@ import android.os.Looper
 import android.util.Log
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
+import com.opencapture.opencine.dji.DjiLog
+import com.opencapture.opencine.media.DecoderErrorRecord
+import com.opencapture.opencine.platform.LocalVPNProbe
+import com.opencapture.opencine.vocabulary.PrivacyRedactor
 import com.opencapture.openpocketcine.BuildConfig
-import com.opencapture.openpocketcine.media.MediaShare
-import com.opencapture.openpocketcine.pairing.DiscoveryPermissions
-import com.opencapture.openpocketcine.session.LocalVPNFilter
-import com.opencapture.openpocketcine.session.PocketCameraSession
+import com.opencapture.opencine.appkit.DiscoveryPermissions
+import com.opencapture.opencine.dji.DjiCameraSession
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.atomic.AtomicBoolean
+import com.opencapture.opencine.media.BoundedDiagnosticFormatter
+import com.opencapture.opencine.media.DiagnosticJournal
 
 /**
  * On-device journal, exceptions, and a shareable report. Optional uploads belong
@@ -55,14 +62,15 @@ object DiagnosticCenter {
         exceptionJournal.startWriter { batch ->
             persistBatch(exceptionFile(), batch, EXCEPTION_CAP, exceptionWritten, exceptionJournal)
         }
-        filesDir()?.let { FeedIncidentRuntime.install(it) }
-        ReliabilityReporting.install(context.applicationContext)
-        ManualProblemReport.install(context.applicationContext)
+        filesDir()?.let { AppDiagnostics.incidents.install(it) }
+        DjiLog.sink = ::log
+        AppDiagnostics.reporting.install(context.applicationContext, AppDiagnostics.incidents)
+        AppDiagnostics.manualReport.install(context.applicationContext)
         log("notice", "diagnostics", "boot", "diagnostics installed")
     }
 
     fun boundedDiagnosticText(
-        session: PocketCameraSession,
+        session: DjiCameraSession,
         maxBytes: Int = ManualProblemReport.ATTACHMENT_MAX_BYTES,
         maxChars: Int = ManualProblemReport.ATTACHMENT_MAX_CHARS,
     ): String {
@@ -71,6 +79,7 @@ object DiagnosticCenter {
             BoundedDiagnosticFormatter.format(
                 environment =
                     BoundedDiagnosticFormatter.Environment(
+                        product = "OpenPocketCine",
                         appVersion = env.appVersion,
                         appBuild = env.appBuild,
                         osName = env.osName,
@@ -84,8 +93,9 @@ object DiagnosticCenter {
                     ),
                 journal = journalLines(),
                 exceptions = exceptionLines(),
-                extras = FeedIncidentRuntime.reportExtras(),
+                extras = AppDiagnostics.incidents.reportExtras(),
                 cap = minOf(maxChars, BoundedDiagnosticFormatter.CHARACTER_CAP),
+                isSafeNetwork = PrivacyRedactor::isCameraNetwork,
             )
         return ManualProblemReportEnvelope.utf8Prefix(body, maxBytes)
     }
@@ -101,19 +111,23 @@ object DiagnosticCenter {
         if (level == "error" || level == "fault") exceptionJournal.append(line)
     }
 
+    /** Journal line for a decoder error the shared `HevcDecoder` reports. */
+    fun logDecoderError(record: DecoderErrorRecord) =
+        log("warning", "decoder", record.origin.wire, record.journalLine())
+
     fun recordFault(code: String, stack: String) {
         log("fault", "diagnostics", code, PrivacyRedactor.redact(stack.take(4000)))
     }
 
-    fun writeReport(context: Context, session: PocketCameraSession): File? {
+    fun writeReport(context: Context, session: DjiCameraSession): File? {
         val env = environment(session)
         val journal = journalLines()
         val exceptions = exceptionLines()
-        return writeShareFiles(context, env, journal, exceptions, FeedIncidentRuntime.exportExtras())
+        return writeShareFiles(context, env, journal, exceptions, AppDiagnostics.incidents.exportExtras())
             .firstOrNull { it.name == "report.txt" }
     }
 
-    fun shareReport(context: Context, session: PocketCameraSession, emailSupport: Boolean = false, copyForFeedback: Boolean = true) {
+    fun shareReport(context: Context, session: DjiCameraSession, emailSupport: Boolean = false, copyForFeedback: Boolean = true) {
         if (!sharing.compareAndSet(false, true)) {
             android.widget.Toast.makeText(context, "Preparing the report…", android.widget.Toast.LENGTH_SHORT).show()
             return
@@ -126,7 +140,7 @@ object DiagnosticCenter {
         Thread(
             {
                 try {
-                    val extras = FeedIncidentRuntime.exportExtras()
+                    val extras = AppDiagnostics.incidents.exportExtras()
                     val files = writeShareFiles(app, env, journal, exceptions, extras)
                     Handler(Looper.getMainLooper()).post { launchShare(app, files, emailSupport) }
                 } catch (_: Exception) {
@@ -238,7 +252,7 @@ object DiagnosticCenter {
     @Volatile var lastCompact: String = ""
         private set
 
-    fun copyCompact(context: Context, session: PocketCameraSession) {
+    fun copyCompact(context: Context, session: DjiCameraSession) {
         val text = compactSummary(environment(session), journalLines())
         lastCompact = text
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -247,11 +261,11 @@ object DiagnosticCenter {
         onCopiedForFeedback?.invoke()
     }
 
-    private fun environment(session: PocketCameraSession): Env {
+    private fun environment(session: DjiCameraSession): Env {
         val family = session.connectedCamera?.model?.family ?: "none"
         val model = session.connectedCamera?.model?.name ?: "none"
         val phase = session.phase.name.lowercase()
-        val vpn = appContext?.let { LocalVPNFilter.isActive(it) } ?: false
+        val vpn = appContext?.let { LocalVPNProbe.isActive(it) } ?: false
         return Env(
             appVersion = BuildConfig.VERSION_NAME,
             appBuild = BuildConfig.VERSION_CODE.toString(),

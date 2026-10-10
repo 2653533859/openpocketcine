@@ -98,7 +98,7 @@ domain/code, bounded pairing-retry count and AP-set acknowledgement. Camera
 identifiers, PINs and network names are omitted. These are transition events,
 not a polling stream.
 
-Portable types: `Sources/OpenPocketViewCore/Diagnostics.swift`. iOS
+Portable types: OpenCine `Sources/OpenCineMedia/Diagnostics.swift`. iOS
 `DiagnosticCenter` (MetricKit, uncaught `NSException`, screenshot paste).
 Android `diagnostics/DiagnosticCenter` (uncaught handler, share sheet).
 Android has no TestFlight screenshot hook — PARITY exception.
@@ -133,7 +133,31 @@ iOS samples also carry `statusAge` (any camera DUML frame on the UDP socket),
 `uplinkReplyAge` (the camera's reply to the 1 Hz Flip GET, proof it still hears
 us) and `sendErrorAge` / `sendErrorCode` (last UDP send the stack rejected on
 the current socket, POSIX code). A stale `packetAge` with fresh `statusAge`
-means only the video stream stopped. Android does not record these yet.
+means only the video stream stopped. Android also records received `statusAge`;
+its uplink-reply and send-error observations remain unavailable.
+
+The optional `ingress` object adds current-socket observations before the video
+gate, debug fault injection and packet assembler. It records socket generation,
+raw datagram and class-2 video counts, gate and injected drops, receive errors,
+and local registration submissions. Ages track the last raw receive, video
+receive and registration submission. These fixed-size counters reset when the
+endpoint retires; late callbacks cannot refresh its replacement. A missing
+object or age is unknown, including older stored reports. Counts describe local
+callbacks, and a registration submission does not prove camera receipt.
+
+Compare consecutive samples in the same socket generation. Rising raw video
+counts with gate drops identifies admission refusal; stale raw-video age with
+fresh raw-datagram/control age identifies a video-specific interruption. Both
+raw ages becoming stale identifies whole-socket silence. Fresh input acceptance
+with stale decoder output separates a downstream stall. Keep recovery and
+decoder error ages aligned with onset: an old error is not a new decoder failure.
+The fields add no polling or network traffic and retain the existing consent,
+upload gate, spool limits and event grouping.
+
+Android `decodeAcceptHz` and `decodeAcceptAge` measure successful synchronous
+MediaCodec input-buffer submission, separately from output. They no longer
+reuse decoder-output measurements. Android JSON also preserves optional decoder
+status and flags; older reports with missing fields remain unknown.
 
 Sentry events titled `feed incident <stage>: <kind>` keep that grouping. Tags
 `trigger` (first repair reason, e.g. `bleDropped`), `recoveredBy` (last repair
@@ -156,6 +180,12 @@ ReliabilityReporting cancels SDK traffic while a live session is active or
 the camera IPv4 path is up. Queued automatic send waits until the operator leaves the camera Wi-Fi.
 A local receipt distinguishes queued from HTTP-confirmed delivery; an SDK event
 ID alone is not a delivery confirmation.
+
+Android cache reload failures are contained by the reporting transport. A malformed SDK cached
+envelope cannot terminate its worker or prevent healthy pending reports from being delivered
+when the upload gate opens. The transport retains the disk cache and logs only the exception
+class; it does not delete unreadable reports. Disk-only reports remain unavailable until the SDK
+can read their cache. Upload gates, HTTP-confirmed receipts and retry policy still apply.
 
 ## Motion stutter and recovery capture
 

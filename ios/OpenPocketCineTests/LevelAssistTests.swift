@@ -1,24 +1,26 @@
 import MonitorUI
+import OpenCineAppKit
 import OpenPocketViewCore
 import SwiftUI
 import XCTest
+import MonitorPresentation
 
 @testable import OpenPocketCine
 
 @MainActor
 final class LevelAssistTests: XCTestCase {
     func testLevelSitsWithFramingAidsAndPersists() {
-        XCTAssertEqual(LiveAssistTool.toolbarGroups[3], [.guides, .grid, .crosshair, .level])
-        XCTAssertFalse(LiveAssistTool.playbackToolbarCases.contains(.level))
-        XCTAssertFalse(LiveAssistTool.level.hasConfiguration)
-        XCTAssertEqual(LiveAssistTool.level.title, "Level")
-        XCTAssertEqual(LiveAssistTool.level.monitorIcon, .level)
+        XCTAssertEqual(MonitorAssistSelection.toolbarGroups[3], [.guides, .grid, .crosshair, .level])
+        XCTAssertFalse(MonitorAssistSelection.playbackToolbarCases.contains(.level))
+        XCTAssertFalse(MonitorAssistSelection.level.hasConfiguration)
+        XCTAssertEqual(MonitorAssistSelection.level.title, "Level")
+        XCTAssertEqual(MonitorAssistSelection.level.monitorIcon, .level)
         let assist = LiveAssistState()
         assist.clean = false
         assist.level = true
         XCTAssertTrue(assist.isVisible(.level))
         let restored = LiveAssistState()
-        OperatorPrefs.Snapshot(assist).apply(to: restored)
+        MonitorAssistSnapshot(assist).apply(to: restored)
         XCTAssertTrue(restored.level)
     }
 
@@ -68,7 +70,7 @@ final class GimbalDoubleTapTests: XCTestCase {
     func testLevelDoubleTapWithoutAttitudeRefusesAndSaysSo() {
         let session = CameraSession()
         session.gimbalDoubleTap = .level
-        session.performGimbalDoubleTap()
+        session.gimbal.performDoubleTap()
         XCTAssertEqual(session.controlNote, WorldLevelSnap.noLevelData)
     }
 }

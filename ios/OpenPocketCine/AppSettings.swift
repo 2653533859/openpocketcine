@@ -1,183 +1,11 @@
 import MonitorPresentation
 import MonitorUI
+import OpenCineAppKit
+import OpenCineCameraControls
 import OpenPocketViewCore
 import SwiftUI
 import UIKit
 
-/// DISP 1 Live / DISP 2 Clean. Command (DISP 3) is not in this build.
-enum PocketDispMode: String, CaseIterable, Codable, Equatable, Identifiable, Sendable {
-    case live
-    case clean
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .live: "Live"
-        case .clean: "Clean"
-        }
-    }
-
-    var settingsTitle: String {
-        switch self {
-        case .live: "DISP 1 · Live"
-        case .clean: "DISP 2 · Clean"
-        }
-    }
-
-    var settingsCaption: String {
-        switch self {
-        case .live:
-            "The full monitor. Set what it shows in Edit view."
-        case .clean:
-            "A stripped-back image. Same elements as DISP 1 — status, tool and capture bars start off. Pin which view assists stay on."
-        }
-    }
-}
-
-/// Per-DISP chrome map for Pocket live / clean.
-struct PocketDispChrome: Equatable, Codable, Sendable {
-    /// Containers first, then rail / on-feed chrome, then status-bar cells last so
-    /// Edit-view badges keep the big boxes' preferred corners.
-    enum Section: String, CaseIterable, Codable, Equatable, Identifiable, Sendable {
-        case statusBar
-        case toolBar
-        case cameraValues
-        case lockButton
-        case batteries
-        case railRecord
-        case railMedia
-        case railSettings
-        case zoomChip
-        case gimbalStick
-        case focusBox
-        case recReadout
-        case timecode
-        case format
-        case color
-        case storage
-        case fps
-
-        var id: String { rawValue }
-
-        var title: String {
-            switch self {
-            case .statusBar: "Status Bar"
-            case .toolBar: "Tool Bar"
-            case .cameraValues: "Camera Values"
-            case .lockButton: "Lock Button"
-            case .batteries: "Batteries"
-            case .railRecord: "Record"
-            case .railMedia: "Media"
-            case .railSettings: "Settings"
-            case .zoomChip: "Zoom Chip"
-            case .gimbalStick: "Gimbal Stick"
-            case .focusBox: "Face Box"
-            case .recReadout: "REC"
-            case .timecode: "Timecode"
-            case .format: "Format"
-            case .color: "Color"
-            case .storage: "Storage"
-            case .fps: "FPS"
-            }
-        }
-    }
-
-    var statusBar = true
-    var toolBar = true
-    var cameraValues = true
-    var lockButton = true
-    var batteries = true
-    var recReadout = true
-    var timecode = true
-    var format = true
-    var color = true
-    var storage = true
-    var fps = true
-    var railRecord = true
-    var railMedia = true
-    var railSettings = true
-    var zoomChip = true
-    var gimbalStick = true
-    var focusBox = true
-
-    static let liveDefaults = PocketDispChrome()
-
-    static let cleanDefaults = PocketDispChrome(
-        statusBar: false,
-        toolBar: false,
-        cameraValues: false,
-        lockButton: false,
-        batteries: true,
-        recReadout: true,
-        timecode: true,
-        format: true,
-        color: true,
-        storage: true,
-        fps: true,
-        railRecord: true,
-        railMedia: true,
-        railSettings: true,
-        zoomChip: true,
-        gimbalStick: true,
-        focusBox: true
-    )
-
-    func isVisible(_ section: Section) -> Bool {
-        switch section {
-        case .statusBar: statusBar
-        case .toolBar: toolBar
-        case .cameraValues: cameraValues
-        case .lockButton: lockButton
-        case .batteries: batteries
-        case .railRecord: railRecord
-        case .railMedia: railMedia
-        case .railSettings: railSettings
-        case .zoomChip: zoomChip
-        case .gimbalStick: gimbalStick
-        case .focusBox: focusBox
-        case .recReadout: recReadout
-        case .timecode: timecode
-        case .format: format
-        case .color: color
-        case .storage: storage
-        case .fps: fps
-        }
-    }
-
-    mutating func toggle(_ section: Section) {
-        switch section {
-        case .statusBar: statusBar.toggle()
-        case .toolBar: toolBar.toggle()
-        case .cameraValues: cameraValues.toggle()
-        case .lockButton: lockButton.toggle()
-        case .batteries: batteries.toggle()
-        case .railRecord: railRecord.toggle()
-        case .railMedia: railMedia.toggle()
-        case .railSettings: railSettings.toggle()
-        case .zoomChip: zoomChip.toggle()
-        case .gimbalStick: gimbalStick.toggle()
-        case .focusBox: focusBox.toggle()
-        case .recReadout: recReadout.toggle()
-        case .timecode: timecode.toggle()
-        case .format: format.toggle()
-        case .color: color.toggle()
-        case .storage: storage.toggle()
-        case .fps: fps.toggle()
-        }
-    }
-
-    /// Live and clean offer the same list — clean is DISP 1 with different defaults.
-    static func isConfigurable(_ section: Section, in mode: PocketDispMode) -> Bool {
-        _ = section
-        _ = mode
-        return true
-    }
-
-    static func configurableSections(in mode: PocketDispMode) -> [Section] {
-        Section.allCases.filter { isConfigurable($0, in: mode) }
-    }
-}
 
 enum AppPanel: String, Identifiable {
     case settings, media, privacy, terms, licenses, notice
@@ -199,7 +27,7 @@ enum OpenPocketCineLinks {
 
 /// Live chrome and home both present this. `onClose` lets a cover dismiss without `homePanel`.
 struct AppSettingsView: View {
-    /// OpenZCine `OperatorSettingsPanel.safeArea` — processed landscape insets from the host.
+    /// OpenZCine `OperatorSettingsPanel.safeArea` \u{2014} processed landscape insets from the host.
     var safeArea: EdgeInsets = EdgeInsets()
     var onClose: (() -> Void)? = nil
 
@@ -210,23 +38,6 @@ struct AppSettingsView: View {
 
 // MARK: - Shared Operator Setup / Media chrome
 
-struct CloseButton: View {
-    var action: () -> Void
-    var size: CGFloat = 34
-
-    var body: some View {
-        Button(action: action) {
-            OpcIcon.x
-                .frame(width: size * 0.38, height: size * 0.38)
-                .foregroundStyle(LiveDesign.text)
-                .frame(width: size, height: size)
-                .glassCircle(interactive: true)
-        }
-        .buttonStyle(.zcTapTarget)
-        .accessibilityLabel("Close")
-    }
-}
-
 struct HelpBadge: View {
     let text: String
     @State private var showing = false
@@ -235,17 +46,17 @@ struct HelpBadge: View {
         Button {
             showing.toggle()
         } label: {
-            OpcIcon.info
+            MonitorIcon.info
                 .foregroundStyle(LiveDesign.faint)
                 .frame(width: 9, height: 9)
                 .frame(width: 16, height: 16)
                 .background(LiveDesign.background.opacity(0.5), in: Circle())
                 .overlay(Circle().stroke(LiveDesign.hairline, lineWidth: 1))
         }
-        .buttonStyle(.zcTapTarget)
+        .buttonStyle(.monitorTapTarget)
         .popover(isPresented: $showing) {
             Text(text)
-                .font(LiveType.ui(size: 12, weight: .regular))
+                .font(MonitorTheme.font(12, weight: .regular))
                 .foregroundStyle(LiveDesign.text)
                 .padding(12)
                 .frame(width: 248)
@@ -306,9 +117,7 @@ struct SettingsInlineRow<Trailing: View>: View {
         HStack(spacing: 6) {
             Text(title)
                 .font(
-                    LiveType.ui(
-                        size: CGFloat(MonitorSettingsCardMetrics.rowTitlePointSize),
-                        weight: .semibold)
+                    MonitorTheme.font(CGFloat(MonitorSettingsCardMetrics.rowTitlePointSize), weight: .semibold)
                 )
                 .foregroundStyle(LiveDesign.text)
                 .lineLimit(stacked ? 2 : 1)
@@ -332,135 +141,9 @@ struct SettingsValueText: View {
     }
 }
 
-/// Compact mono value field with a number pad and a Done accessory.
-/// OpenZCine `SettingsNumberField` (`settings-num`). Used by any assist
-/// numeric editor (Zebra Highlight / Midtone today) so IME chrome is shared.
-struct SettingsNumberField: View {
-    @Binding var value: Int
-    var maximum: Int = 100
-
-    static let doneTitle = "Done"
-
-    var body: some View {
-        SettingsNumberPadInput(value: $value, maximum: maximum)
-            .frame(width: 44, height: 30)
-            .background(
-                LiveDesign.background.opacity(0.5),
-                in: RoundedRectangle(cornerRadius: DesignTokens.cornerRadius, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: DesignTokens.cornerRadius, style: .continuous)
-                    .stroke(LiveDesign.hairline, lineWidth: 1)
-            )
-    }
-}
-
-/// Number pad has no Return. A UIKit accessory is the reliable Done control
-/// outside a NavigationStack (live / playback assist overlays).
-private struct SettingsNumberPadInput: UIViewRepresentable {
-    @Binding var value: Int
-    var maximum: Int
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(value: $value, maximum: maximum)
-    }
-
-    func makeUIView(context: Context) -> UITextField {
-        let field = UITextField()
-        field.keyboardType = .numberPad
-        field.textAlignment = .center
-        _ = MonitorTheme.font(12, weight: .semibold)
-        field.font =
-            UIFont(name: "Sora-SemiBold", size: 12)
-            ?? UIFont.monospacedSystemFont(ofSize: 12, weight: .semibold)
-        field.textColor = UIColor(LiveDesign.text)
-        field.tintColor = UIColor(LiveDesign.accent)
-        field.backgroundColor = .clear
-        field.borderStyle = .none
-        field.delegate = context.coordinator
-        field.text = String(value)
-        field.accessibilityValue = String(value)
-        field.inputAccessoryView = context.coordinator.makeDoneBar()
-        field.addTarget(
-            context.coordinator, action: #selector(Coordinator.editingChanged(_:)),
-            for: .editingChanged)
-        context.coordinator.field = field
-        return field
-    }
-
-    func updateUIView(_ field: UITextField, context: Context) {
-        context.coordinator.value = $value
-        context.coordinator.maximum = maximum
-        if !field.isFirstResponder, field.text != String(value) {
-            field.text = String(value)
-            field.accessibilityValue = String(value)
-        }
-    }
-
-    final class Coordinator: NSObject, UITextFieldDelegate {
-        var value: Binding<Int>
-        var maximum: Int
-        weak var field: UITextField?
-
-        init(value: Binding<Int>, maximum: Int) {
-            self.value = value
-            self.maximum = maximum
-        }
-
-        func makeDoneBar() -> UIToolbar {
-            let bar = UIToolbar(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
-            bar.barStyle = .black
-            bar.isTranslucent = true
-            bar.tintColor = UIColor(LiveDesign.accent)
-            bar.items = [
-                UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil),
-                UIBarButtonItem(
-                    title: SettingsNumberField.doneTitle,
-                    style: .done,
-                    target: self,
-                    action: #selector(done)),
-            ]
-            bar.sizeToFit()
-            return bar
-        }
-
-        @objc func editingChanged(_ field: UITextField) {
-            field.accessibilityValue = field.text
-        }
-
-        @objc func done() {
-            field?.resignFirstResponder()
-        }
-
-        func textFieldDidEndEditing(_ textField: UITextField) {
-            commit(textField)
-        }
-
-        func textField(
-            _ textField: UITextField,
-            shouldChangeCharactersIn range: NSRange,
-            replacementString string: String
-        ) -> Bool {
-            let current = textField.text ?? ""
-            guard let swiftRange = Range(range, in: current) else { return false }
-            let next = current.replacingCharacters(in: swiftRange, with: string)
-            if next.isEmpty { return true }
-            return next.allSatisfy(\.isNumber) && next.count <= 3
-        }
-
-        private func commit(_ textField: UITextField) {
-            let parsed = Int(textField.text ?? "") ?? value.wrappedValue
-            let clamped = min(max(parsed, 0), maximum)
-            value.wrappedValue = clamped
-            textField.text = String(clamped)
-            textField.accessibilityValue = String(clamped)
-        }
-    }
-}
-
 struct SettingsActionPill: View {
     let title: String
-    var icon: OpcIcon? = nil
+    var icon: MonitorIcon? = nil
     var tint: Color = LiveDesign.accent
     var background: Color = LiveDesign.accentDim
     var fillsHeight = false
@@ -484,7 +167,7 @@ struct SettingsActionPill: View {
             .background(background, in: Capsule())
             .overlay(Capsule().stroke(tint.opacity(0.5), lineWidth: 1))
         }
-        .buttonStyle(.zcTapTarget)
+        .buttonStyle(.monitorTapTarget)
     }
 }
 
@@ -505,7 +188,7 @@ struct SettingsSwitchGraphic: View {
     }
 }
 
-/// OpenZCine `DisplayToggleItem` — compact switch tile for the DISP 2 assist pin grid.
+/// OpenZCine `DisplayToggleItem` \u{2014} compact switch tile for the DISP 2 assist pin grid.
 struct DisplayToggleItem: View {
     let title: String
     let isOn: Bool
@@ -515,7 +198,7 @@ struct DisplayToggleItem: View {
         Button(action: action) {
             HStack(spacing: 7) {
                 Text(title)
-                    .font(LiveType.ui(size: 11.5, weight: .semibold, design: .default))
+                    .font(MonitorTheme.font(11.5, weight: .semibold))
                     .foregroundStyle(LiveDesign.text)
                     .lineLimit(1)
                     .minimumScaleFactor(0.64)
@@ -534,7 +217,7 @@ struct DisplayToggleItem: View {
                     .stroke(LiveDesign.hairline, lineWidth: 1)
             )
         }
-        .buttonStyle(.zcTapTarget)
+        .buttonStyle(.monitorTapTarget)
     }
 }
 
@@ -557,7 +240,7 @@ struct SettingsSwitchInlineRow: View {
             } label: {
                 SettingsSwitchGraphic(isOn: isOn)
             }
-            .buttonStyle(.zcTapTarget)
+            .buttonStyle(.monitorTapTarget)
             .modifier(SettingsSwitchAccess(identifier: identifier, title: title, isOn: isOn))
         }
     }
@@ -597,7 +280,7 @@ struct SettingsSegmented: View {
                 OperatorSettingsHaptics.selection(enabled: OperatorPrefs.hapticsEnabled)
             }
         )
-        .buttonStyle(.zcTapTarget)
+        .buttonStyle(.monitorTapTarget)
     }
 }
 
@@ -615,14 +298,14 @@ struct SettingsResetButton: View {
             OperatorSettingsHaptics.selection(enabled: model.hapticsEnabled)
             action()
         } label: {
-            OpcIcon.refreshCw
+            MonitorIcon.refreshCw
                 .foregroundStyle(LiveDesign.muted)
                 .frame(width: 12, height: 12)
                 .frame(width: 28, height: 28)
                 .background(LiveDesign.background.opacity(0.42), in: Circle())
                 .overlay(Circle().stroke(LiveDesign.hairline, lineWidth: 1))
         }
-        .buttonStyle(.zcTapTarget)
+        .buttonStyle(.monitorTapTarget)
         .accessibilityLabel("Reset to defaults")
     }
 }
@@ -690,14 +373,10 @@ struct VirtualJoystickDeadzoneSlider: View {
     }
 }
 
-enum OperatorSettingsHaptics {
-    @MainActor
-    static func selection(enabled: Bool) {
-        guard enabled else { return }
-        let generator = UIImpactFeedbackGenerator(style: .light)
-        generator.prepare()
-        generator.impactOccurred()
-    }
+
+extension OperatorHaptics {
+    /// The operator's haptics switch, read at each tap.
+    static let app = OperatorHaptics { OperatorPrefs.hapticsEnabled }
 }
 
 struct SettingsRowCard<Content: View>: View {
@@ -728,9 +407,7 @@ struct SettingsRowCard<Content: View>: View {
                 HStack(alignment: .center, spacing: 8) {
                     Text(title)
                         .font(
-                            LiveType.ui(
-                                size: CGFloat(MonitorSettingsCardMetrics.titlePointSize),
-                                weight: .semibold)
+                            MonitorTheme.font(CGFloat(MonitorSettingsCardMetrics.titlePointSize), weight: .semibold)
                         )
                         .foregroundStyle(LiveDesign.text)
                         .fixedSize(horizontal: false, vertical: true)
@@ -823,7 +500,7 @@ struct SettingsDashScale: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             Text(title)
-                .font(LiveType.ui(size: 13, weight: .semibold))
+                .font(MonitorTheme.font(13, weight: .semibold))
                 .foregroundStyle(LiveDesign.text)
             Text(caption)
                 .font(MonitorTheme.font(11.5, weight: .medium)).monospacedDigit()
@@ -877,7 +554,7 @@ struct SettingsDashScale: View {
     private func legend(_ name: String, _ sub: String) -> some View {
         HStack(spacing: 4) {
             Text(name)
-                .font(LiveType.ui(size: 10, weight: .semibold))
+                .font(MonitorTheme.font(10, weight: .semibold))
                 .foregroundStyle(LiveDesign.muted)
             Text(sub)
                 .font(MonitorTheme.font(9, weight: .regular)).monospacedDigit()
@@ -888,28 +565,14 @@ struct SettingsDashScale: View {
 
 struct SettingsLinkHealthCard: View {
     @Environment(AppModel.self) private var model
-
     var body: some View {
-        let bars = model.session.liveSignalBars
-        let score = min(4, max(0, bars)) * 25
-        SettingsDashScale(title: "Link Health", caption: caption, score: score)
-    }
-
-    private var caption: String {
-        if !model.isLive { return "No live path." }
-        let bars = model.session.liveSignalBars
-        guard bars > 0 else { return "Waiting for the link." }
-        switch MonitorLinkHealthBand(bars: bars) {
-        case .stable: return "Link is clean. · Stable"
-        case .watch: return "Some loss on the link. · Watch"
-        case .poor: return "Link is weak. · Poor"
-        }
+        MonitorSettingsLinkHealthCard(isLive: model.isLive, signalBars: model.session.liveSignalBars)
     }
 }
 
 struct SettingsLiveTile: View {
     @Environment(AppModel.self) private var model
-    @State private var displayedFPS = "—"
+    @State private var displayedFPS = "\u{2014}"
     @State private var lastFPSCommit: CFAbsoluteTime = 0
 
     private var isLinked: Bool { model.isLive }
@@ -935,7 +598,7 @@ struct SettingsLiveTile: View {
             model.session.connectedCamera?.name
             ?? model.savedCameras.first?.displayName
             ?? "Pocket"
-        let transport = isLinked ? "BLE + Wi-Fi" : "—"
+        let transport = isLinked ? "BLE + Wi-Fi" : "\u{2014}"
         return "\(name) · \(transport) · \(displayedFPS) FPS"
     }
 
@@ -947,7 +610,7 @@ struct SettingsLiveTile: View {
                 .shadow(color: tint.opacity(0.7), radius: 8)
             VStack(alignment: .leading, spacing: 2) {
                 Text(isLinked ? "Active Link" : "No Link")
-                    .font(LiveType.ui(size: 12, weight: .semibold))
+                    .font(MonitorTheme.font(12, weight: .semibold))
                     .foregroundStyle(LiveDesign.text)
                     .lineLimit(1)
                     .fixedSize()
@@ -993,93 +656,13 @@ struct SettingsLiveTile: View {
             || compact != displayedFPS
                 && (Double(compact) == nil || Double(displayedFPS) == nil)
         {
-            displayedFPS = compact.isEmpty ? "—" : compact
+            displayedFPS = compact.isEmpty ? "\u{2014}" : compact
             lastFPSCommit = now
             return
         }
         guard now - lastFPSCommit >= 0.5 else { return }
-        displayedFPS = compact.isEmpty ? "—" : compact
+        displayedFPS = compact.isEmpty ? "\u{2014}" : compact
         lastFPSCommit = now
-    }
-}
-
-enum OperatorPanelMetrics {
-    static let closeSize: CGFloat = 37
-    static let closeLeading: CGFloat = 16
-    static let topStackWidth: CGFloat = 560
-
-    static func topPadding(safeArea: EdgeInsets) -> CGFloat {
-        max(safeArea.top + 6, 16)
-    }
-
-    /// OpenZCine `OperatorSettingsPanel` top floor is 14, not the shared 16 used by Media/Legal.
-    static func settingsTopPadding(safeArea: EdgeInsets) -> CGFloat {
-        max(safeArea.top + 6, 14)
-    }
-
-    static func closeTopPadding(safeArea: EdgeInsets) -> CGFloat {
-        max(safeArea.top + 6, 22)
-    }
-
-    static func leadingPadding(safeArea: EdgeInsets, floor: CGFloat = 16) -> CGFloat {
-        max(safeArea.leading + 6, floor)
-    }
-
-    static func trailingPadding(safeArea: EdgeInsets) -> CGFloat {
-        max(safeArea.trailing + 6, 16)
-    }
-
-    static func bottomPadding(safeArea: EdgeInsets) -> CGFloat {
-        max(safeArea.bottom + 4, 12)
-    }
-
-    /// Extra leading inset so a landscape title clears the floating close button.
-    static func closeButtonClearance(safeArea: EdgeInsets) -> CGFloat {
-        max(0, (closeLeading + closeSize + 8) - leadingPadding(safeArea: safeArea))
-    }
-
-    /// OpenZCine `MonitorFullScreenPanelOverlay.fullScreenPanelSafeArea`.
-    /// Landscape zeros the clean short edge so the surface hugs that bezel while clearing
-    /// the Dynamic Island on the side it sits. Portrait passes the insets through.
-    static func fullScreenPanelSafeArea(
-        from insets: EdgeInsets,
-        isPortrait: Bool,
-        mirrored: Bool
-    ) -> EdgeInsets {
-        guard !isPortrait else { return insets }
-        return EdgeInsets(
-            top: insets.top,
-            leading: mirrored ? 0 : insets.leading,
-            bottom: insets.bottom,
-            trailing: mirrored ? insets.trailing : 0
-        )
-    }
-
-    /// OpenZCine standalone Operator Setup host (`NativeAppRoot` ~13136).
-    /// iOS reports the landscape island lane on both short edges; zero the smaller side.
-    static func standalonePanelSafeArea(from insets: EdgeInsets) -> EdgeInsets {
-        let islandOnLeading = insets.leading >= insets.trailing
-        return EdgeInsets(
-            top: insets.top,
-            leading: islandOnLeading ? insets.leading : 0,
-            bottom: insets.bottom,
-            trailing: islandOnLeading ? 0 : insets.trailing
-        )
-    }
-
-    /// Merge the host's layout clearance with an observed physical window snapshot.
-    /// Never query UIKit here: its getter can reenter SwiftUI layout on iOS 26.
-    static func resolvedDeviceSafeArea(
-        _ proposed: EdgeInsets, window: EdgeInsets
-    ) -> EdgeInsets {
-        // A full-screen overlay may erase all SwiftUI safe insets. Resolve each
-        // edge so portrait camera islands and home indicators receive the same
-        // protection as the landscape camera cutout.
-        return EdgeInsets(
-            top: max(proposed.top, window.top),
-            leading: max(proposed.leading, window.leading),
-            bottom: max(proposed.bottom, window.bottom),
-            trailing: max(proposed.trailing, window.trailing))
     }
 }
 
@@ -1093,24 +676,24 @@ struct AppPanelChrome<Content: View>: View {
             HStack {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("OPENPOCKETCINE")
-                        .font(LiveType.ui(size: 10, weight: .semibold, design: .rounded))
+                        .font(MonitorTheme.font(10, weight: .semibold))
                         .tracking(1.3)
                         .foregroundStyle(StartupColors.muted)
                     Text(title)
-                        .font(LiveType.ui(size: 17, weight: .bold, design: .rounded))
+                        .font(MonitorTheme.font(17, weight: .bold))
                         .foregroundStyle(StartupColors.ink)
                 }
                 Spacer()
                 Button("Done", action: onClose)
-                    .font(LiveType.ui(size: 16, weight: .semibold, design: .rounded))
+                    .font(MonitorTheme.font(16, weight: .semibold))
                     .foregroundStyle(StartupColors.darkText)
                     .padding(.horizontal, 18)
                     .padding(.vertical, 10)
                     .background(
                         StartupColors.accent,
-                        in: RoundedRectangle(cornerRadius: DesignTokens.cornerRadius)
+                        in: RoundedRectangle(cornerRadius: MonitorTheme.radius)
                     )
-                    .buttonStyle(.zcTapTarget)
+                    .buttonStyle(.monitorTapTarget)
             }
             .padding(.horizontal, 20)
             .padding(.top, 16)

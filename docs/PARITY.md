@@ -5,7 +5,107 @@ unless a row lists an exception. GPU backends, Bluetooth stacks, and OS APIs may
 diverge. Shipping a one-platform operator-visible change without a row here is
 incomplete.
 
+## Shared cameras and pairing (SHELL-02)
+
+Both shells use OpenCine's cameras model and camera/pair pages. Nearby selection
+requires Continue; connection cards and the pair rail show the integration's
+reported progress, approval prompt, failure and recovery actions. The station
+wizard remains an app slot, and Multiview keeps its existing entry. Android
+retains its current appearance; the optional iOS-style switch is unchanged.
+Forgetting a camera now removes its Android Wi-Fi credentials too, matching iOS.
+Saved IDs and media favorites stay unchanged; the new document mirrors legacy
+records and merges edits made by an older build after a downgrade.
+
+Android credential reads, migration, writes and explicit Forget run away from
+Main. One cooperative transaction gate on the session's existing credential cache
+prevents a retired entered migration from overwriting a successor save. Forget
+awaits that same cache before removing camera metadata. Credential keys, encryption
+and pairing policy remain unchanged. This is Android Keystore infrastructure;
+iOS retains its existing async integration. Controlled scheduling and transaction
+regressions pass; physical Keystore behavior remains untested for this increment.
+
+As on main, a saved setup's menu offers Forget only (no Rename setup), and the
+cameras and empty pairing pages carry no Privacy or Terms links; Settings opens
+both documents.
+
+The iOS Personal Hotspot confirmation is still platform-specific. Cancelling or
+replacing an attempt retires that prompt before a later response can reconnect.
+Simulator and emulator checks cover presentation and installed-build migration;
+physical pairing, station networking and live recovery remain pending under
+items 18-20 in [the integration checklist](OPENCINE-INTEGRATION.md).
+
+## Shared Multiview stage
+
+Both shells draw OpenCine's shared Multiview stage over their existing
+sessions. Operator-visible behavior is unchanged on each platform: iOS keeps
+its centered camera options panel and status pill, Android keeps its per-tile
+menu and status card with Reconnect and Remove. Android's disabled Record all
+description now also says "A camera is not in a video mode.", which iOS
+already said. The iOS camera picker's Cancel tint is the shared accent
+(0x00A3E6) instead of Pocket's chrome accent (0x00A3E0). Pocket iOS unit tests
+pass; of the five Multiview UI flows, the same two fail before and after the
+change on the lane simulator (the palette rail is not a scroll view there).
+The Android instrumentation tests drive the shared stage; on the lane emulator
+the same 9 of 19 pass before and after. Physical Multiview remains untested
+for this change on both platforms.
+
+## Shared operator settings ownership (P2)
+
+Both shells now compose the shared operator settings page and typed section
+owners. View Assist cards follow the available width, using one column on a
+narrow page and two when both columns can retain their touch targets. Existing
+Pocket preferences, DJI actions, source calibration and clean-view pins remain
+unchanged. iOS keeps its implemented feed sharing and account actions; Android
+Sharing and Frame.io remain unavailable as recorded in the Operator Setup row.
+Automated consumer checks pass on both platforms, including 40 affected
+native iOS tests and three original UI flows. Physical settings checks remain
+untested for this increment on both platforms.
+
+Pocket requests joined settings tab edges on both platforms. The shared page
+adds an optional spacing value with its existing six-point portrait default;
+Pocket explicitly supplies zero. Swift applies this value in both orientations;
+Compose keeps its already joined landscape column. Existing Insta and Nikon
+callers retain their defaults. The original Pocket Swift owner also used a
+six-point gap, so the original joined-edge UI test failure is recorded as a
+separate contract correction, rather than attributed to the shared adoption.
+The unchanged UI test still requires adjacent edges within 0.5 points and
+44-point minimum targets. The unchanged test passes in portrait and landscape
+on the private simulator. Android consumer checks pass; physical settings
+layout remains untested on both platforms.
+
+## Apple transaction ownership (P2)
+
+The iOS control exchange now lives in OpenCineDJIApple. This Apple OS workflow keeps the
+existing reply routing, pairing/Wi-Fi order, 300ms retransmit, 2s settlement and ordinary/zoom
+coalescing cadence. Kotlin retains its existing integration owner and portable DJI contract.
+New iOS receipt regressions reject presentation-pin confirmation and unknown recording idle;
+legacy busy-state settlement and recovery policy stay unchanged. Manual timing and a
+SIMULATED actual UDP peer exercise cancellation and transport lifetime. Physical Bluetooth,
+camera Wi-Fi, recording/control and recovery checks remain untested for this increment.
+
+## Apple picture-recovery ownership (P2)
+
+The iOS serialized repair and negotiated-picture deadline now live in OpenCineDJIApple.
+Media changes picture intent without canceling admitted endpoint negotiation; a genuine
+current-transport failure still hands off to existing bounded session recovery. The same
+owner queues media return through a nil-driver gap and fences retired attempts from a
+successor. Polling remains 100ms, default picture deadline 16s, and existing held-cycle
+history survives local reset. Native picture/watchdog/gimbal actions and full connect,
+credential, journal and gallery policy remain app adapters. Kotlin retains its existing
+integration scheduler; no portable contract or camera command changes in this Apple-only
+increment. SIMULATED/manual timing and native consumer checks do not qualify physical
+BLE/Wi-Fi/recording/recovery behavior, which remains untested for this increment.
+
 ## Connection regression follow-up
+
+The shared DJI capture port now publishes actual shutter, EV, focus and zoom reports
+separately from pending HUD pins on both platforms. Common duration edits require
+reported Manual exposure and the camera's shutter choices; explicit legacy
+Speed/Angle mode selection keeps its existing policy. Common zoom uses the same
+colour-hop and latest-value command pipeline. Measured iris is read-only, while
+Auto/Starburst remains an integration panel. New native regressions prove report
+versus pin, mode admission and unsent colour-hop target replacement. Physical
+Pocket 3/4/4 Pro format/zoom and Action 6 iris checks remain untested.
 
 The [connection stress matrix](connection-stress-testing.md) is shared maintainer
 tooling for both platforms, with the same evidence and teardown contract. It
@@ -125,6 +225,7 @@ write the exception in the table in the same PR.
 | Live chrome | DISP 1/2 maps, Field Monitor geometry (portrait 3×2 camera values, landscape row, fit/fill, corner controls), picker chrome, record as bottom sheet, zoom chip, gimbal 1–5 gain, expo stick throw (on-screen and a connected game controller), stick pan picture-relative (invert pan on rotate-180 at settle, not joystick 180; extra-mirror = TT180 && Selfie Flip off; MIRROR assist XORs), rec lamp `pressShutter`. Game controller (discussion #159): selected Left/Right stick is the gimbal stick (Left by default); Cross/A records (skips the rec-confirmation sheet); Circle/B recenters; Square/X is rotate-180; Triangle/Y tracks a face in frame or cancels; L1/R1 jump zoom out/in (out does not wrap to tele); L2/R2 hold-to-zoom (deeper trigger is faster); D-pad up/down ISO, left/right shutter; shutter-angle readouts follow the resulting camera value. Controls offers a saved Gimbal joystick Left/Right choice. Toast Gamepad connected/disconnected. Unplug rests stick and zoom. Controls **Gamepad** row is Connected / Not connected. Limit haptic is a rising-edge pulse after the head moves then stalls (phone plus controller rumble). Mapping, extra deadzone slider, and Linear/Smooth/Cinematic curves are not a Controls picker (fixed map; existing 0.08 deadzone + expo + 1–5 gain). iPad hides the system time / battery bar (HUD chips stay). Control toast parks under the mounted top bar (DISP 1 / operator-shown status bar) and on the feed edge when that bar is off (DISP 2). | iOS compositor-owned material vs Android composited translucent tint (no backdrop frame capture); Lucide icons plus the exact custom View Assist catalog. User-approved Android exception: hide both system bars in live view and photo/video playback; other pages hide the status bar while retaining system navigation (buttons or gestures, as configured on the phone). Chrome reserves navigation and display-cutout insets; the platform owns transient status-bar reveal. DualSense rumble uses `GCDeviceHaptics` on iOS and the pad `Vibrator` on Android (phone vibrator if the pad has none). iOS binds `GCController`; Android `KeyEvent`/`MotionEvent` plus `InputManager` for connect. Both shells GET Selfie Flip pid `0x0038` ~1 Hz on the live UDP ACK pump (untracked; not the shared `0x8E` SET/GET waiter) and echo pktType-`0x03` seq in window-ACK group 1 so those replies do not stall. A keepalive BLE Flip GET fires when UDP replies go stale (≥2 s). | **physical** both |
 | Assists | Toolbar 1:1 (LUT, PEAK, FALSE, ZEBRA, WAVE, PARADE, HISTO, VECTOR, LIGHTS, ND, AUDIO, GUIDES, GRID, CROSS, DE-SQ, MIRROR); collapsed palette ranked by use; expanded catalog; leading options inspector; WAVE hold-without-drag opens options; scope plate metrics (`ScopeMiniChrome`); ND is a small HUD chip that first opens in the center, directly draggable like other scope panels; long-press Units switches Stops / ND32 / ND 0.3 (suggestion only, not a SET); number fields in those options (Zebra Highlight / Midtone) lift above the keyboard; number-pad Done dismisses the pad (tap outside still dismisses the popup). GUIDES / GRID / CROSS map to the recorded picture rect (1:1 is the square inside a 16:9 live well), not letterbox padding. | Metal vs Vulkan vs GLES; Vision vs ML Kit Face Detection; native compositors; inspectors reuse existing scope products and bounded source samples | Existing effects: **physical** both; new chrome: UI 2.0 qualification below. Guide-to-picture geometry: core tests; **physical** pending both. |
 | Camera SETs | `CameraSetMailbox` fire-and-forget + 300 ms retransmit + 2 s settle; missed ACK does not revert HUD. FORMAT pin holds the chip/sheet until `cam_video_param_v2` reports the pair — other HUD copies are not confirmation. Empty `camcap_shutter` uses a documented video ladder (not the live 1/N alone) so Speed and Angle can SET; a published table still wins. WB `0x02/0x2C` Auto keeps tint (`00 00 00 <tint i16>`); Custom is kelvin+tint; one in flight (100 ms coalesce). COLOR drum follows the body (D-Log2 is Pocket 4 Pro only; Pocket 4 Normal/HDR/D-Log; Pocket 3 Normal/HDR/D-Log M; Nano 8-bit/10-bit/D-Log M). Auto ISO range floor is 50 on Pocket 3 / Pocket 4 and 100 on Pocket 4 Pro (wide); SET bytes unchanged. ISO D-Log ↔ D-Log2 hop; audio blobs and tap-focus stay round-trips. Two genuine SET timeouts in 5 s may rebuild UDP only when video **and** status are stale (encoder-pause with young `0x01` must not tear the socket). | JNI vs Swift `fireCamera` | **physical** both. Pocket 3 empty-cap shutter/FORMAT: core tests; physical pending. |
+| Camera control seam (CORE-02 candidate) | ISO, white balance and record start/stop go through the OpenCineCore seam `session.control`. An ACK is acceptance; only the camera's own status confirms; a settle with no ACK or matching status is a timeout, never success; a NACK is a camera refusal. Rec lamp, gamepad and watcher toggles become an explicit start or stop from the reported state; start while recording (or stop while idle) sends nothing; unknown record state is refused with a control note. | iOS `status` stays camera-reported for these controls and shows a pending WB request through `pendingWhiteBalance`. Android keeps its optimistic HUD ISO/WB values and the seam reads separate camera-reported values. Apple Watch rec resolves the same way (iOS only). | Unit tests both (`DJICameraSessionAdapterTests`, `DjiCameraSessionAdapterTest`). **physical** pending both. |
 | Zoom | Pocket 4 Pro single tap cycles 1× / 3× and double tap cycles 6× / 12×. Other cameras retain their supported single-tap stops. Hold opens the continuous logarithmic dial through the same coalesced pinch path and safety checks. Supported body stops: Pocket 4 Pro 1×/3×/6×/12×; Pocket 4 1×/2×/4×. Nano is a fixed 1× prime (DJI spec): `supportsZoom` is false, so the chip, disc, pinch and gamepad zoom are hidden or inert and no `0xB8` SET is sent (#413). Pocket 3 is per-FORMAT and measured on a body — 1080 1×/2×/4×, 2.7K and 2160 1:1 1×/2×/3×, 4K and 3K 1:1 1×/2× (see Pocket 3 zoom ceiling per FORMAT). A FORMAT whose ceiling is below the held stop walks the chip back and says so once — `4K caps zoom at 2×` — instead of dropping silently. SlowMo / TimeLapse / SuperNight drop digital zoom (Pro keeps 1×/3× optical). `CamFov` hybrid readout; pinch clamps to that max at 20 Hz without ACK wait. Idle D-Log2 hops to D-Log on the first step off 1× (`0x02/0x42`) and **holds every `0xB8` until `cam_image_effect` is D-Log** — color ACK and an optimistic HUD pin are not enough; the body ignores zoom while still D-Log2. The chip stays at live 1× until that hop lands. While rolling in D-Log2 the chip is gray (0.4, same as lock) but still hittable: tap and pinch toast `Can't change color while recording — D-Log2 can't zoom` and send neither zoom nor color. D-Log / Rec.709 / HLG still zoom while rolling. Chip / pinch must not drop the live picture (same-raster VPS is not an IDR hold; 4 s watchdog grace while the lens slews). | Hit-testing over SurfaceView vs SwiftUI | **physical** both |
 | AE / AWB lock | Still long-press (0.6 s, haptic) then lift on the feed locks Auto exposure: core `AutoExposureLock` pins `@16` ISO (nearest whole stop) and applied shutter as Manual; yellow focus box with `AE-L`; EXPOSURE tile reads `AE-L` and its drum adds `AE-L` left of Auto (Auto unlocks; Manual only drops the lock, no SET); sun + lock-open unlock key beside the focus recenter key while locked (portrait: right of the View Assist column, `FieldMonitorLayout.aeUnlock` / `MonitorLayoutPolicy.aeUnlock`), returning to Auto. The hold haptic fires only when a lock is possible; track arming is silent on both. Exposure-mode choice, shooting-mode change (unlock is sent first), disconnect or an Auto report clears it. WB Mode drum and WB quick dial add **AWB Lock** left of Auto while Auto reports `cam_image_effect` `@5`: Custom at that Kelvin snapped to core `WhiteBalance.kelvinLadder` (2000–10000 K, 100 K; the drum on both), same tint. Core `AutoWhiteBalanceLock` keeps AWB Lock selected (tile `AWB-L`, sheet opens on Mode) until Auto / Custom / Kelvin / tint is chosen (Custom at the same value sends nothing) or the camera reports another mode or Kelvin. No native `0x02/0x68` lock (no captured clear). | Android reads capture / holds / AWB target through JNI `exposureLockDecision`; iOS calls the core directly. | **physical** pending both |
 | Focus box lock | A still long-press (0.6 s, the AE-lock hold) that starts on the tap-focus box (its side plus a 14 pt margin) toggles a lock instead of AE lock: heavy haptic, lock icon at the box's lower corner, VoiceOver/TalkBack announcement. While locked, feed taps do not move focus (control note "Focus box locked. Long-press it to unlock."); long-press+drag tracking, AE lock elsewhere and the focus recenter key still work, and recenter or disconnect unlocks. | Android mirrors `LiveFeedFocusGesture.hitsFocusBox` in Kotlin. | iOS: unit tests (`LiveFeedFocusGestureTests`); Android: `TrackingBoxTest.pressOnTheFocusBoxHitsItWithAFingersMargin`; **physical** pending both |
@@ -1608,3 +1709,277 @@ Bluetooth reconnect, matching both shells' Multiview. Android single-camera
 `completePairing` still accepts `00 06`; that is an open exception until the
 Android shell adopts the same retry. No physical iPhone or Android device was
 used for this change.
+
+### Common-control connection lifetime (2026-10-02 candidate)
+
+The iOS common DJI adapter now has one lifetime per native connection. Operator
+reconnect retires the old controls before replacing the target, including a
+saved-camera scan. Recovery preserves the common session identity and advances
+its link epoch. Owned close invokes existing native teardown once; borrowed
+Multiview return retains the tile's native owner, and Settings/Media coverage
+does not disconnect. No new camera command or stop-record action is added.
+
+The shared binding and semantic scenarios have Swift/Kotlin mirrors; Android
+session composition and verification follow in the coordinated DJI candidate.
+The iOS private-simulator tests exercise the real Pocket session with unopened
+SIMULATED datalinks through owned and borrowed shared-shell paths. Physical
+camera/device qualification remains untested on both platforms. This foundation
+does not complete the root/monitor/settings/media migration.
+
+## Common Pocket monitor composition candidate
+
+Both shells compose the actual connected or explicitly borrowed DJI session
+through `AppShell`, `MonitorScreen`, common recording/timecode status and common
+system-control positions. Settings and Media use the shell's one cover state
+and retain the monitor. Return from a borrowed Multiview monitor releases its
+view once while the tile keeps its transport and decoder. Watch relay keeps its
+existing remote-source experience.
+
+ISO, manual shutter speed, Kelvin and EV capture fields retain typed values
+and the editor opened with the gesture or drum. Unknown recording/mode cannot
+approve video capture. Basic focus mode and zoom cycle taps use the common
+admission path; DJI tracking strategy, angle preference, Auto ISO limits,
+exposure mode, locks and iris strategy remain bounded native actions.
+Continuous zoom pinch/dial completion preserves its existing color-restoration
+ordering. Native Settings/Media contents and transport ownership remain the
+later P-1/P-2/P-3 work.
+
+Automated checks and SIMULATED native fixtures are recorded in the execution
+handoff. Physical iPhone/Android camera qualification for this composition is
+untested; earlier hardware evidence does not qualify the new shared root.
+
+## Apple native picture adoption candidate
+
+The iOS Pocket adapter now uses the shared OpenCineApple decoder, assist engine,
+source bus, compositor, frame baker, picture host, scaler and upscaler. The app
+supplies the existing measured DJI profile and official look data. Native pixel,
+format and presentation tests retain their existing numerical expectations.
+
+Live camera calibration uses actual decoded reports on the runtime's current
+source lease. A covered clip keeps a separate ceiling and tap history. Initial
+attachment and recovery reset seed from the actual source owner; unknown reports
+stay absent. Retiring an old runtime or clip cannot erase its successor. Covers
+and borrowed Multiview return retain the tile's source and picture ownership.
+
+This increment changes iOS native ownership. Android retains its existing native
+decoder/rendering ownership and its actual consumer checks are recorded in the
+handoff. Physical iPhone camera, assists and recovery qualification for the new
+Apple ownership is untested. Remaining session/recovery/keepalive orchestration
+and continuous DJI gesture migration leave full P2 unfinished.
+
+## Apple connection-run ownership candidate
+
+The actual iOS pairing, credentials, AP/station join, identity and registration
+workflow now belongs to OpenCineDJIApple.DjiAppleConnectionRun. The app retains
+saved-storage namespaces, permissions, native picture/watchdog, gimbal teardown
+and full recovery policy. Captured attempts fence delayed and synchronous callbacks;
+registration stays synchronous before initial enable, with original command pacing.
+Android keeps its existing connection owner and platform-specific station/subscribe
+cadence. SIMULATED traces prove workflow parity; physical qualification is untested.
+Full P2 and the prior optical automation limitation remain unfinished.
+
+## Apple heartbeat ownership candidate
+
+iOS moves the actual registration loop, path-loss grace and Selfie Flip fallback into
+OpenCineDJIApple. The app retains native picture/watchdog/gallery and motion policy.
+Timing, command bytes and order stay unchanged; manual-clock/native endpoint checks cover
+retirement and borrowed ownership. Android already owns its native registration in the
+shared DJI layer and receives no timer or command change. Its actual native-staged consumer
+gate remains required for the coherent shared candidate. Physical camera qualification is
+untested. Full P2 and the pre-existing optical UI automation limitation remain unfinished.
+
+## Apple recovery-episode ownership candidate
+
+iOS now composes OpenCineDJIApple.DjiAppleRecoveryEpisode over the actual
+ConnectionRun. The old app task, generation, retry loop, discovery race and
+storm ledger are deleted. The app retains saved-identity enrichment at both
+donor sampling points, permissions, secure storage, native teardown, picture
+observations, motion and media policy. Complete recovery snapshots precede
+observable notification, and captured attempts fence native cleanup and
+synchronous same-camera replacement. Explicit transport ownership is required
+before admission; borrowing a decoder does not grant connection authority.
+
+The original eight attempts, 30s discovery, 180s total/attempt budget, 2.5s card
+grace, stage deadlines and command pacing remain. The original task-group join
+behavior also remains: a cancellation-ignoring OS wait may delay outer timeout
+completion, while its late continuation cannot act against a successor.
+Android retains its existing DJI scheduler and platform cadence; this is an
+Apple-only execution-owner extraction, with neutral backoff mirrored separately.
+The operator detail string uses a Swift Unicode escape for its original glyph;
+runtime text is equivalent.
+
+The five executed old-loop goldens and two demonstrated donor defects are
+preserved in the execution proof. Shared affected manual-clock checks pass;
+actual adopter compilation/native/full consumer qualification is pending.
+SIMULATED registered/enable labels establish synchronous host order, not
+physical wire qualification. Physical camera recovery, full P2 and the prior
+optical UI automation limitation remain unfinished.
+
+## Apple playback-feed, audio and conform ownership candidate
+
+Pocket replaces its copied AVPlayer output/display-link/assist pipeline and audio
+tap/polling implementation with the existing OpenCineApple owners. The app keeps
+its measured DJI calibration, HDR preference, diagnostics, AVAudioSession policy
+and typed operator-effect conversion. Output attachment still precedes native
+item replacement; source retirement and old-owner shutdown affect only the
+captured source. Portable conform preview uses OpenCineMedia's existing policy
+and mirrored Swift/Kotlin vectors.
+The original public tap and video-layout compatibility helpers remain unchanged
+until the whole player/layout migration.
+
+Unknown clip audio now stays absent through the meter overlay and inspector.
+Known PCM zero remains measured silence. Android native playback keeps its
+existing platform owner in this Apple adapter exception. The portable Swift
+conform alias passes the actual Android native-staged consumer gate.
+
+Two native retirement fixtures now establish a real encoded clip and AVPlayer
+output through the existing owner constructor. Their original histogram,
+output-attachment and successor-retirement assertions remain. The generated
+clip is SIMULATED and both fixtures pass with their original assertions.
+They do not expose a public test-only frame input.
+
+Verification passes: 280 portable tests, strict concurrency, repository and
+handbook checks, both simulator architectures, all 50 affected native iOS tests,
+506 Android tests without skips, lint, debug/release assembly and JNI41 validation.
+Staged and packaged native libraries match. Physical playback remains untested.
+Whole player workflow/page, gallery/DUML, assists and delivery ownership remain
+separate work. Full P2 and the prior optical automation limitation remain
+unfinished.
+
+### Pocket shared native export owner
+
+iOS original copy/transcode, LUT baking, preset fallback, export progress,
+readability and metadata sidecars now belong to `MonitorMediaExporter`.
+The app retains Documents/exports, filename extension rules, original error
+cases and the D-Log/D-Log2 cube and embedded shot-color metadata policy.
+The encoded-value and both-direction exported-movie golden assertions remain.
+New app-adapter fixtures cover copy bytes, destination/name, metadata sidecars,
+optional absence and preparation/completion progress. Repository checks,
+both simulator architectures and all eight selected native tests pass.
+Physical iPhone export remains untested.
+
+This ownership move is Apple-only. Android continues sharing original files
+with its existing delivery path; no Android conversion feature is added.
+Full player/delivery workflow ownership and full P2 remain unfinished.
+
+### Pocket actual DJI media producer
+
+The actual connected camera now exposes an optional shared media service.
+Playback entry, catalog wire order/assembler/pagination and finite live return
+move into OpenCineDJIApple. The app retains primitive IO, captured snapshot facts,
+genuine recovery admission and cache/favorite/view policy. Native ingress captures
+its authority before actor queueing. Endpoint/catalog retirement stays separate
+from same-session return, including the existing nil-driver recovery behavior.
+
+Unknown/no-response catalog work retains cached records with the existing
+list-failed message, an explicit correction from the donor's empty publication.
+Actual empty catalog completion remains known empty. Gallery-open refusal,
+newest-page fallback and all original recovery/cache assertions remain intact.
+Thumbnail/transfer/delete operations remain absent in the optional service.
+
+Shared owner/manual-clock and mirrored connection registration scenarios pass.
+Pocket portable/strict/repository gates and both simulator architectures pass;
+all six original recovery, eight original cache and two actual-port native methods
+pass. Android shared/consumer gates, native staging, packages and JNI41 pass.
+Physical camera behavior remains untested. The browse owner is Apple-specific;
+Android retains its existing owner. This is a producer prerequisite, with app
+production growing by 34 lines after explicit authority/registration bindings.
+Whole library/cache/player ownership and full P2 remain unfinished. No pin move.
+
+## Assist owner source proposal, 2026-10-04
+
+Candidate only: the Apple shell composes shared assist state/snapshot, option and placement
+owners, scope plots and retained native inspector work. DJI look catalog, color mapping,
+measured 247/223 preview profile, warm-up bodies and camera-specific focus/attitude chrome
+remain explicit app/integration inputs. Existing preference keys and numeric fixtures remain
+preserved. The optional shared toggle side effect is nil by default; Pocket warms false
+color before live persistence and after playback persistence, matching its original order.
+Direct property changes do not trigger that hook. The actual inspector uses its source lease.
+
+Temporary Android implementation exception: existing Android assist state/sample owners
+remain in place pending a separate prerequisite proposal for shared immutable sampling-time
+clip facts, per-model scope/inspector ownership and actual feed/playback lease composition.
+The shared hook proposal is mirrored in Kotlin with a nil Pocket Android callback, preserving
+its original absence of native warm side effects. Both candidates await reviewed application
+and automated qualification. Physical iOS/Android and operator behavior remain untested.
+
+Source review correction: Swift assist warm-up reads hasPreparedLUT from the actual cached
+state owner, independent of clean/unpinned visibility; the app retains lutEnabled as the
+other original condition. Querying availability does not resolve a look. Kotlin state
+never owns LUT preparation, so no unused mirrored cache API/storage is added there; its
+actual Media render plan/native owner already carries the prepared cube fact. Callback
+API remains mirrored and nil by default. The admitted Apple inspector render now captures
+inspectorFrame, the actual retained publication lease; inspectorSource remains the cheap
+configuration tuple. These source corrections and the resolver-count scenario are unrun.
+
+The app look provider starts not ready and returns nil before any catalog/native lookup.
+After original preference/custom-file migration and last-color restoration, the factory
+marks that provider ready and performs its original enabled-only final refresh. Shared
+initializer defaults stay unchanged. A proposed shared readiness scenario records the
+first native look request only after the restored selection/transfer are available.
+
+The scope correction removes the old app ScopeTraceRenderer, vectorscope renderer and
+texture pool. Shipping plots use shared MonitorUI Metal owners. ScopeTraceMetal is now
+a typealias, so unchanged waveform/parade/scissor numeric assertions exercise that actual
+shared geometry. The app display adapter keeps original LiveHDRDisplay configure,
+effective HDR and present gain, including screen-capture SDR policy. Three proposed
+SIMULATED native tests host the actual shared wave/parade/vector views and exercise
+make/update display configuration, pixel format, layer EDR/colorspace and delegate owner.
+They do not claim physical HDR brightness or rendered-pixel qualification.
+
+### Applied Apple assist and combined delivery candidate
+
+The reviewed Apple assist owner proposal is applied locally beside the seven-file
+shared delivery adapter. Original app native fixtures remain unchanged. Added shared
+state scenarios preserve every original test body; narrow formatting touches changed
+code only. Shared delivery and DJI source are integrated locally in the owned checkout.
+Combined app portable, strict, repository, both-architecture iOS and bounded native
+qualification are pending. Prior settings/DJI results qualify their earlier sources,
+not this uncompiled combined candidate. Android assist adoption remains a separate
+source proposal, with the current Android implementation retained. Physical behavior
+and full thin-app exit remain untested/incomplete. No pins or remote refs move.
+
+## Apple ActiveTrack owner candidate
+
+The Pocket iOS candidate delegates the complete ActiveTrack request/report/polling
+workflow to OpenCineDJIApple. Existing native face/focus presentation, transport
+admission and operator actions remain app policy. Wire commands, request IDs,
+box math, 500ms cadence, six idle ticks and short post-CLEAR push hold retain their
+existing meanings. Late old-driver acknowledgements and reentrant outgoing
+publications cannot start work or mutate a successor tracking request.
+
+This is an Apple-only native ownership increment. Android retains its existing
+integration-owned scheduler and public behavior. Ten manual-clock integration
+scenarios and four actual CameraSession native methods are prepared but unexecuted.
+Compilation, simulator qualification and physical camera behavior are untested
+for this candidate. No app pin or published interface has moved.
+
+The paired Apple camera-settings candidate moves the whole serialized GET/SET
+chain into DJIApple, including mandatory GET-before-DSP-patch and glamour disable.
+Native audio meters, focus/face presentation, saved preference keys and operator
+pins remain host policy. Existing raw bytes, GET order, nil/unknown semantics and
+ordinary rollback behavior remain intact. Twelve tracking and ten camera-settings
+manual-clock cases plus six actual-session native methods are source prepared;
+none has been compiled or executed. Android retains its existing integration
+request scheduler. Physical behavior and the full session checkpoint remain open.
+
+### Apple tap-focus ownership candidate
+
+A source-only Apple candidate moves the complete tap-focus sequence into DJIApple. The
+existing untracked PREPARE, point/hint/commit order and three 800 ms deadlines remain
+unchanged. iOS focus clamping, reticle/face behavior and diagnostic copy stay in the app.
+Android keeps its existing integration workflow and no UI/command behavior change is
+proposed there. Simulated continuation and actual absent-transport host fixtures are
+prepared; automated/platform/physical qualification has not run for this candidate.
+
+### Apple format-poke and zoom-color owner candidate
+
+A source-only paired extraction retires12 native workflow methods and their copied task,
+color-hop and queued-stage state. DJIApple owns both first-picture format changes/waits and
+actual D-Log-confirmed queued zoom release, original mailbox options and wide-angle restore.
+The actual app composition retains single-format editor/shutter policy, gesture/HUD and
+ISO preferences/logging; no whole workflow callback remains.11 native callers and the actual
+incoming-status confirmation hook are wired to the owner. All existing numeric and native
+goldens are retained unchanged.23 new manual-gate shared scenarios and4 actual nil-transport
+native scenarios are proposed, uncompiled/unexecuted. Android preserves its existing
+integration behavior. Physical format/zoom/color/ISO behavior remains untested.

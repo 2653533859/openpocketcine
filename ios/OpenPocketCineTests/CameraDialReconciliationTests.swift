@@ -1,14 +1,83 @@
 import MonitorPresentation
+import OpenCineCore
 import OpenPocketViewCore
 import XCTest
+import OpenCineDJIApple
 
 @testable import OpenPocketCine
 
 @MainActor
 final class CameraDialReconciliationTests: XCTestCase {
+    func testCommonFocusReadsReportsWhileLegacyDisplayIsPinned() {
+        let session = commonFixture()
+        defer { session.disconnect() }
+        let receipt = session.control.request(.set(.focusMode(.continuous)))
+        XCTAssertEqual(receipt.stage, .sent)
+        XCTAssertEqual(session.status.focusMode, .continuous)
+        XCTAssertEqual(session.control.current.value(of: .focusMode).value, .focusMode(.single))
+        session.applyIncomingStatus(subscribe("cam_lens_state", [0xB1]))
+        XCTAssertEqual(session.status.focusMode, .continuous)
+        XCTAssertEqual(session.control.receipt(of: receipt.operation)?.stage, .sent)
+        session.applyIncomingStatus(subscribe("cam_lens_state", [0xB2]))
+        XCTAssertEqual(session.control.receipt(of: receipt.operation)?.stage, .confirmed)
+        XCTAssertEqual(session.control.current.value(of: .focusMode).value, .focusMode(.continuous))
+    }
+
+    func testCommonDurationRequiresReportedManualAndDoesNotConfirmItsPin() {
+        let session = commonFixture()
+        defer { session.disconnect() }
+        let receipt = session.control.request(.set(.shutter(.duration(Rational(1, 100)))))
+        XCTAssertEqual(receipt.stage, .sent)
+        XCTAssertEqual(session.control.current.value(of: .shutter).value,
+                       .shutter(.duration(Rational(1, 50))))
+        var value = [UInt8](repeating: 0, count: 23)
+        value[2] = 100
+        value[3] = 0x80
+        value[7] = ExpoMode.manual.rawValue
+        session.applyIncomingStatus(subscribe("cam_expo_param", value))
+        XCTAssertEqual(session.control.receipt(of: receipt.operation)?.stage, .confirmed)
+        value[7] = ExpoMode.auto.rawValue
+        session.applyIncomingStatus(subscribe("cam_expo_param", value))
+        XCTAssertEqual(session.control.request(.set(.shutter(.duration(Rational(1, 50))))).stage,
+                       .rejected(.unavailable(.mode)))
+        XCTAssertEqual(session.status.expoMode, .auto)
+    }
+
+    func testQueuedCommonZoomReplacesOnlyTheUnsentColorHopTarget() {
+        let session = commonFixture(color: .dLog2)
+        defer { session.disconnect() }
+        let controls = session.control
+        let first = controls.request(.set(.zoom(2)))
+        XCTAssertEqual(first.stage, .admitted)
+        let latest = session.control.request(.set(.zoom(3)))
+        XCTAssertEqual(latest.stage, .admitted)
+        XCTAssertEqual(session.control.receipt(of: first.operation)?.stage, .failed(.notSent))
+        XCTAssertEqual(session.control.current.value(of: .zoom).value, .zoom(1))
+        session.disconnect()
+        XCTAssertEqual(controls.receipt(of: latest.operation)?.stage, .failed(.notSent))
+    }
+
+    private func commonFixture(color: ColorMode = .normal) -> OpenPocketCine.CameraSession {
+        let session = OpenPocketCine.CameraSession(borrowing: HevcDecoder())
+        var actual = CameraStatus()
+        actual.shootingMode = Int(ShootingMode.video.rawValue)
+        actual.recordingReported = true
+        actual.expoMode = .manual
+        actual.shutterDenom = 50
+        actual.availableShutterDenoms = [50, 100]
+        actual.focusMode = .single
+        actual.zoomLens = CamFov.lensPosition(for: 1)
+        actual.colorMode = color
+        let model = CameraModel.resolve(modelId: 0x0020, name: "OsmoPocket3-Test")
+        session.updateMultiview(camera: DjiAppleSighting(id: UUID(), name: model.name, model: model, modelId: 0x0020),
+                                driver: DjiAppleDatalink(port: 9004, tcpPoke: false, pairingToken: ""),
+                                status: actual)
+        return session
+    }
+
     func testAutoShutterCaptionTracksTelemetryWhileEVIsSettling() {
-        let session = CameraSession(borrowing: HevcDecoder())
-        session.datalink = DatalinkDriver(port: 9004, tcpPoke: false, pairingToken: "")
+        let session = OpenPocketCine.CameraSession(borrowing: HevcDecoder())
+        session.datalink = DjiAppleDatalink(port: 9004, tcpPoke: false, pairingToken: "")
         defer { session.disconnect() }
         session.status.expoMode = .auto
         session.setEv(EvComp(thirds: 1))
@@ -32,9 +101,9 @@ final class CameraDialReconciliationTests: XCTestCase {
     }
 
     func testShootingModeDoesNotBounceThroughAnOlderStatusPush() {
-        let session = CameraSession(borrowing: HevcDecoder())
+        let session = OpenPocketCine.CameraSession(borrowing: HevcDecoder())
         // An unopened driver admits the command without opening a socket.
-        session.datalink = DatalinkDriver(port: 9004, tcpPoke: false, pairingToken: "")
+        session.datalink = DjiAppleDatalink(port: 9004, tcpPoke: false, pairingToken: "")
         defer { session.disconnect() }
         session.status.shootingMode = Int(ShootingMode.video.rawValue)
         session.setShootingMode(.slowMo)
@@ -50,8 +119,8 @@ final class CameraDialReconciliationTests: XCTestCase {
     }
 
     func testUnrelatedPushCannotConfirmFocusOrWhiteBalance() {
-        let session = CameraSession(borrowing: HevcDecoder())
-        session.datalink = DatalinkDriver(port: 9004, tcpPoke: false, pairingToken: "")
+        let session = OpenPocketCine.CameraSession(borrowing: HevcDecoder())
+        session.datalink = DjiAppleDatalink(port: 9004, tcpPoke: false, pairingToken: "")
         defer { session.disconnect() }
         session.status.focusMode = .single
         session.status.whiteBalance = .auto
@@ -62,7 +131,9 @@ final class CameraDialReconciliationTests: XCTestCase {
         session.applyIncomingStatus(
             subscribe("cam_image_effect", [0, 0, 0, 0] + WhiteBalance.auto.setPayload))
         XCTAssertEqual(session.status.focusMode, .continuous)
-        XCTAssertEqual(session.status.whiteBalance, .custom(kelvin: 5600, tint: 0))
+        // The WB request stays pending; reported status keeps what the camera said.
+        XCTAssertEqual(session.pendingWhiteBalance, .custom(kelvin: 5600, tint: 0))
+        XCTAssertEqual(session.status.whiteBalance, .auto)
         session.applyIncomingStatus(subscribe("cam_lens_state", [0xB2]))
         session.applyIncomingStatus(
             subscribe(
@@ -76,8 +147,8 @@ final class CameraDialReconciliationTests: XCTestCase {
     }
 
     func testParameterDialsIgnoreUnrelatedFramesUntilTheirOwnConfirmation() {
-        let session = CameraSession(borrowing: HevcDecoder())
-        session.datalink = DatalinkDriver(port: 9004, tcpPoke: false, pairingToken: "")
+        let session = OpenPocketCine.CameraSession(borrowing: HevcDecoder())
+        session.datalink = DjiAppleDatalink(port: 9004, tcpPoke: false, pairingToken: "")
         defer { session.disconnect() }
         session.status.isoLimit = .max800
         session.status.audioChannel = .stereo
@@ -105,7 +176,7 @@ final class CameraDialReconciliationTests: XCTestCase {
     }
 
     func testRejectedChoiceRestoresPriorValueAndReleasesItsPin() {
-        let session = CameraSession(borrowing: HevcDecoder())
+        let session = OpenPocketCine.CameraSession(borrowing: HevcDecoder())
         defer { session.disconnect() }
         // No datalink: command admission fails synchronously.
         session.status.shootingMode = Int(ShootingMode.video.rawValue)

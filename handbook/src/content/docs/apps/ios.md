@@ -7,6 +7,24 @@ The production iOS app is a universal iPhone and iPad SwiftUI shell in
 `ios/OpenPocketCine/`. It is the operator-proven datalink. Generate the Xcode
 project with XcodeGen — see [Setup](../../guides/setup/).
 
+## Cameras and pairing
+
+The cameras page and pairing flow use the shared OpenCine shell. Select a nearby
+camera, tap **Continue**, approve on the camera if asked, and accept the Wi-Fi
+join prompt. Keep DJI Frame Tap off and force quit DJI Mimo before pairing.
+Saved-camera cards retain Camera Wi-Fi, Wi-Fi and Hotspot setups; **Add setup**
+opens the existing network wizard. A connection failure offers the relevant
+retry, setup-edit or Settings action. Multiview stays available from the cameras
+page.
+
+Long-press a Wi-Fi or hotspot setup to **Forget** it. **Privacy** and **Terms**
+are in Settings.
+
+Updates keep saved camera identities, network credentials, media favorites and
+preferences. The saved-camera document mirrors the legacy records so a later
+upgrade can merge edits made in an older build. **Forget** removes the camera's
+saved Wi-Fi credential as well as its saved card.
+
 ## Field Monitor interface
 
 The native UI uses Sora typography, cyan controls and dark panels. Portrait
@@ -63,6 +81,10 @@ timecode and REC SETUP sit in a separate row below the notch or status area.
 View Assist, FIT/FILL and the joystick cluster stay above the camera values in
 fixed positions when switching FIT/FILL.
 
+Settings and Media cover the current monitor while its camera and picture host
+remain active. Returning to the monitor keeps the same connection. A Multiview
+member returns to its grid without ending that member's camera connection.
+
 The camera battery gauge shows the percentage reported by your Osmo, or a dash
 when unavailable. Top capture settings, STBY and timecode align in one row;
 Lock matches the Settings and Media button size.
@@ -98,7 +120,10 @@ It does not change the camera's HDR/HLG color mode or the file on the card.
 Turn it off indoors; extra brightness uses more power.
 
 Operator Setup and Media use a navigation rail in landscape and scrolling tabs
-in portrait. Settings and Media place Back outside the full-height sidebar in
+in portrait. Operator Setup tabs stay joined when switching orientations.
+View Assist cards use one column on a
+narrow page and two when there is room for both sets of controls. Saved options
+and clean-view pins stay in place when switching tabs or resizing the page. Settings and Media place Back outside the full-height sidebar in
 landscape; portrait keeps it beside the brand and title in the header. Back uses
 the same button styling as the live-view controls. The bottom of the Media sidebar
 holds one row with Grid and List buttons and Small/Medium/Large sizes; in portrait,

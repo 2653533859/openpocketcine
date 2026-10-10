@@ -1,9 +1,12 @@
-import CoreMedia
+import OpenCineApple
 import OpenPocketViewCore
 import XCTest
+import OpenCineMedia
 
 @testable import OpenPocketCine
 
+/// This app's `HevcDecoder` (its effects demand, Watch preview and runtime configuration) on
+/// parameter-set changes.
 @MainActor
 final class EncoderFormatChangeTests: XCTestCase {
     func testSameRasterSpsDoesNotHoldIDR() {
@@ -73,7 +76,7 @@ final class EncoderFormatChangeTests: XCTestCase {
     func testWatchDemandStartsOneDecoderWithoutAssistsAndSurvivesReset() throws {
         let sets = Self.annexB([Self.vps, Self.sps, Self.pps])
         let control = HevcDecoder()
-        control.effects = LiveImageEffects()
+        control.effects = MonitorFrameEffects()
         _ = control.decode(accessUnit: sets)
         XCTAssertEqual(control.vtRebuildCount, 0, "Unpaired identity keeps its existing path")
 
@@ -83,7 +86,7 @@ final class EncoderFormatChangeTests: XCTestCase {
         try XCTSkipUnless(capability.vtRebuildCount == 1, "no VT HEVC decoder on this host")
 
         let decoder = HevcDecoder()
-        decoder.effects = LiveImageEffects()
+        decoder.effects = MonitorFrameEffects()
         decoder.needsWatchPreview = true
         var enables = 0
         decoder.onHandoffNeedsIDR = { enables += 1 }
@@ -100,12 +103,6 @@ final class EncoderFormatChangeTests: XCTestCase {
         _ = decoder.decode(accessUnit: sets)
         XCTAssertEqual(decoder.vtRebuildCount, beforeReconnect + 1)
         XCTAssertEqual(enables, 0, "Reconnect uses the normal first GOP")
-    }
-
-    func testLivePresentTimingDoesNotPaceAtThirtyFps() {
-        let timing = LiveViewPresentTiming.sampleTiming(frameIndex: 1)
-        let seconds = CMTimeGetSeconds(timing.duration)
-        XCTAssertLessThan(seconds, 1.0 / 50.0)
     }
 
     private static func annexB(_ nals: [[UInt8]]) -> [UInt8] {

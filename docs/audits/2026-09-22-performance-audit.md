@@ -6,6 +6,9 @@ Surfaces: portable core, iOS shell, Android shell and their shared native UI.
 This change records engineering evidence and adds a synthetic host probe; it
 changes no app behavior or budget.
 
+Source links follow current shared owners. File names, line references and findings
+below retain the reviewed audit baseline.
+
 ## Status and evidence limits
 
 The source review covers decode, GPU looks, composition, chrome, control/status,
@@ -69,7 +72,7 @@ lines 490–522 invokes `syncAssists` from a Compose `LaunchedEffect`; overlay
 dismissal also calls `redrawLast` at line 851.
 [LiveVulkanSession](../../Apps/Android/app/src/main/kotlin/com/opencapture/openpocketcine/feed/LiveVulkanSession.kt)
 lines 170–179 and 224–288 call JNI directly, ending in `nativeRedraw`.
-[opc_vulkan.cpp](../../Apps/Android/app/src/main/cpp/opc_vulkan.cpp) lines 2344–2362
+[opc_vulkan.cpp](../../../OpenCine/Android/vulkan/src/main/cpp/opc_vulkan.cpp) lines 2344–2362
 shares the frame-submit mutex; `renderFrame` at 1733–1759 waits on fences, can
 prepare pipelines and acquires a swapchain image. The timeout is one second;
 this is **not** an observed one-second UI stall. The present gate accounts for
@@ -119,7 +122,7 @@ lines 313–317 falls back to an original when a proxy is absent.
 lines 453/489 and [PlaybackFeedView](../../Apps/Android/app/src/main/kotlin/com/opencapture/openpocketcine/media/PlaybackFeedView.kt)
 line 70 propagate actual dimensions. `LiveFeedEffectsSession` lines 116,
 328–329 and 356–363 allocate source and grade targets at those dimensions.
-[FeedPresentPolicy.MAX_WORKING_WIDTH](../../Apps/Android/app/src/main/kotlin/com/opencapture/openpocketcine/feed/FeedPresentPolicy.kt)
+[FeedPresentPolicy.MAX_WORKING_WIDTH](../../../OpenCine/Android/media/src/main/kotlin/com/opencapture/opencine/media/FeedPresentPolicy.kt)
 is 1440 but has no production consumer. iOS already prepares a bounded working raster.
 
 A nominal RGBA8 target is 31.6 MiB at 3840×2160 versus 4.45 MiB at 1440×810;
@@ -133,7 +136,7 @@ cannot establish that production honors the cap.
 
 ### R4: Android status bridge and HUD publication
 
-[PocketCameraSession](../../Apps/Android/app/src/main/kotlin/com/opencapture/openpocketcine/session/PocketCameraSession.kt)
+[PocketCameraSession](../../../OpenCine/Android/dji/src/main/kotlin/com/opencapture/opencine/dji/PocketCameraSession.kt)
 lines 2208–2214 reconstructs full status through JSON for each handled DUML frame,
 including frames the shared decoder does not recognize. Changed state is assigned
 directly at 2325–2330; `LiveViewScreen` collects it at line 126. StateFlow equality
@@ -142,11 +145,12 @@ publication policy. iOS [CameraSession](../../ios/OpenPocketCine/CameraSession.s
 lines 49–70 retains immediate control truth separately from its 5 Hz notification
 gate. Root collection alone does not prove every Android widget recomposes.
 
-[SwiftCoreJNI](../../Sources/OpenPocketCineAndroidFacade/SwiftCoreJNI.swift)
-`swiftCoreApplyStatus` parses the incoming status before asking whether the frame
-is recognized. [AndroidSessionWire](../../Sources/OpenPocketCineAndroidFacade/AndroidSessionWire.swift)
-lines 113–317 repeatedly scans the same string for each field. The host probe
-below isolates this cost. It excludes Kotlin `JSONObject`, JNI copying and UI work.
+Status JSON lives in
+[DjiNativeWire](../../../OpenCine/Sources/OpenCineDJIAndroid/DjiNativeWire.swift).
+[DjiNativeJNI.swiftCoreApplyStatus](../../../OpenCine/Sources/OpenCineDJIAndroid/DjiNativeJNI.swift)
+rejects an unrecognized frame before parsing the previous status, then indexes that JSON once.
+The September 22 measurement below recorded the older per-field rescan. The host probe
+isolates the current codec cost. It excludes Kotlin `JSONObject`, JNI copying and UI work.
 
 Quick experiment: reject non-status frames before rebuilding state, using the
 shared decoder's recognition rules so new opcodes are not silently lost.
@@ -163,7 +167,7 @@ HUD updates must respect 5 Hz without delaying REC, format or control settlement
 [LiveFeedPlan](../../Apps/Android/app/src/main/kotlin/com/opencapture/openpocketcine/feed/LiveFeedPlan.kt)
 line 57 rebuilds plan objects for scope, inspector, ISO and look state.
 `LiveFeedEffectsSession` line 350 compares reference identity, releases effects
-and creates [FeedEffectsGlProgram](../../Apps/Android/app/src/main/kotlin/com/opencapture/openpocketcine/feed/FeedEffectsGlProgram.kt).
+and creates [FeedEffectsGlProgram](https://github.com/erik-sutton95/OpenPocketCine/blob/cc97a3d80021d59a28a1b133f823adb7ead9d044/Apps/Android/app/src/main/kotlin/com/opencapture/openpocketcine/feed/FeedEffectsGlProgram.kt).
 Its lines 30–42/255 recreate programs and cube textures. This is event-driven,
 not shader compilation per frame. CPU cube caching does not retain GL resources.
 
@@ -177,7 +181,7 @@ and forced live GLES. Shader-cache-dependent duration remains unmeasured.
 
 [FeedEffectsRenderPlan](../../Apps/Android/app/src/main/kotlin/com/opencapture/openpocketcine/feed/FeedEffectsRenderPlan.kt)
 lines 133–135 creates `inspectorOnly` scope demand.
-[LiveScopeSampleBus](../../Apps/Android/app/src/main/kotlin/com/opencapture/openpocketcine/feed/LiveScopeSampleBus.kt)
+[LiveScopeSampleBus](../../../OpenCine/Android/media/src/main/kotlin/com/opencapture/opencine/media/ScopeSampling.kt)
 line 90 encodes its 200 ms interval. However, `LiveFeedEffectsSession` line 193
 and `LiveVulkanSession` line 456 call `chromeSampleIntervalNs` with scope count
 and backdrop demand, losing that flag. One inspector scope can thus use the
@@ -237,7 +241,7 @@ lines 160/280 has a useful held-frame cache, but correctly bypasses it for
 FALSE/ZEBRA and mutable working buffers. Removing that safeguard would cache stale
 pixels. [AssistInspectorImageRenderer](../../ios/OpenPocketCine/Assists/AssistInspectorImageRenderer.swift)
 lines 109/164 makes a ≤320 px look image, then
-[MonitorBackdropRenderer](../../Sources/MonitorUI/MonitorBackdropRenderer.swift)
+`MonitorBackdropRenderer` (OpenCine `Sources/MonitorUI/MonitorBackdropRenderer.swift`)
 lines 70–112 makes four distinct blur/saturation products for seven surface roles.
 That is five image-production calls per uncached single-source job, not five
 full-resolution captures. `createCGImage` alone does not prove CPU readback.
@@ -282,7 +286,7 @@ storage layouts or claiming an FPS gain.
 [MultiviewSession](../../ios/OpenPocketCine/MultiviewSession.swift) lines 250–298
 starts discovery and lines 447/468 restart it after network setup. The scanner
 can remain active with a populated stage; application-state changes at 563–581
-do not stop it. [BleLink](../../ios/OpenPocketCine/BleLink.swift) lines 118–128
+do not stop it. [BleLink](../../../OpenCine/Sources/OpenCineDJIApple/DjiAppleBluetoothLink.swift) lines 118–128
 requests duplicate advertisements and lines 346–357 yields matching advertisements
 before Multiview deduplicates them. Explicit session stop correctly ends scanning.
 RF callback rate and energy cost were not measured.
@@ -318,26 +322,26 @@ Transport inspection also found existing limits worth preserving:
 
 - Both datalink owners stop the 25 ms ACK pump on close/rebind. Flip GET,
   gimbal emission and low-rate diagnostics share that pump; keep all three ACK
-  windows, including command replies. See [iOS driver](../../ios/OpenPocketCine/DatalinkDriver.swift)
-  lines 801–843/1054–1093 and [Android driver](../../Apps/Android/app/src/main/kotlin/com/opencapture/openpocketcine/session/DatalinkDriver.kt)
+  windows, including command replies. See [iOS driver](../../../OpenCine/Sources/OpenCineDJIApple/DjiAppleDatalink.swift)
+  lines 801–843/1054–1093 and [Android driver](../../../OpenCine/Android/dji/src/main/kotlin/com/opencapture/opencine/dji/DatalinkDriver.kt)
   lines 714–768/981–989.
 - BLE presence and UDP keepalive are about 1 Hz during a session; gimbal readback
   is receipt-driven at at most 1 Hz. Active tracking's 500 ms poll has explicit
   active/cancel lifetime. Connection retry probes are bounded, not always-idle
   timers. Android's 250 ms receive timeout is a small wakeup candidate whose
   priority cannot be inferred without profiling.
-- [WatchRelay](../../ios/OpenPocketCine/WatchRelay.swift) lines 128–155 gates work
+- [WatchRelay](../../../OpenCine/Sources/OpenCineWatch/WatchRelay.swift) lines 128–155 gates work
   before JPEG encoding and allows three outstanding frames. Wrist sleep stops
   JPEG work while intentionally retaining native decode/GOP ownership.
-  [WatcherRelayHost](../../ios/OpenPocketCine/WatcherRelayHost.swift) lines 140–159
+  [WatcherRelayHost](../../../OpenCine/Sources/OpenCineRelayApple/WatcherRelayHost.swift) lines 140–159
   and 584–609 bounds source admission and skips encoding when no watcher can
   accept video; state sends are 5 Hz. Joined-client recovery polling stops on leave.
 
 ## Host status-codec measurement
 
 Run `just performance-status-probe`. The [probe](../../tools/performance-status-probe.sh)
-copies current production core and `AndroidSessionWire` into an isolated temporary
-Swift package, builds Release and removes it afterward. It uses synthetic data,
+builds the sibling OpenCine products `OpenCineDJI` and `OpenCineDJIAndroid` in an
+isolated temporary Swift package, builds Release and removes it afterward. It uses synthetic data,
 asserts recognized battery updates and unknown-frame rejection, warms each case
 100 times, then records seven batches of 3,000 calls. Timings are informational;
 there is no hardware-dependent timing assertion.

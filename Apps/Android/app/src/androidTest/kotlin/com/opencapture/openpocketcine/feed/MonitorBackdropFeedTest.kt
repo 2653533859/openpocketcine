@@ -12,6 +12,8 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import com.opencapture.opencine.runtime.InspectorPreviewFrame
+import com.opencapture.opencine.media.FeedEffectsRenderPlan
 
 /** Exercises actual asynchronous bitmap publication and the production EGL grade path. */
 @RunWith(AndroidJUnit4::class)
@@ -25,7 +27,7 @@ class MonitorBackdropFeedTest {
         instrumentation.runOnMainSync { feed.attach(next) }
         assertNull(feed.acquire(next, 1_000_000_000))
         feed.submit(stale, frame(255, 0, 0), FeedEffectsRenderPlan.IDENTITY)
-        var ticket: BackdropFrameAdmission.Ticket? = null
+        var ticket: com.opencapture.opencine.runtime.BackdropFrameAdmission.Ticket? = null
         await { ticket = feed.acquire(next, 1_000_000_000); ticket != null }
         feed.submit(checkNotNull(ticket), frame(0, 255, 0), FeedEffectsRenderPlan.IDENTITY)
         await { feed.source.image != null }

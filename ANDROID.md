@@ -19,17 +19,17 @@ This file is the Android build and I/O notes that implement those rows.
 Source: the public [OpenZCine](https://github.com/erik-sutton95/OpenZCine) repository.
 
 1. **Portable Swift core** — `Sources/OpenPocketViewCore/` never imports SwiftUI, UIKit, or Android.
-2. **Android JNI facade** — `Sources/OpenPocketCineAndroidFacade/` owns the session that talks to the camera on Android, plus hand-written `@_cdecl` JNI shims (`SwiftCoreJNI.swift`). A header-only `CJNI` target exposes NDK `<jni.h>` on Android only.
+2. **Android JNI facade:** `Sources/OpenPocketCineAndroidFacade/` holds this app's hand-written `@_cdecl` JNI shims (`SwiftCoreJNI.swift`): LUT packing, feed effects and core version, exported as `Java_com_opencapture_openpocketcine_bridge_SwiftCore_*` for `bridge/SwiftCore.kt`. The camera session is OpenCine's `Android/dji` (step 4). The DJI wire natives for OpenCine's `com.opencapture.opencine.dji.DjiNative` (`Java_com_opencapture_opencine_dji_DjiNative_*`) come from OpenCine `Sources/OpenCineDJIAndroid/DjiNativeJNI.swift`, linked into the same `.so`. OpenCineJNISupport provides the shared JNI helpers and re-exports OpenCineJNI's NDK `<jni.h>` types on Android.
 3. **Cross-compile, don’t SPM-link** — Gradle task `:app:stageSwiftCore` (`just android-core`, `scripts/android-stage-swift-core.sh`) builds `aarch64-unknown-linux-android29` and stages `libOpenPocketCineAndroid.so` plus the Swift runtime `.so` closure into generated jniLibs. **arm64-v8a only.** Toolchain pin: Swift **6.3.3** + `swift-6.3.3-RELEASE_android`.
-4. **Kotlin seam** — `Apps/Android/core-api` defines `CameraSession` / `CameraIdentity` interfaces. The Compose app implements them with `SwiftCoreCameraSession` over JNI. Kotlin does not pack protocol bytes.
+4. **Kotlin seam:** OpenCine's `dji` module holds the DJI session (`DjiCameraSession`, which drives the camera over JNI and exposes OpenCineCore `CameraSession` through `DjiCameraSessionAdapter`) and everything it runs on: BLE link, Wi-Fi joining, datalink driver, command and status models, gimbal programs, connection and live-view policies, `ConnectionPhase`, `DjiNative`. This app supplies `session/AppSessionHost.kt` (operator preferences, feed incident recorder, reliability reporting, build identity, ML Kit face detection) and keeps all UI; `AppModel` loads `libOpenPocketCineAndroid.so` (through `SwiftCore.isAvailable`) before any session code runs. Kotlin does not pack protocol bytes.
 5. **Same applicationId as iOS bundle** (`com.opencapture.openpocketcine`). Design tokens are duplicated as floats in `Theme.kt` / `pairing/StartupDesign.kt` so connection screens match.
 
 iOS links the core via Swift Package Manager. Android does **not** consume that SPM product at runtime — only the cross-compiled `.so`.
 
 ### Android SDK
 
-The app and `:monitor-ui` use the shared `androidCompileSdk` version in
-`Apps/Android/gradle/libs.versions.toml` (API 37). Install the stable SDK platform
+The app and the shared `monitor-ui` library use the same `androidCompileSdk`
+version in their `gradle/libs.versions.toml` catalogs (API 37). Install the stable SDK platform
 with `sdkmanager "platforms;android-37.0"`, or let Gradle install it after accepting
 the Android SDK licenses. `minSdk` remains 29 and the app's `targetSdk` remains 36.
 The newer compile SDK satisfies the Compose dependencies' declared requirements;
@@ -39,13 +39,25 @@ AAR metadata checks stay enabled in both Android modules. The library's AAR
 packaging task consumes their output, so disabling them can fail on a clean
 checkout even when an incremental build passes with old outputs present.
 
+### Shared Android modules (OpenCine)
+
+`monitor-ui`, `core`, `media`, `decoder`, `dji`, `vulkan` and `multicam` live in the OpenCine
+platform repository (`Android/`, one Gradle build). Clone it next to this
+repository (`../OpenCine`, at the commit in `opencine-pins.txt`).
+`Apps/Android/settings.gradle.kts` includes `../../../OpenCine/Android` as the
+build `opencine` and substitutes each `com.opencapture.opencine:*` coordinate
+with its project. CI clones it into the same sibling path
+(`scripts/checkout-opencine.sh`). `just android-check` also runs the UI
+library's unit tests and lint (`:opencine:monitor-ui:testDebugUnitTest`,
+`:opencine:monitor-ui:lint`).
+
 ## Pocket mapping
 
 | Piece | OpenPocketCine |
 | --- | --- |
 | Portable Swift core | `OpenPocketViewCore` (DUML, HEVC depacketizer, saved-camera records, connection phase) |
 | JNI facade | `OpenPocketCineAndroidFacade`: BLE/Wi-Fi/UDP session that calls the core, JNI surface for scan/connect/live-frame callbacks |
-| `core-api` | Kotlin `CameraSession` wrapping the facade |
+| OpenCine `dji` | DJI session `DjiCameraSession`, BLE link, Wi-Fi joining, datalink, wire models, gimbal programs, `ConnectionPhase` (BLE, Wi-Fi, datalink stages), `DjiCameraSessionAdapter`, JNI facade `DjiNative`; the app's side is `AppSessionHost` |
 | Compose shell | Splash + saved cameras + Osmo connection wizard using the same `StartupColors` / `BrandColors` floats as iOS |
 | Saved cameras | `SharedPreferences` file `openpocketcine.saved-cameras`, key `records-json`. Wi-Fi passwords stay out of prefs (re-read over BLE, same as iOS) |
 | applicationId | `com.opencapture.openpocketcine` on iOS and Android |
@@ -59,7 +71,7 @@ Nikon PTP-IP, AccessorySetupKit / `NIKON_ZR_*` SSIDs, multi-setup path chips, OC
 Done in-tree (see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)):
 
 1. Same Swift Android SDK pin OpenZCine uses (6.3.3).
-2. `OpenPocketCineAndroidFacade` + `CJNI` in `Package.swift` (`#if os(Android)` JNI).
+2. `OpenPocketCineAndroidFacade` + OpenCineJNISupport in `Package.swift` (`#if os(Android)` JNI).
 3. Gradle `:app:stageSwiftCore` stages `libOpenPocketCineAndroid.so`.
 4. Compose splash → empty-store wizard / saved list → live HEVC (MediaCodec) using enable-once + ACK pump.
 
@@ -82,7 +94,7 @@ the production `CameraSoftAP` ladder.
 
 ### Live picture
 
-Vulkan (`libopc_vulkan.so`) when init succeeds: MediaCodec → `ImageReader`
+Vulkan (`libopc_vulkan.so`, built by the sibling OpenCine `Android/vulkan` module) when init succeeds: MediaCodec → `ImageReader`
 AHardwareBuffer → YCbCr convert 1:1 at the 720p HEVC raster (sampling 4:2:0
 at panel size is the Adreno mosaic). The Rec.709 cube is a 3D texture
 (`CIColorCube`); a 2D blue-slice atlas bled across tiles and blotched
@@ -149,7 +161,7 @@ pass when no look is on.
 
 ### HUD status
 
-Compose collects `PocketCameraSession.chromeStatus`: DUML telemetry reaches it
+Compose collects `DjiCameraSession.chromeStatus`: DUML telemetry reaches it
 at most every 200 ms (`LiveChromeThrottle`, iOS parity). Operator fields and
 control writes publish immediately. Control code reads `status`.
 

@@ -1,13 +1,19 @@
 package com.opencapture.openpocketcine.feed
 
-import com.opencapture.openpocketcine.assists.CrushClipCompensation
-import com.opencapture.openpocketcine.session.CameraCommands
+import com.opencapture.opencine.vocabulary.CameraCommands
+import com.opencapture.opencine.media.MonitorCrushClipCompensation
 import kotlin.math.abs
-import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import com.opencapture.opencine.dji.inferred
+import com.opencapture.opencine.vocabulary.fromColorMode
+import com.opencapture.opencine.vocabulary.COLOR_DLOG_M
+import com.opencapture.opencine.dji.DjiScopeExposureCeiling as ScopeExposureCeiling
+import com.opencapture.opencine.media.LiveColorScience
+import com.opencapture.opencine.media.MonitorTransfer
+import com.opencapture.opencine.runtime.MonitorGlesUpscaler
 
 class FeedUpscaleTest {
     @Test
@@ -18,7 +24,7 @@ class FeedUpscaleTest {
                 val signal = byte / 255.0
                 assertEquals(signal * 100, ScopeDisplayScale.monitorPercent(signal, transfer, iso), 1e-8)
             }
-            assertEquals(255, ScopeExposureCeiling.clipByte(transfer, iso))
+            assertEquals(255, ScopeExposureCeiling().clipByte(transfer, iso))
         }
         assertEquals(0.40000007, LiveColorScience.encode(0.18, transfer), 1e-7)
         assertEquals(0.698565282656276, LiveColorScience.encode(0.72, transfer), 1e-6)
@@ -28,23 +34,52 @@ class FeedUpscaleTest {
     fun reconstructsOnlyWhenThePanelMagnifies() {
         // Fast reconstructs the 720p Rec.709 bake, not log RGB before the cube.
         assertTrue(
-            FeedUpscaler.shouldReconstructToDisplay(1280f, 720f, 1920f, 1080f),
+            MonitorGlesUpscaler.shouldReconstructToDisplay(1280f, 720f, 1920f, 1080f),
         )
         assertTrue(
-            !FeedUpscaler.shouldReconstructToDisplay(1280f, 720f, 1080f, 608f),
+            !MonitorGlesUpscaler.shouldReconstructToDisplay(1280f, 720f, 1080f, 608f),
             "portrait S25 well minifies 720p — cubic would alias",
         )
-        assertTrue(!FeedUpscaler.shouldReconstructToDisplay(1280f, 720f, 1280f, 720f))
-        assertTrue(!FeedUpscaler.shouldReconstructToDisplay(0f, 720f, 1920f, 1080f))
+        assertTrue(!MonitorGlesUpscaler.shouldReconstructToDisplay(1280f, 720f, 1280f, 720f))
+        assertTrue(!MonitorGlesUpscaler.shouldReconstructToDisplay(0f, 720f, 1920f, 1080f))
     }
 }
 
 class LiveColorScienceTest {
     private val transfers = MonitorTransfer.entries
 
-    @BeforeTest
-    fun resetCeiling() {
-        ScopeExposureCeiling.reset()
+    @Test
+    fun twoFeedsKeepTheirOwnClipCeiling() {
+        // Two feeds (live, Multiview tile or playback) at different ISO: one's ISO and tap max
+        // never move the other's ceiling, and each bundle carries its own source's ceiling.
+        val a = ScopeExposureCeiling()
+        val b = ScopeExposureCeiling()
+        a.syncISO(800)
+        b.syncISO(1600)
+        b.observeTapMax(248, MonitorTransfer.DLOG2)
+        assertEquals(800, a.resolvedISO())
+        assertEquals(231, a.clipByte(MonitorTransfer.DLOG2))
+        assertEquals(247, a.clipByte(MonitorTransfer.DLOG2, 1600))
+        assertEquals(248, b.clipByte(MonitorTransfer.DLOG2))
+        assertEquals(247, ScopeExposureCeiling.UNOBSERVED.clipByte(MonitorTransfer.DLOG2))
+        val pixels = ByteArray(4 * 4 * 4) { 120 }
+        val bundleA = PocketScopeSampler.sample(pixels, 4, 4, 16, MonitorTransfer.DLOG2, includePoints = false, ceiling = a)
+        val bundleB = PocketScopeSampler.sample(pixels, 4, 4, 16, MonitorTransfer.DLOG2, includePoints = false, ceiling = b)
+        assertEquals(800, bundleA.iso)
+        assertEquals(231, bundleA.ceiling.clipByte(MonitorTransfer.DLOG2))
+        assertEquals(1600, bundleB.iso)
+        assertEquals(248, bundleB.ceiling.clipByte(MonitorTransfer.DLOG2))
+        assertEquals(100.0, WaveformIre.ire(231 / 255.0, MonitorTransfer.DLOG2, ceiling = a), 1e-9)
+        assertEquals(100.0, WaveformIre.ire(248 / 255.0, MonitorTransfer.DLOG2, ceiling = b), 1e-9)
+        assertTrue(WaveformIre.ire(247 / 255.0, MonitorTransfer.DLOG2, ceiling = b) < 100.0)
+        a.syncISO(1600)
+        b.syncISO(800)
+        assertEquals(800, bundleA.iso)
+        assertEquals(1600, bundleB.iso)
+        assertEquals(231, bundleA.ceiling.clipByte(MonitorTransfer.DLOG2))
+        assertEquals(248, bundleB.ceiling.clipByte(MonitorTransfer.DLOG2))
+        assertEquals(247, a.clipByte(MonitorTransfer.DLOG2))
+        assertEquals(232, b.clipByte(MonitorTransfer.DLOG2))
     }
 
     @Test
@@ -82,12 +117,12 @@ class LiveColorScienceTest {
 
     @Test
     fun liveTapCeilingUsesMeasuredPreviewMax() {
-        assertEquals(247, ScopeExposureCeiling.clipByte(MonitorTransfer.DLOG2, 1600))
-        assertEquals(223, ScopeExposureCeiling.clipByte(MonitorTransfer.DLOG, 1600))
-        assertEquals(223, ScopeExposureCeiling.clipByte(MonitorTransfer.DLOG, 400))
-        assertEquals(255, ScopeExposureCeiling.clipByte(MonitorTransfer.REC709, 1600))
-        assertEquals(231, ScopeExposureCeiling.clipByte(MonitorTransfer.DLOG2, 800))
-        assertEquals(247, ScopeExposureCeiling.clipByte(MonitorTransfer.DLOG2, 3200))
+        assertEquals(247, ScopeExposureCeiling().clipByte(MonitorTransfer.DLOG2, 1600))
+        assertEquals(223, ScopeExposureCeiling().clipByte(MonitorTransfer.DLOG, 1600))
+        assertEquals(223, ScopeExposureCeiling().clipByte(MonitorTransfer.DLOG, 400))
+        assertEquals(255, ScopeExposureCeiling().clipByte(MonitorTransfer.REC709, 1600))
+        assertEquals(231, ScopeExposureCeiling().clipByte(MonitorTransfer.DLOG2, 800))
+        assertEquals(247, ScopeExposureCeiling().clipByte(MonitorTransfer.DLOG2, 3200))
         assertEquals(
             ScopeDisplayScale.CLIP_LEVEL,
             ScopeDisplayScale.waveformLevel(247.0 / 255, MonitorTransfer.DLOG2, 1600),
@@ -102,7 +137,7 @@ class LiveColorScienceTest {
             ScopeDisplayScale.waveformLevel(188.0 / 255, MonitorTransfer.DLOG2, 1600) <
                 ScopeDisplayScale.CLIP_LEVEL - 0.05,
         )
-        val ignored = ScopeExposureCeiling.observeTapMax(255, MonitorTransfer.DLOG2)
+        val ignored = ScopeExposureCeiling().observeTapMax(255, MonitorTransfer.DLOG2)
         assertEquals(247, ignored.first)
     }
 
@@ -176,7 +211,7 @@ class LiveColorScienceTest {
                 SpikeCase("recoverable D-Log2 highlight does not clip", MonitorTransfer.DLOG2, 188, crush = false, clip = false),
             ) +
                 transfers.map {
-                    SpikeCase("toe pile-up crushes", it, it.scopeAnchors(1600).crushFloorByte + 1, crush = true, clip = false)
+                    SpikeCase("toe pile-up crushes", it, it.scopeAnchors(1600, ceiling = ScopeExposureCeiling.UNOBSERVED).crushFloorByte + 1, crush = true, clip = false)
                 } +
                 transfers.map { SpikeCase("curve top clips", it, 255, crush = false, clip = true) }
         for (case in cases) {
@@ -200,7 +235,7 @@ class LiveColorScienceTest {
                 bins,
                 bins,
                 MonitorTransfer.DLOG2,
-                threshold = CrushClipCompensation.QUARTER.pixelFractionThreshold,
+                threshold = MonitorCrushClipCompensation.QUARTER.pixelFractionThreshold,
             )
         assertFalse(strict.red.crush)
         assertTrue(forgiving.red.crush)

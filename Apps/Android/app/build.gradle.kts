@@ -36,11 +36,6 @@ android {
         ndk {
             abiFilters += supportedAndroidAbi
         }
-        externalNativeBuild {
-            cmake {
-                arguments += "-DANDROID_STL=c++_static"
-            }
-        }
     }
 
     ndkVersion = "28.2.13676358"
@@ -63,13 +58,6 @@ android {
                 "AndroidGradlePluginVersion",
                 "UseTomlInstead",
             )
-    }
-
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
-            version = "3.22.1"
-        }
     }
 
     // Play closed testing signs with the upload keystore from the environment.
@@ -234,6 +222,26 @@ val stageSwiftCore =
             fileTree(repositoryRoot) {
                 include("Package.swift", "Package.resolved", "Sources/**")
             },
+            // OpenCineMedia, OpenCineMotion, OpenCineRelay, OpenCineDJI (re-exported by
+            // OpenPocketViewCore), OpenCineCore, which they depend on, and OpenCineDJIAndroid (the
+            // DjiNative JNI exports): the root Package.swift takes them from the sibling OpenCine
+            // checkout.
+            fileTree(repositoryRoot.resolve("../OpenCine")) {
+                include(
+                    "Package.swift",
+                    "Sources/OpenCineMedia/**",
+                    "Sources/OpenCineMotion/**",
+                    "Sources/OpenCineRelay/**",
+                    "Sources/MonitorPresentation/**",
+                    "Sources/OpenCineCameraVocabulary/**",
+                    "Sources/OpenCineCore/**",
+                    "Sources/OpenCineJNISupport/**",
+                    "Sources/OpenCineDJI/**",
+                    "Sources/OpenCineDJIAndroid/**",
+                    "Sources/OpenCineJNI/**",
+                    "scripts/android-stage-swift-core.sh",
+                )
+            },
             stageSwiftCoreScript,
         )
         inputs.property("swiftExecutable", providers.environmentVariable("SWIFT_EXECUTABLE").orElse("auto"))
@@ -255,8 +263,23 @@ tasks.named("preBuild").configure {
 }
 
 dependencies {
-    implementation(project(":core-api"))
-    implementation(project(":monitor-ui"))
+    implementation(libs.opencine.monitor.ui)
+    // Cameras and pairing pages, the connection model and the saved-camera store (SHELL-02).
+    implementation(libs.opencine.appkit)
+    // Capture sheets, live chrome and gimbal views over the camera vocabulary (camera-controls).
+    implementation("com.opencapture.opencine:camera-controls:0.1.0-SNAPSHOT")
+    implementation("com.opencapture.opencine:core:0.1.0-SNAPSHOT")
+    implementation("com.opencapture.opencine:media:0.1.0-SNAPSHOT")
+    // Live-view MediaCodec decoder (HevcDecoder), shared with OpenInstaCine.
+    implementation("com.opencapture.opencine:decoder:0.1.0-SNAPSHOT")
+    // Native source/publication/inspector and GLES/Vulkan owners; app supplies Media3 adapter.
+    implementation("com.opencapture.opencine:native-runtime:0.1.0-SNAPSHOT")
+    // DJI BLE link, datalink, wire models, gimbal programs and the CameraSession adapter, with the
+    // DjiNative JNI facade this app's Swift library implements.
+    implementation("com.opencapture.opencine:dji:0.1.0-SNAPSHOT")
+    implementation("com.opencapture.opencine:multicam:0.1.0-SNAPSHOT")
+    // libopc_vulkan.so and its JNI facade (feed.OpcVulkan), built by OpenCineCore's `:vulkan` module.
+    implementation("com.opencapture.opencine:vulkan:0.1.0-SNAPSHOT")
 
     implementation(platform(libs.compose.bom))
     implementation(libs.androidx.activity.compose)
@@ -279,6 +302,7 @@ dependencies {
     androidTestImplementation("androidx.test:core:1.7.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation(libs.kotlin.test.junit)
+    androidTestImplementation(testFixtures("com.opencapture.opencine:core:0.1.0-SNAPSHOT"))
 
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.json)

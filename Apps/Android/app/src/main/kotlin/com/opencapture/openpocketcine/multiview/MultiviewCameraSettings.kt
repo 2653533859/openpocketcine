@@ -53,22 +53,22 @@ import com.opencapture.monitorui.MonitorImagePreview
 import com.opencapture.monitorui.MonitorInspector
 import com.opencapture.monitorui.MultiviewSafeArea
 import com.opencapture.monitorui.monitorScrollFade
-import com.opencapture.openpocketcine.CaptureLists
-import com.opencapture.openpocketcine.CaptureShutterPolicy
-import com.opencapture.openpocketcine.LiveControlSheet
+import com.opencapture.opencine.cameracontrols.CaptureLists
+import com.opencapture.opencine.cameracontrols.LiveControlSheet
+import com.opencapture.opencine.cameracontrols.LiveSheet
+import com.opencapture.opencine.cameracontrols.chromeClickable
+import com.opencapture.opencine.vocabulary.CameraCommands
+import com.opencapture.opencine.vocabulary.CameraModel
+import com.opencapture.opencine.vocabulary.CameraStatus
+import com.opencapture.opencine.vocabulary.CaptureShutterPolicy
 import com.opencapture.openpocketcine.LiveDesign
-import com.opencapture.openpocketcine.LiveSheet
 import com.opencapture.openpocketcine.LiveType
-import com.opencapture.openpocketcine.OpcIcon
-import com.opencapture.openpocketcine.chromeClickable
-import com.opencapture.openpocketcine.feed.InspectorPreviewPipeline
-import com.opencapture.openpocketcine.session.CameraCommands
-import com.opencapture.openpocketcine.session.CameraModel
-import com.opencapture.openpocketcine.session.CameraStatus
+import com.opencapture.monitorui.MonitorIcon
+import com.opencapture.opencine.runtime.InspectorPreviewPipeline
 
 internal fun multiviewSettingsCategories(camera: CameraModel, status: CameraStatus): List<LiveSheet> = buildList {
     addAll(listOf(LiveSheet.ISO, LiveSheet.SHUTTER, LiveSheet.EXPO, LiveSheet.WB))
-    if (CaptureLists.supportsFocusMode(camera)) add(LiveSheet.FOCUS)
+    if (camera.supportsFocusMode) add(LiveSheet.FOCUS)
     if (camera.supportsAperture) add(LiveSheet.APERTURE)
     if (!CameraCommands.isPhotoMode(status.shootingMode)) addAll(listOf(LiveSheet.FORMAT, LiveSheet.COLOR))
     add(LiveSheet.MODE)
@@ -105,7 +105,7 @@ internal fun MultiviewCameraSettings(
     val endpoint = tile?.driver
     val recording = tile?.settings?.isRecording
     DisposableEffect(tile, cameraIdentity, endpoint, available, recording) {
-        val controls = if (tile != null && available) tile.openControls { session.controlsAvailable(tile) } else null
+        val controls = if (tile != null && available) session.openControls(tile) else null
         onDispose {
             if (tile?.controlsModel === controls) tile?.closeControls() else controls?.close()
         }
@@ -132,7 +132,7 @@ internal fun MultiviewCameraSettings(
                 Box(Modifier.size(48.dp).chromeClickable(onClick = onDismiss)
                     .semantics { contentDescription = "Close camera settings"; role = Role.Button },
                     contentAlignment = Alignment.Center) {
-                    OpcIcon(OpcIcon.X, null, Modifier.size(13.dp), LiveDesign.muted)
+                    MonitorIcon(MonitorIcon.X, null, Modifier.size(13.dp), LiveDesign.muted)
                 }
             }
         },
@@ -210,38 +210,29 @@ internal fun MultiviewCameraSettings(
     }
 }
 
-/** Live View's inspector image preview, fed by the selected tile's existing present tap. */
+/** Tile source and native preview-owner facts for the common image-preview lifecycle. */
 @Composable
 private fun MultiviewSettingsPreview(tile: MultiviewSession.Tile, modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val owner = remember(tile) { Any() }
-    var image by remember(owner) { mutableStateOf<Bitmap?>(null) }
-    val plan by rememberUpdatedState(tile.plan)
-    DisposableEffect(owner, lifecycle) {
-        var active = false
-        fun update() {
-            val resumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
-            if (resumed && !active) {
-                InspectorPreviewPipeline.open(owner, false, context, plan) { image = it }
+    val client = remember(tile, context) {
+        object : com.opencapture.opencine.appkit.MonitorInspectorPreviewClient<androidx.compose.ui.graphics.ImageBitmap> {
+            override fun open(owner: Any, playback: Boolean,
+                plan: com.opencapture.opencine.media.FeedEffectsRenderPlan,
+                receive: (androidx.compose.ui.graphics.ImageBitmap?) -> Unit) {
+                tile.inspectorPreview.open(owner, playback, context, plan) { receive(it?.asImageBitmap()) }
                 tile.previewOwner = owner
-                active = true
-            } else if (!resumed && active) {
+            }
+            override fun update(owner: Any, plan: com.opencapture.opencine.media.FeedEffectsRenderPlan) {
+                tile.inspectorPreview.update(owner, plan)
+            }
+            override fun close(owner: Any) {
                 if (tile.previewOwner === owner) tile.previewOwner = null
-                InspectorPreviewPipeline.close(owner)
-                image = null
-                active = false
+                tile.inspectorPreview.close(owner)
             }
         }
-        val observer = LifecycleEventObserver { _, _ -> update() }
-        lifecycle.addObserver(observer)
-        update()
-        onDispose {
-            lifecycle.removeObserver(observer)
-            if (tile.previewOwner === owner) tile.previewOwner = null
-            InspectorPreviewPipeline.close(owner)
-        }
     }
-    SideEffect { InspectorPreviewPipeline.update(owner, tile.plan) }
-    MonitorImagePreview(image?.asImageBitmap(), "${tile.camera?.name ?: "Camera"} preview", modifier)
+    com.opencapture.opencine.cameracontrols.MonitorOperatorInspectorImagePreview(
+        com.opencapture.monitorui.MonitorAssistTool.LUT, null, client, tile.plan,
+        tile, null, false, modifier, "${tile.camera?.name ?: "Camera"} preview",
+        com.opencapture.opencine.cameracontrols.MonitorInspectorPreviewLayout.SOURCE)
 }

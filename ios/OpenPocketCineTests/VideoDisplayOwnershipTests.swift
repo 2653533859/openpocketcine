@@ -1,12 +1,15 @@
+import OpenCineAppKitApple
 import UIKit
 import XCTest
+import OpenCineApple
+import OpenCineMedia
 
 @testable import OpenPocketCine
 
 @MainActor
 final class VideoDisplayOwnershipTests: XCTestCase {
     func testRetiredSingleCameraUpdateCannotStealMultiviewFeed() {
-        defer { LiveHDRDisplay.setEnabled(false) }
+        defer { LiveHDRDisplay.app.setEnabled(false) }
         let tile = MultiviewSession.Tile()
         let retired = DisplayLayerView(tile.decoder.displayLayer)
         let single = singleCameraDisplay(tile.decoder, hdrDisplay: true)
@@ -25,7 +28,7 @@ final class VideoDisplayOwnershipTests: XCTestCase {
     }
 
     func testRetiredMultiviewUpdateCannotStealSingleCameraFeed() {
-        defer { LiveHDRDisplay.setEnabled(false) }
+        defer { LiveHDRDisplay.app.setEnabled(false) }
         let tile = MultiviewSession.Tile()
         let retired = DisplayLayerView(tile.decoder.displayLayer)
         let multiview = MultiviewVideoLayer(tile: tile, hdrDisplay: true)
@@ -96,7 +99,7 @@ final class VideoDisplayOwnershipTests: XCTestCase {
         _ decoder: HevcDecoder, hdrDisplay: Bool
     ) -> VideoDisplayRepresentable {
         VideoDisplayRepresentable(
-            decoder: decoder, effects: LiveImageEffects(), assistMirror: false,
+            decoder: decoder, effects: MonitorFrameEffects(), assistMirror: false,
             pictureFlip: false, sampleBus: LiveFrameSampleBus(), transfer: nil,
             feedUpscaler: decoder.feedUpscaler, hdrDisplay: hdrDisplay)
     }

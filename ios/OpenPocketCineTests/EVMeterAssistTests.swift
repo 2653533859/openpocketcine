@@ -1,7 +1,12 @@
 import AVFoundation
+import Observation
+import OpenCineAppKit
 import OpenPocketViewCore
 import SwiftUI
 import XCTest
+import OpenCineApple
+import OpenCineMedia
+import MonitorPresentation
 
 @testable import OpenPocketCine
 
@@ -9,20 +14,23 @@ import XCTest
 final class EVMeterAssistTests: XCTestCase {
     func testFeedRecoveryRetiresCameraMeterWithoutChangingCompensation() async {
         let session = CameraSession()
+        let peer = ConnectionDonorPeer(cached: true)
+        defer { session.disconnect(); withExtendedLifetime(peer) {} }
+        guard await peer.admitExistingConnection(session) else { return }
         session.status.evComp = EvComp(thirds: 3)
         session.status.meteredEv = EvComp(thirds: -4)
-        session.startFeedRecovery {}
+        XCTAssertTrue(session.startFeedRecovery { _ in })
         XCTAssertNil(session.status.meteredEv)
         XCTAssertEqual(session.status.evComp?.thirds, 3)
         await Task.yield()
     }
 
     func testEVTogglePersistsWithoutRequestingImageProcessing() {
-        XCTAssertTrue(LiveAssistTool.toolbarCases.contains(.evMeter))
-        XCTAssertTrue(LiveAssistTool.settingsCases.contains(.evMeter))
-        XCTAssertFalse(LiveAssistTool.cleanPinCases.contains(.evMeter))
-        XCTAssertFalse(LiveAssistTool.playbackToolbarCases.contains(.evMeter))
-        XCTAssertFalse(LiveAssistTool.evMeter.hasConfiguration)
+        XCTAssertTrue(MonitorAssistSelection.toolbarCases.contains(.evMeter))
+        XCTAssertTrue(MonitorAssistSelection.settingsCases.contains(.evMeter))
+        XCTAssertFalse(MonitorAssistSelection.cleanPinCases.contains(.evMeter))
+        XCTAssertFalse(MonitorAssistSelection.playbackToolbarCases.contains(.evMeter))
+        XCTAssertFalse(MonitorAssistSelection.evMeter.hasConfiguration)
         let assist = LiveAssistState()
         assist.clean = false
         assist.evMeter = false
@@ -33,7 +41,7 @@ final class EVMeterAssistTests: XCTestCase {
         XCTAssertEqual(assist.effects, baseline)
         XCTAssertEqual(assist.effects.withInspectorDemand(.evMeter), baseline)
         let restored = LiveAssistState()
-        OperatorPrefs.Snapshot(assist).apply(to: restored)
+        MonitorAssistSnapshot(assist).apply(to: restored)
         XCTAssertTrue(restored.evMeter)
         restored.clean = true
         restored.cleanViewPinnedTools = [.evMeter]
@@ -42,7 +50,7 @@ final class EVMeterAssistTests: XCTestCase {
         XCTAssertFalse(restored.isPlaybackVisible(.evMeter))
         XCTAssertFalse(restored.playbackEffects.needsSample)
         assist.evMeter = false
-        OperatorPrefs.Snapshot(assist).apply(to: restored)
+        MonitorAssistSnapshot(assist).apply(to: restored)
         XCTAssertFalse(restored.evMeter)
     }
 
@@ -92,14 +100,18 @@ final class EVMeterAssistTests: XCTestCase {
             "A fully covered left edge hides the meter until the palette closes")
     }
 
-    func testChangingPlaybackItemsRetiresThePreviousScopeSamplesBeforeLoading() {
+    func testChangingPlaybackItemsRetiresThePreviousScopeSamplesBeforeLoading() async throws {
         let samples = LiveFrameSampleBus()
         let session = PlaybackFeedSession()
-        session.setEffects(LiveImageEffects(histogram: true), transfer: .rec709, sampleBus: samples)
-        let first = AVPlayerItem(asset: AVMutableComposition())
-        session.prepare(first)
-        samples.playbackBundle = ScopeAssistBundle()
-        samples.playbackBundle?.samples.histogramLuma[180] = 100
+        session.setEffects(
+            MonitorFrameEffects(histogram: true).playbackFrameEffects, transfer: .rec709,
+            sampleBus: samples)
+        let fixture = try await PlaybackOutputFixture.make(in: self)
+        defer { session.shutdown(); fixture.close() }
+        let first = fixture.item
+        fixture.prepare(session)
+        try await fixture.publishScopes(using: session, samples: samples, in: self)
+        XCTAssertGreaterThan(samples.playbackBundle?.samples.histogramLuma[180] ?? 0, 0)
         session.beginSourceChange()
         XCTAssertNil(samples.playbackBundle)
         XCTAssertFalse(first.outputs.contains(where: { $0 === session.output }))

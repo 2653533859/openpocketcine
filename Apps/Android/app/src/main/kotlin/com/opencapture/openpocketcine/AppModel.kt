@@ -1,5 +1,24 @@
 package com.opencapture.openpocketcine
 
+import com.opencapture.opencine.appkit.MonitorOperatorSessionModel
+import androidx.compose.runtime.Composable
+import com.opencapture.opencine.appkit.MonitorCaptureField
+import com.opencapture.opencine.appkit.MonitorCapturePreferences
+import com.opencapture.opencine.appkit.captureField
+import com.opencapture.opencine.appkit.readPhoneBatteryReadout
+import com.opencapture.opencine.cameracontrols.CaptureRefresh
+import com.opencapture.opencine.cameracontrols.CaptureSheetHost
+import com.opencapture.opencine.cameracontrols.CaptureAudioService
+import com.opencapture.opencine.cameracontrols.CaptureWheelState
+import com.opencapture.opencine.cameracontrols.GamepadHost
+import com.opencapture.opencine.cameracontrols.OperatorSetupModel
+import com.opencapture.opencine.cameracontrols.GimbalChromeHost
+import com.opencapture.opencine.cameracontrols.GimbalGamepadDriver
+import com.opencapture.opencine.cameracontrols.LiveGimbalPanel
+import com.opencapture.opencine.cameracontrols.LiveSheet
+import com.opencapture.opencine.dji.GimbalMoveEngine
+import com.opencapture.opencine.motion.GimbalWaypointSlot
+import com.opencapture.opencine.runtime.MonitorHDRDisplay
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -9,88 +28,225 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
+import com.opencapture.opencine.vocabulary.CameraCommands
+import com.opencapture.opencine.vocabulary.CameraLabelProfile
+import com.opencapture.opencine.vocabulary.CameraStatus
+import com.opencapture.opencine.vocabulary.CaptureSetting
+import com.opencapture.opencine.vocabulary.ConnectionPhase
+import com.opencapture.opencine.vocabulary.GamepadOperatorAction
+import com.opencapture.opencine.vocabulary.GimbalDoubleTap
+import com.opencapture.opencine.vocabulary.GimbalMode
+import com.opencapture.opencine.vocabulary.GimbalRamp
+import com.opencapture.opencine.vocabulary.GimbalSpeed
+import com.opencapture.opencine.vocabulary.VideoFormat
 import com.opencapture.openpocketcine.bridge.SwiftCore
-import com.opencapture.openpocketcine.core.ConnectionPhase
-import com.opencapture.openpocketcine.pairing.CameraConnectionSetup
-import com.opencapture.openpocketcine.pairing.SavedCamera
-import com.opencapture.openpocketcine.pairing.SavedCameras
-import com.opencapture.openpocketcine.pairing.SharedPreferencesSavedCameraStore
+import com.opencapture.opencine.appkit.AppIntegration
+import com.opencapture.opencine.appkit.MonitorControlModel
+import com.opencapture.opencine.appkit.ShellModel
+import com.opencapture.opencine.core.CommandRejection
+import com.opencapture.opencine.core.CommandStage
+import com.opencapture.opencine.core.ConnectedCamera
+import com.opencapture.opencine.core.SessionCloseReason
+import com.opencapture.opencine.appkit.BodyRecordsV0
+import com.opencapture.opencine.appkit.CamerasModel
+import com.opencapture.opencine.appkit.IntegrationSlots
+import com.opencapture.opencine.appkit.NearbyCardCopy
+import com.opencapture.opencine.appkit.SavedCamerasStore
+import com.opencapture.opencine.appkit.StoredString
+import com.opencapture.opencine.appkit.stored
+import com.opencapture.opencine.core.NearbyCamera
+import com.opencapture.opencine.core.RouteKind
+import com.opencapture.opencine.core.SavedCamera
+import com.opencapture.opencine.dji.DjiCameraSessionAdapter
+import com.opencapture.opencine.dji.DjiConnectPort
+import com.opencapture.opencine.dji.DjiIntegration
+import com.opencapture.opencine.dji.FoundCameraIdentity
+import com.opencapture.opencine.vocabulary.FoundCamera
+import com.opencapture.openpocketcine.pairing.AddSetupSlot
 import com.opencapture.openpocketcine.pairing.isBusy
-import com.opencapture.openpocketcine.assists.LiveAssistState
+import com.opencapture.openpocketcine.assists.createLiveAssistState
 import com.opencapture.openpocketcine.diagnostics.DiagnosticCenter
-import com.opencapture.openpocketcine.session.CameraCommands
-import com.opencapture.openpocketcine.session.GimbalDoubleTap
-import com.opencapture.openpocketcine.session.GimbalRamp
-import com.opencapture.openpocketcine.session.FoundCamera
-import com.opencapture.openpocketcine.session.PocketCameraSession
-import com.opencapture.openpocketcine.session.VideoFormat
+import com.opencapture.openpocketcine.session.AppSessionHost
+import com.opencapture.opencine.dji.DjiCameraSession
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import com.opencapture.opencine.cameracontrols.PortraitFeedAspect
+import com.opencapture.monitorui.MonitorAssistTool
+import com.opencapture.opencine.runtime.InspectorPreviewPipeline
+import com.opencapture.monitorui.settings.MonitorSettingsTab
+import com.opencapture.opencine.runtime.ScopeSampleBus
+import com.opencapture.opencine.appkit.MonitorDisplaySection
+import com.opencapture.opencine.appkit.MonitorDisplayChrome
+import com.opencapture.opencine.appkit.MonitorDisplayMode
 
-/** [borrowing] builds a Live View model over a Multiview tile's decoder (iOS `CameraSession(borrowing:)`). */
+/**
+ * [borrowing] builds a Live View model over a Multiview tile's decoder (iOS
+ * `CameraSession(borrowing:)`). [discovers]: the cameras and pair pages discover and connect
+ * through this model (the activity's one root model; a Multiview tile's, a preview's or a test's
+ * never does). [review]: a debug review state of those pages.
+ */
 class AppModel(
     context: Context,
-    borrowing: com.opencapture.openpocketcine.session.HevcDecoder? = null,
-    controlLease: com.opencapture.openpocketcine.session.MultiviewControlLease? = null,
-) {
+    borrowing: com.opencapture.opencine.decoder.HevcDecoder? = null,
+    controlLease: com.opencapture.opencine.dji.MultiviewControlLease? = null,
+    discovers: Boolean = false,
+    review: String? = null,
+) : GamepadHost, GimbalChromeHost, CaptureSheetHost, OperatorSetupModel {
     private val appContext = context.applicationContext
+    /** One actual cache root/lifetime shared by gallery IO and operator settings. */
+    val mediaCacheRoot = com.opencapture.opencine.appkit.MonitorMediaCacheRoot(
+        java.io.File(appContext.noBackupFilesDir, "OpenPocketCine/media"))
+    val mediaCache = com.opencapture.openpocketcine.media.MediaCache(appContext.noBackupFilesDir,
+        appContext.getSharedPreferences("openpocketcine.media", Context.MODE_PRIVATE), mediaCacheRoot)
+    private val _mediaCacheRevision = kotlinx.coroutines.flow.MutableStateFlow(0L)
+    val mediaCacheRevision: kotlinx.coroutines.flow.StateFlow<Long> = _mediaCacheRevision
+    fun clearOperatorMediaCache() {
+        scope.launch { clearOperatorMediaCacheOwned() }
+    }
+    /** Bounded cache IO used by the captured common settings action. */
+    suspend fun clearOperatorMediaCacheOwned() {
+        try { OperatorMediaCache.clearOwned(mediaCacheRoot) { OperatorMediaCache.clear(appContext) } }
+        finally { _mediaCacheRevision.value += 1 }
+    }
+
     init {
         DiagnosticCenter.install(appContext)
+        // Load libOpenPocketCineAndroid.so before any session code runs: it implements both
+        // SwiftCore and OpenCine's DjiNative, and DjiNative never loads it by itself.
+        SwiftCore.isAvailable
     }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val store = SharedPreferencesSavedCameraStore(context)
     /** Wi-Fi and Hotspot passwords, shared with Multiview (iOS `MultiviewNetworkStore`). */
-    private val networkStore = com.opencapture.openpocketcine.multiview.MultiviewNetworkStore(context)
-    val session = PocketCameraSession(context, borrowing, controlLease)
+    private val networkStore = com.opencapture.opencine.dji.MultiviewNetworkStore(context)
+    val session = DjiCameraSession(context, AppSessionHost(context), borrowing, controlLease)
+
+    /**
+     * Cameras and pairing through the shared OpenCine flow (SHELL-02): the DJI integration over
+     * the session, with its Wi-Fi passwords in the Multiview store; forget drops the camera's saved
+     * Wi-Fi (D1). Nearby cards read in this app's words; Add setup is the station wizard.
+     */
+    private val port: DjiConnectPort = review?.let { ReviewCameras.port(it, session) } ?: session
+    val integration = DjiIntegration(
+        port,
+        loadNetwork = networkStore::load,
+        saveNetwork = { ssid, password, hotspot -> networkStore.save(ssid, password, hotspot) },
+        forgetCredentialsAsync = session::forgetWifiCredentials,
+    )
+    override val cameras = CamerasModel(
+        if (discovers) {
+            listOf(
+                AppIntegration(
+                    integration,
+                    IntegrationSlots(
+                        addRoute = { camera, done -> AddSetupSlot(this, camera, done) },
+                        nearbyCard = { camera -> nearbyCard(camera, port.found.value.firstOrNull { it.id == camera.id }) },
+                    ),
+                ),
+            )
+        } else {
+            emptyList()
+        },
+        camerasStore(
+            appContext.getSharedPreferences(CAMERAS, Context.MODE_PRIVATE).stored("document"),
+            appContext.getSharedPreferences(LEGACY_CAMERAS, Context.MODE_PRIVATE).also { ReviewCameras.seed(review, it) }
+                .stored("records-json"),
+        ),
+        scope,
+    ).also { model ->
+        // The save rules a DJI record follows (iOS parity, D9): another camera's network is never
+        // saved with this one, and a setup that moves the camera is remembered before it moves it.
+        integration.savedCameras = { model.state.value.saved }
+        integration.saveRecord = model::upsert
+    }
+
+    val control = MonitorControlModel(scope).also { control ->
+        control.noteFor = ::controlNote
+        control.onNote = { session.presentControlNote(it) }
+    }
+    val shell = ShellModel(cameras, control).also { shell ->
+        shell.onSceneActivity = { active ->
+            if (active) session.noteSceneBecameActive() else session.noteSceneBecameInactive()
+        }
+    }
+    var shellState by mutableStateOf(shell.state.value)
+        private set
+    init { scope.launch { shell.state.collect { shellState = it } } }
+
+    /** Saved cameras, most recently connected first. */
+    val savedCameras: List<SavedCamera> get() = cameras.state.value.saved.sortedByDescending { it.lastConnected ?: 0L }
     /** Set while this Live View borrows a Multiview tile; replaces the lock button. */
     var multiviewExit by mutableStateOf<(() -> Unit)?>(null)
-    val assist = LiveAssistState.from(appContext)
+    val scopeBus = com.opencapture.opencine.runtime.ScopeSampleBus()
+    val inspectorPreview = com.opencapture.opencine.runtime.InspectorPreviewPipeline(
+        scopeBus, { com.opencapture.opencine.runtime.NativeGlBackend.create(it) }, "OpcInspector")
+    override val assist = createLiveAssistState(appContext)
 
-    var savedCameras by mutableStateOf(store.load())
-        private set
-    var isPairingNewCamera by mutableStateOf(false)
+    /** The operator opened the pair page from the cameras page. */
+    var pairing: Boolean
+        get() = shellState.pairing
+        set(value) { if (value) shell.beginPairing() else shell.endPairing() }
     var showsLaunchSplash by mutableStateOf(true)
     /** Long-press on the tap-focus box locks it: feed taps no longer move focus. */
     var focusBoxLocked by mutableStateOf(false)
     var coreVersion by mutableStateOf<String?>(null)
-    var homePanel by mutableStateOf<AppPanel?>(null)
+    private var legalPanel by mutableStateOf<AppPanel?>(null)
+    val showsLegalPanel: Boolean get() = legalPanel != null
+    var homePanel: AppPanel?
+        get() = legalPanel ?: if (shellState.monitor == null) shellState.cover?.let {
+            if (it == ShellModel.Cover.SETTINGS) AppPanel.SETTINGS else AppPanel.MEDIA
+        } else null
+        set(value) {
+            when (value) {
+                AppPanel.SETTINGS -> { legalPanel = null; shell.open(ShellModel.Cover.SETTINGS) }
+                AppPanel.MEDIA -> { legalPanel = null; shell.open(ShellModel.Cover.MEDIA) }
+                null -> { legalPanel = null; shell.dismissCover() }
+                else -> legalPanel = value
+            }
+        }
     /** The Multiview stage covers the camera home until it closes. */
     var showsMultiview by mutableStateOf(false)
-    var liveOperatorPanel by mutableStateOf<LiveOperatorPanel?>(null)
-    var operatorSettingsTab by mutableStateOf(OperatorSettingsTab.LINK)
-    var chromeEditorMode by mutableStateOf<PocketDispMode?>(null)
-    var chromeEditorReturnMode by mutableStateOf<PocketDispMode?>(null)
-    var liveChromeInteractive by mutableStateOf(true)
-    var keepScreenAwake by mutableStateOf(OperatorPrefs.keepScreenAwake(appContext))
+    internal val operatorSession = MonitorOperatorSessionModel(shell, assist, OperatorPrefs.displayPreferences(appContext), scope)
+    override var operatorSettingsTab: MonitorSettingsTab
+        get() = operatorSession.settingsTab
+        set(value) { operatorSession.settingsTab = value }
+    var chromeEditorMode: MonitorDisplayMode?
+        get() = operatorSession.editingMode
+        set(value) { operatorSession.editingMode = value }
+    override var chromeEditorReturnMode: MonitorDisplayMode?
+        get() = operatorSession.returnedMode
+        set(value) { operatorSession.returnedMode = value }
+    override val liveChromeInteractive: Boolean get() = operatorSession.interactive
+    override var keepScreenAwake by mutableStateOf(OperatorPrefs.keepScreenAwake(appContext))
         private set
-    var hdrDisplay by mutableStateOf(OperatorPrefs.hdrDisplay(appContext))
+    override var hdrDisplay by mutableStateOf(OperatorPrefs.hdrDisplay(appContext))
         private set
     var screenCaptured by mutableStateOf(false)
     val hdrDisplayActive: Boolean
-        get() = HdrDisplay.isEffective(hdrDisplay, screenCaptured)
-    var cacheFullResolution by mutableStateOf(OperatorPrefs.cacheFullResolution(appContext))
+        get() = MonitorHDRDisplay.isEffective(hdrDisplay, screenCaptured)
+    override var cacheFullResolution by mutableStateOf(OperatorPrefs.cacheFullResolution(appContext))
         private set
-    var recordConfirmationEnabled by mutableStateOf(OperatorPrefs.recordConfirmationEnabled(appContext))
+    override var recordConfirmationEnabled by mutableStateOf(OperatorPrefs.recordConfirmationEnabled(appContext))
         private set
-    var hapticsEnabled by mutableStateOf(OperatorPrefs.hapticsEnabled(appContext))
+    override var hapticsEnabled by mutableStateOf(OperatorPrefs.hapticsEnabled(appContext))
         private set
-    var gimbalStickSensitivity by mutableIntStateOf(OperatorPrefs.gimbalStickSensitivity(appContext))
+    override var gimbalStickSensitivity by mutableIntStateOf(OperatorPrefs.gimbalStickSensitivity(appContext))
         private set
-    var virtualJoystickInvertPan by mutableStateOf(OperatorPrefs.virtualJoystickInvertPan(appContext))
+    override var virtualJoystickInvertPan by mutableStateOf(OperatorPrefs.virtualJoystickInvertPan(appContext))
         private set
-    var virtualJoystickInvertTilt by mutableStateOf(OperatorPrefs.virtualJoystickInvertTilt(appContext))
+    override var virtualJoystickInvertTilt by mutableStateOf(OperatorPrefs.virtualJoystickInvertTilt(appContext))
         private set
-    var virtualJoystickDeadzonePercent by mutableIntStateOf(
+    override var virtualJoystickDeadzonePercent by mutableIntStateOf(
         OperatorPrefs.virtualJoystickDeadzonePercent(appContext),
     )
         private set
-    var virtualJoystickResponseCurve by mutableStateOf(
+    override var virtualJoystickResponseCurve by mutableStateOf(
         OperatorPrefs.virtualJoystickResponseCurve(appContext),
     )
         private set
-    var virtualJoystickSize by mutableStateOf(OperatorPrefs.virtualJoystickSize(appContext))
+    override var virtualJoystickSize by mutableStateOf(OperatorPrefs.virtualJoystickSize(appContext))
         private set
     val virtualJoystickMapping: CameraCommands.VirtualJoystickMapping
         get() =
@@ -102,23 +258,21 @@ class AppModel(
                 ),
                 curve = virtualJoystickResponseCurve,
             )
-    var gimbalRamp by mutableStateOf(OperatorPrefs.gimbalRamp(appContext))
+    override var gimbalRamp by mutableStateOf(OperatorPrefs.gimbalRamp(appContext))
         private set
-    var gimbalDoubleTap by mutableStateOf(OperatorPrefs.gimbalDoubleTap(appContext))
+    override var gimbalDoubleTap by mutableStateOf(OperatorPrefs.gimbalDoubleTap(appContext))
         private set
-    var liveGimbalPanel by mutableStateOf(LiveGimbalPanel.NONE)
+    override var liveGimbalPanel by mutableStateOf(LiveGimbalPanel.NONE)
     /** Canvas-space centre of the programmed-move editor / Run pill. Null until first open or drag. */
-    var gimbalFloatCenter by mutableStateOf<Offset?>(null)
+    override var gimbalFloatCenter by mutableStateOf<Offset?>(null)
     var gimbalDebugCenter by mutableStateOf<Offset?>(null)
 
     init {
         session.gimbalRamp = gimbalRamp
         session.gimbalDoubleTap = gimbalDoubleTap
     }
-    var dispLive by mutableStateOf(OperatorPrefs.dispLive(appContext))
-        private set
-    var dispClean by mutableStateOf(OperatorPrefs.dispClean(appContext))
-        private set
+    val dispLive: MonitorDisplayChrome get() = operatorSession.live
+    val dispClean: MonitorDisplayChrome get() = operatorSession.clean
     var cleanViewPinnedTools by mutableStateOf(OperatorPrefs.cleanViewPinnedTools(appContext))
         private set
     var portraitFeedAspect by mutableStateOf(OperatorPrefs.portraitFeedAspect(appContext))
@@ -129,148 +283,104 @@ class AppModel(
         private set
     var shutterUsesAngle by mutableStateOf(OperatorPrefs.shutterUsesAngle(appContext))
         private set
-    var lutSelection by mutableStateOf(OperatorPrefs.lutSelection(appContext))
+    override var lutSelection by mutableStateOf(OperatorPrefs.lutSelection(appContext))
         private set
-    var assistClean by mutableStateOf(false)
+    var assistClean: Boolean
+        get() = assist.clean
+        set(value) { assist.clean = value }
     var phoneBatteryPercent by mutableIntStateOf(-1)
         private set
     var phoneCharging by mutableStateOf(false)
         private set
     var uiLocked by mutableStateOf(false)
-    val gimbalGamepad = GimbalGamepadDriver()
-    var gamepadConnected by mutableStateOf(false)
+    override val gimbalGamepad = GimbalGamepadDriver(OperatorPrefs::gimbalGamepadStick)
+    override var gamepadConnected by mutableStateOf(false)
 
-    val currentDispMode: PocketDispMode
-        get() = if (assistClean) PocketDispMode.CLEAN else PocketDispMode.LIVE
+    val currentDispMode: MonitorDisplayMode get() = operatorSession.mode
+    val dispChrome: MonitorDisplayChrome get() = operatorSession.chrome
+    override val isEditingChrome: Boolean get() = operatorSession.isEditing
+    override fun chrome(mode: MonitorDisplayMode): MonitorDisplayChrome = operatorSession.chrome(mode)
+    fun chromeSectionMounts(section: MonitorDisplaySection): Boolean = operatorSession.mounts(section)
+    override fun toggleChrome(section: MonitorDisplaySection, mode: MonitorDisplayMode) = operatorSession.toggle(section, mode)
 
-    val dispChrome: PocketDispChrome
-        get() = chrome(currentDispMode)
-
-    val isEditingChrome: Boolean
-        get() = chromeEditorMode != null
-
-    fun chrome(mode: PocketDispMode): PocketDispChrome =
-        when (mode) {
-            PocketDispMode.LIVE -> dispLive
-            PocketDispMode.CLEAN -> dispClean
-        }
-
-    fun chromeSectionMounts(section: PocketDispSection): Boolean {
-        val editing = chromeEditorMode
-        if (editing != null && editing == currentDispMode) return true
-        if (section == PocketDispSection.RAIL_SETTINGS && !dispLive.railSettings && !dispClean.railSettings) {
-            return true
-        }
-        return dispChrome.isVisible(section)
-    }
-
-    fun toggleChrome(section: PocketDispSection, mode: PocketDispMode) {
-        when (mode) {
-            PocketDispMode.LIVE -> {
-                dispLive = dispLive.toggling(section)
-                OperatorPrefs.setDispLive(appContext, dispLive)
-            }
-            PocketDispMode.CLEAN -> {
-                dispClean = dispClean.toggling(section)
-                OperatorPrefs.setDispClean(appContext, dispClean)
-            }
-        }
-    }
-
-    fun beginChromeEditing(mode: PocketDispMode) {
-        liveOperatorPanel = null
+    override fun beginChromeEditing(mode: MonitorDisplayMode) {
         liveGimbalPanel = LiveGimbalPanel.NONE
-        setDisplayMode(clean = mode == PocketDispMode.CLEAN)
-        chromeEditorMode = mode
+        operatorSession.beginEditing(mode)
     }
 
-    fun endChromeEditing() {
-        chromeEditorReturnMode = chromeEditorMode
-        chromeEditorMode = null
-        operatorSettingsTab = OperatorSettingsTab.DISPLAY
-        liveOperatorPanel = LiveOperatorPanel.SETTINGS
-    }
-
-    fun setDisplayMode(clean: Boolean) {
-        assistClean = clean
-    }
+    fun endChromeEditing() = operatorSession.finishEditing()
+    fun setDisplayMode(clean: Boolean) { assist.clean = clean }
 
     fun noteBecameLive() {
-        homePanel = null
-        liveOperatorPanel = null
-        chromeEditorMode = null
-        liveChromeInteractive = false
-        scope.launch {
-            kotlinx.coroutines.delay(550)
-            liveChromeInteractive = true
-        }
+        legalPanel = null
+        operatorSession.synchronize(shell.state.value.monitor?.id)
     }
 
-    fun updateKeepScreenAwake(value: Boolean) {
+    override fun updateKeepScreenAwake(value: Boolean) {
         keepScreenAwake = value
         OperatorPrefs.setKeepScreenAwake(appContext, value)
     }
 
-    fun updateHdrDisplay(value: Boolean) {
+    override fun updateHdrDisplay(value: Boolean) {
         hdrDisplay = value
         OperatorPrefs.setHdrDisplay(appContext, value)
     }
 
-    fun updateCacheFullResolution(value: Boolean) {
+    override fun updateCacheFullResolution(value: Boolean) {
         cacheFullResolution = value
         OperatorPrefs.setCacheFullResolution(appContext, value)
     }
 
-    fun updateRecordConfirmationEnabled(value: Boolean) {
+    override fun updateRecordConfirmationEnabled(value: Boolean) {
         recordConfirmationEnabled = value
         OperatorPrefs.setRecordConfirmationEnabled(appContext, value)
     }
 
-    fun updateHapticsEnabled(value: Boolean) {
+    override fun updateHapticsEnabled(value: Boolean) {
         hapticsEnabled = value
         OperatorPrefs.setHapticsEnabled(appContext, value)
     }
 
-    fun updateGimbalDoubleTap(value: GimbalDoubleTap) {
+    override fun updateGimbalDoubleTap(value: GimbalDoubleTap) {
         gimbalDoubleTap = value
         OperatorPrefs.setGimbalDoubleTap(appContext, value)
         session.gimbalDoubleTap = value
     }
 
-    fun updateGimbalRamp(value: GimbalRamp) {
+    override fun updateGimbalRamp(value: GimbalRamp) {
         gimbalRamp = value
         OperatorPrefs.setGimbalRamp(appContext, value)
         session.gimbalRamp = value
     }
 
-    fun updateGimbalStickSensitivity(value: Int) {
+    override fun updateGimbalStickSensitivity(value: Int) {
         val clamped = value.coerceIn(1, 5)
         gimbalStickSensitivity = clamped
         OperatorPrefs.setGimbalStickSensitivity(appContext, clamped)
     }
 
-    fun updateVirtualJoystickInvertPan(value: Boolean) {
+    override fun updateVirtualJoystickInvertPan(value: Boolean) {
         virtualJoystickInvertPan = value
         OperatorPrefs.setVirtualJoystickInvertPan(appContext, value)
     }
 
-    fun updateVirtualJoystickInvertTilt(value: Boolean) {
+    override fun updateVirtualJoystickInvertTilt(value: Boolean) {
         virtualJoystickInvertTilt = value
         OperatorPrefs.setVirtualJoystickInvertTilt(appContext, value)
     }
 
-    fun updateVirtualJoystickDeadzonePercent(value: Int) {
+    override fun updateVirtualJoystickDeadzonePercent(value: Int) {
         val clamped = CameraCommands.VirtualJoystickMapping.clampedDeadzonePercent(value)
         virtualJoystickDeadzonePercent = clamped
         OperatorPrefs.setVirtualJoystickDeadzonePercent(appContext, clamped)
     }
 
-    fun updateVirtualJoystickResponseCurve(value: CameraCommands.VirtualJoystickCurve) {
+    override fun updateVirtualJoystickResponseCurve(value: CameraCommands.VirtualJoystickCurve) {
         virtualJoystickResponseCurve = value
         OperatorPrefs.setVirtualJoystickResponseCurve(appContext, value)
     }
 
-    fun updateVirtualJoystickSize(value: com.opencapture.monitorui.MonitorJoystickSize) {
+    override fun updateVirtualJoystickSize(value: com.opencapture.monitorui.MonitorJoystickSize) {
         virtualJoystickSize = value
         OperatorPrefs.setVirtualJoystickSize(appContext, value)
     }
@@ -301,7 +411,7 @@ class AppModel(
         OperatorPrefs.setLutSelection(appContext, value)
     }
 
-    fun updateCleanViewPinnedTools(value: Set<String>) {
+    override fun updateCleanViewPinnedTools(value: Set<String>) {
         cleanViewPinnedTools = value
         OperatorPrefs.setCleanViewPinnedTools(appContext, value)
     }
@@ -324,9 +434,10 @@ class AppModel(
         phoneCharging = charging
     }
 
-    fun pressRecord() = session.pressRecord()
-
-    fun pressShutter() = session.pressShutter()
+    /** Rec lamp, after any confirmation: an explicit start or stop through the CORE-02 seam. */
+    fun pressShutter() {
+        session.control.shutter()
+    }
 
     fun setEv(thirds: Int) = session.setEv(thirds)
 
@@ -366,15 +477,21 @@ class AppModel(
 
     fun endMediaBrowse() = session.endMediaBrowse()
 
-    fun setIsoIndex(index: Int) = session.setIsoIndex(index)
+    fun setIsoIndex(index: Int) {
+        session.control.setIsoIndex(index)
+    }
 
     fun setShutterDenom(denom: Int) = session.setShutterDenom(denom)
 
     fun setExpoMode(mode: Int) = session.setExpoMode(mode)
 
-    fun setWhiteBalanceAuto(tint: Int? = null) = session.setWhiteBalanceAuto(tint)
+    fun setWhiteBalanceAuto(tint: Int? = null) {
+        session.control.setWhiteBalanceAuto(tint)
+    }
 
-    fun setWhiteBalance(kelvin: Int, tint: Int) = session.setWhiteBalance(kelvin, tint)
+    fun setWhiteBalance(kelvin: Int, tint: Int) {
+        session.control.setWhiteBalanceCustom(kelvin, tint)
+    }
 
     fun setFocusMode(continuous: Boolean) = session.setFocusMode(continuous)
 
@@ -416,103 +533,118 @@ class AppModel(
         )
     }
 
-    fun updateGimbalPadStick(x: Float, y: Float) {
+    override fun updateGimbalPadStick(x: Float, y: Float) {
         if (uiLocked) return
         session.updateGimbalStick(x, y, gimbalStickSensitivity, assist.mirrorsHorizontally)
     }
 
-    fun endGimbalStick() = session.endGimbalStick()
-
-    val shouldShowWizard: Boolean
-        get() = SavedCameras.launchShowsWizard(savedCameras) || isPairingNewCamera
+    override fun endGimbalStick() = session.endGimbalStick()
 
     val isLive: Boolean
-        get() = session.phaseFlow.value == ConnectionPhase.LIVE || session.holdsMonitor
+        get() = shellState.monitor != null
 
-    fun canDriveGimbalPad(): Boolean =
+    internal val operatorCaptureSource by lazy { makeOperatorCaptureSource() }
+
+    // CaptureSheetHost (camera-controls): the capture sheets read these values and commit through one typed entry.
+    override val camera get() = session.connectedCamera?.model
+    override val audioService get() = captureAudioService()
+    override fun captureField(sheet: LiveSheet, expoMode: Int): MonitorCaptureField? =
+        capturePanelSettingKey(sheet, expoMode)?.let { control.captureField(it) }
+    @Composable override fun captureSessionState(status: CameraStatus) = observedCaptureSessionState(status)
+    override val capturePreferences get() = MonitorCapturePreferences(nativeISOHopEnabled,
+        facePriorityExposureEnabled, shutterUsesAngle, OperatorPrefs.shutterAngleDegrees(appContext))
+    override fun updateCapturePreferences(value: MonitorCapturePreferences) {
+        if (value.nativeIsoHop != nativeISOHopEnabled) updateNativeISOHopEnabled(value.nativeIsoHop)
+        if (value.facePriorityExposure != facePriorityExposureEnabled) updateFacePriorityExposureEnabled(value.facePriorityExposure)
+        if (value.shutterUsesAngle != shutterUsesAngle) updateShutterUsesAngle(value.shutterUsesAngle)
+    }
+    override fun commit(setting: CaptureSetting, field: MonitorCaptureField?, status: CameraStatus) =
+        routeCaptureSetting(setting, field, status)
+    override suspend fun refresh(what: CaptureRefresh) = refreshForCaptureSheet(what)
+    @Composable override fun CommonDrum(sheet: LiveSheet, status: CameraStatus, field: MonitorCaptureField?,
+        enabled: Boolean, wheel: CaptureWheelState) = PocketCommonDrum(sheet, status, field, enabled)
+
+    // GimbalChromeHost (camera-controls): the gimbal chrome reads these host values and reaches the session through the rest.
+    override val mirrorsHorizontally get() = assist.mirrorsHorizontally
+    override val labelProfile get() = camera?.captureProfile?.labels ?: CameraLabelProfile.standard
+    override val waypointWideHFovDeg get() = GimbalMoveEngine.WIDE_HFOV
+    override val connectedCameraId get() = session.connectedCamera?.id
+    override val phase get() = session.phase
+    override val phaseFlow get() = session.phaseFlow
+    override val gimbalMode get() = session.gimbalMode
+    override val gimbalSpeed get() = session.gimbalSpeed
+    override val gimbalProgram get() = session.gimbalProgram
+    override val gimbalMoveRunning get() = session.gimbalMoveRunning
+    override val gimbalMovePaused get() = session.gimbalMovePaused
+    override val gimbalMoveCountdown get() = session.gimbalMoveCountdown
+    override val gimbalPoseInvertPan get() = session.gimbalPoseInvertPan
+    override val chromeStatus get() = session.chromeStatus
+    override val canRunProgrammedMove get() = session.canRunProgrammedMove
+    override fun predictedGimbalWaypoint(nowSeconds: Double) = session.predictedGimbalWaypoint(nowSeconds)
+    override fun programmedZoomUnavailableReason(status: CameraStatus) = session.programmedZoomUnavailableReason(status)
+    override fun setGimbalMode(mode: GimbalMode) = session.setGimbalMode(mode)
+    override fun setGimbalSpeed(speed: GimbalSpeed) = session.setGimbalSpeed(speed)
+    override fun setGimbalWaypoint(slot: GimbalWaypointSlot) = session.setGimbalWaypoint(slot)
+    override fun clearGimbalWaypoint(slot: GimbalWaypointSlot) = session.clearGimbalWaypoint(slot)
+    override fun setGimbalLegDuration(ab: Double?, bc: Double?) = session.setGimbalLegDuration(ab, bc)
+    override fun setGimbalSmoothness(value: Double) = session.setGimbalSmoothness(value)
+    override fun setGimbalLoop(enabled: Boolean) = session.setGimbalLoop(enabled)
+    override fun clearGimbalProgram() = session.clearGimbalProgram()
+    override fun runProgrammedMove() = session.runProgrammedMove()
+    override fun restartProgrammedMove() = session.restartProgrammedMove()
+    override fun pauseProgrammedMove() = session.pauseProgrammedMove()
+    override fun resumeProgrammedMove() = session.resumeProgrammedMove()
+    override fun cancelProgrammedMove() = session.cancelProgrammedMove()
+
+    // GamepadHost (camera-controls): the gamepad driver reaches the session through these.
+    override val lastGimbalLimitContact get() = session.lastGimbalLimitContact
+    override val zoomReadout get() = session.zoomReadout.value
+    override val zoomColorHopPending get() = session.zoomColorHopPending
+    override fun presentControlNote(note: String) = session.presentControlNote(note)
+    override fun zoomMax() = session.zoomMax()
+    override fun updateZoomPinch(magnification: Double) = session.updateZoomPinch(magnification)
+    override fun endZoomPinch() = session.endZoomPinch()
+    override fun handleGamepadAction(action: GamepadOperatorAction) = session.handleGamepadAction(action)
+
+    override fun canDriveGimbalPad(): Boolean =
         isLive &&
             !uiLocked &&
-            liveOperatorPanel == null &&
+            shellState.cover == null &&
             !isEditingChrome &&
             !session.browsingMedia
 
-    val isBusy: Boolean
-        get() = session.phase.isBusy() || session.isReconnecting.value
-
     fun prepareStartup() {
-        savedCameras = store.load()
         coreVersion =
             if (SwiftCore.isAvailable) runCatching { SwiftCore.coreVersion() }.getOrNull() else null
-        isPairingNewCamera = SavedCameras.launchShowsWizard(savedCameras)
         scope.launch {
-            session.phaseFlow.collect { phase ->
-                if (phase == ConnectionPhase.LIVE) {
-                    persistConnectedCameraIfNeeded()
-                    noteBecameLive()
+            var monitor: String? = null
+            shell.state.collect { state ->
+                if (state.monitor?.id != monitor) {
+                    monitor = state.monitor?.id
+                    if (monitor != null) noteBecameLive() else operatorSession.close()
                 }
             }
         }
     }
 
-    fun pairNewCamera() {
-        isPairingNewCamera = true
-        session.startScan()
-    }
+    /** Connects a saved camera over its preferred setup (stress drivers). */
+    fun reconnect(camera: SavedCamera) = cameras.connect(camera)
 
-    fun connectDiscovered(camera: FoundCamera) {
-        isPairingNewCamera = true
-        session.connect(camera)
-    }
-
-    fun cancelPairing() {
-        session.disconnect()
-        isPairingNewCamera = false
-        session.startScan()
-    }
-
-    fun reconnect(camera: SavedCamera) {
-        reconnect(camera, camera.preferredSetup)
-    }
-
-    fun reconnect(camera: SavedCamera, setup: CameraConnectionSetup) {
-        // Switching setups is a new connection, never a live-session no-op.
-        if (session.connectedCamera?.id == camera.id && session.connectionSetup != setup) session.disconnect()
-        if (setup.movesCamera) {
-            savedCameras = SavedCameras.stamping(setup, camera.id, savedCameras)
-            store.save(savedCameras)
-        }
-        val network = camera.ssid(setup)?.takeIf { setup.movesCamera }
-            ?.let { networkStore.load(it, setup == CameraConnectionSetup.PHONE_HOTSPOT) }
-        session.useSetup(setup, network, restoreAccessPoint = camera.lastSetup?.movesCamera == true)
-        session.reconnect(camera.id)
-    }
-
-    /** Password goes to the store Multiview also reads; the name stays per camera. */
-    fun addSetup(setup: CameraConnectionSetup, ssid: String, password: String, camera: SavedCamera) {
-        if (!setup.movesCamera) return
-        networkStore.save(ssid, password, setup == CameraConnectionSetup.PHONE_HOTSPOT)
-        savedCameras = SavedCameras.setting(setup, ssid, camera.id, savedCameras)
-        store.save(savedCameras)
-        savedCameras.firstOrNull { it.id == camera.id }?.let { reconnect(it, setup) }
-    }
-
-    fun forgetSetup(setup: CameraConnectionSetup, camera: SavedCamera) {
-        savedCameras = SavedCameras.setting(setup, null, camera.id, savedCameras)
-        store.save(savedCameras)
-    }
-
-    /** Add setup's camera scan, or null when the camera is not nearby or already in use. */
+    /**
+     * Add setup's camera scan, or null when the camera is not nearby or already in use. Stamped
+     * first: the scan moves the camera to station role, so a lost reset is repaired by the next
+     * Camera Wi-Fi connect.
+     */
     fun networkScan(camera: SavedCamera): (suspend ((String) -> Unit) -> Unit)? {
         val found = session.found.value.firstOrNull { it.id == camera.id } ?: return null
         if (session.connectedCamera?.id == camera.id) return null
         return { onFound ->
-            com.opencapture.openpocketcine.multiview.MultiviewProvisioner(appContext).scanNetworks(
+            com.opencapture.opencine.dji.MultiviewProvisioner(appContext).scanNetworks(
                 found,
-                // Stamped first: the scan moves the camera to station role, so a lost reset
-                // is repaired by the next Camera Wi-Fi connect.
                 beforeStationChange = {
-                    savedCameras = SavedCameras.stamping(CameraConnectionSetup.WIFI, camera.id, savedCameras)
-                    store.save(savedCameras)
+                    cameras.state.value.saved.firstOrNull { it.id == camera.id }?.let {
+                        cameras.upsert(DjiIntegration.stamping(it, RouteKind.INFRASTRUCTURE_NETWORK))
+                    }
                 },
                 onRestored = {},
                 onFound = onFound,
@@ -520,44 +652,13 @@ class AppModel(
         }
     }
 
-    fun savedNetworks(): List<com.opencapture.openpocketcine.multiview.MultiviewNetworkStore.Network> =
+    fun savedNetworks(): List<com.opencapture.opencine.dji.MultiviewNetworkStore.Network> =
         networkStore.savedNetworks()
-
-    fun forget(camera: SavedCamera) {
-        savedCameras = SavedCameras.removing(camera.id, savedCameras)
-        store.save(savedCameras)
-        if (savedCameras.isEmpty()) {
-            isPairingNewCamera = true
-            session.startScan()
-        }
-    }
-
-    fun rename(camera: SavedCamera, name: String?) {
-        savedCameras = SavedCameras.renaming(camera.id, name, savedCameras)
-        store.save(savedCameras)
-    }
-
-    fun persistConnectedCameraIfNeeded() {
-        val found = session.connectedCamera ?: return
-        if (session.phaseFlow.value != ConnectionPhase.LIVE) return
-        val record =
-            SavedCamera(
-                id = found.id,
-                advertisedName = found.name,
-                modelName = found.model.name,
-                lastSSID = session.joinedSSID,
-                lastConnectedAt = System.currentTimeMillis(),
-                lastSetup = session.connectionSetup,
-            )
-        savedCameras = SavedCameras.upserting(record, savedCameras)
-        store.save(savedCameras)
-        isPairingNewCamera = false
-    }
 
     /** iOS `SavedCamerasView.onMultiview`: the single-camera session hands the radio to the stage. */
     fun openMultiview() {
         if (session.phaseFlow.value.isBusy() || session.isReconnecting.value) return
-        session.disconnect()
+        disconnect()
         session.ble.stopScan()
         showsMultiview = true
     }
@@ -567,21 +668,73 @@ class AppModel(
         session.startScan()
     }
 
-    fun disconnect() {
+    override fun disconnect() {
         focusBoxLocked = false
-        session.disconnect()
-        if (!SavedCameras.launchShowsWizard(savedCameras)) session.startScan()
+        if (shell.state.value.monitor != null) shell.close() else session.disconnect()
+    }
+
+    fun borrowMonitor(camera: com.opencapture.opencine.vocabulary.FoundCamera, release: () -> Unit) {
+        shell.borrow(ConnectedCamera(SavedCamera(camera.id, DjiCameraSessionAdapter.INTEGRATION,
+            advertisedName = camera.name, model = camera.model.name), session.control), release)
     }
 
     fun close() {
         gimbalGamepad.stopListening()
+        control.unbind()
+        val monitor = shell.state.value.monitor
+        if (monitor?.isBorrowed == true) shell.close()
+        else monitor?.session?.closeNow(SessionCloseReason.REQUESTED)
+        inspectorPreview.close()
+        scope.cancel()
         session.close()
     }
 
     /** The tile's LUT choice travels into and out of its borrowed Live View. */
     fun setBorrowedLut(enabled: Boolean) {
-        if (assist.lutOn != enabled) assist.toggle(com.opencapture.openpocketcine.assists.LiveAssistTool.LUT)
+        if (assist.lutOn != enabled) assist.toggle(com.opencapture.monitorui.MonitorAssistTool.LUT)
     }
 
     fun borrowedLutEnabled(): Boolean = assist.lutOn
+
+    companion object {
+        const val CAMERAS = "openpocketcine.cameras"
+
+        /**
+         * main's write notes come from the session's own send path: the camera's message on a
+         * refusal, nothing on a timeout or a write it did not show. The shared copy stays only for
+         * a stale camera state (a kept wrong-camera guard) and for not being connected.
+         */
+        fun controlNote(stage: CommandStage, label: String): String? {
+            val shared = MonitorControlModel.note(stage, label)
+            if (stage is CommandStage.Rejected &&
+                (stage.rejection == CommandRejection.StaleEpoch || stage.rejection == CommandRejection.StaleCapabilities)
+            ) return shared
+            return shared.takeIf { it == MonitorControlModel.CONNECT_FIRST }
+        }
+
+        /**
+         * A nearby camera as the cameras and pair pages have always shown it (main's
+         * `NearbyCameraRow`): Pocket or Nano by name, unverified bodies marked.
+         */
+        fun nearbyCard(camera: NearbyCamera, found: FoundCamera?): NearbyCardCopy {
+            val name = found?.name ?: camera.name
+            val model = found?.model?.name ?: camera.model ?: camera.name
+            return NearbyCardCopy(
+                FoundCameraIdentity.listTitle(name, model),
+                FoundCameraIdentity.listSubtitle(name, model, found?.model?.family ?: "other") +
+                    if (found?.model?.verified == false) " · unverified" else "",
+                "Needs approval on the camera",
+            )
+        }
+        /** The records every earlier build reads, kept mirrored (SHELL-02 D11). */
+        const val LEGACY_CAMERAS = "openpocketcine.saved-cameras"
+
+        /** The saved-camera document over the legacy records, as this app stores them. */
+        fun camerasStore(document: StoredString, legacy: StoredString) = SavedCamerasStore(
+            document,
+            SavedCamerasStore.Legacy(
+                legacy, BodyRecordsV0(DjiCameraSessionAdapter.INTEGRATION, BodyRecordsV0.Dates.EPOCH_MILLISECONDS), LEGACY_CAMERAS,
+            ),
+        )
+    }
 }

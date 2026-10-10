@@ -11,6 +11,7 @@ final class MonitorUIFlowTests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
         app = XCUIApplication()
         app.launchEnvironment["OPV_UI_REVIEW_SCREEN"] = "live"
+        app.launchEnvironment["OPV_UI_REVIEW_COMMON_CONTROLS"] = "1"
         if let clip = ProcessInfo.processInfo.environment["OPV_SIM_FEED_CLIP"] {
             app.launchEnvironment["OPV_SIM_FEED_CLIP"] = clip
         }
@@ -19,6 +20,19 @@ final class MonitorUIFlowTests: XCTestCase {
     override func tearDown() {
         app.terminate()
         XCUIDevice.shared.orientation = .portrait
+    }
+
+    func testOrdinaryNativePreviewDoesNotApproveUnknownRecording() {
+        app.launchEnvironment["OPV_UI_REVIEW_COMMON_CONTROLS"] = "0"
+        app.launch()
+        let record = app.buttons["monitor.system.record"]
+        XCTAssertTrue(record.waitForExistence(timeout: 10))
+        XCTAssertFalse(record.isEnabled)
+        XCTAssertEqual(record.label, "Recording state unknown")
+        record.press(forDuration: 0.6)
+        XCTAssertFalse(app.staticTexts["Shooting mode"].exists)
+        XCTAssertFalse(app.buttons["Start"].exists)
+        capture("native-preview-recording-unknown")
     }
 
     func testMonitorControlsAcrossBothLandscapeOrientationsAndPortrait() {
@@ -90,6 +104,64 @@ final class MonitorUIFlowTests: XCTestCase {
         capture("iso-drum")
     }
 
+    /// SIMULATED existing writable fixture; real touch/lift, binding, and confirmed ISO report.
+    func testSIMULATEDVisibleISODrumTapCommitsAndSurvivesPopupReopen() throws {
+        #if !targetEnvironment(simulator)
+            throw XCTSkip("Writable presentation fixtures are simulator-only")
+        #endif
+        app.launch()
+        rotate(.landscapeLeft)
+        let iso = app.buttons["monitor.capture.iso"]
+        XCTAssertTrue(iso.waitForExistence(timeout: 10))
+        XCTAssertEqual(iso.value as? String, "1600")
+        iso.tap()
+        let drum = app.descendants(matching: .any)["Value"].firstMatch
+        XCTAssertTrue(drum.waitForExistence(timeout: 5))
+        XCTAssertTrue(drum.isHittable)
+        XCTAssertEqual(drum.value as? String, "1600")
+
+        func assertReported(_ expected: String) {
+            let reported = NSPredicate { _, _ in
+                drum.value as? String == expected && iso.value as? String == expected
+            }
+            expectation(for: reported, evaluatedWith: app)
+            waitForExpectations(timeout: 5)
+            XCTAssertEqual(drum.value as? String, expected)
+            XCTAssertEqual(iso.value as? String, expected)
+        }
+        func tapVisible(_ expected: String) {
+            let rows = drum.descendants(matching: .staticText)
+                .matching(NSPredicate(format: "label == %@", expected))
+            XCTAssertEqual(rows.count, 1, "Tap one actually supplied visible detent")
+            let row = rows.firstMatch
+            let point = CGPoint(x: row.frame.midX, y: row.frame.midY)
+            XCTAssertTrue(drum.frame.contains(point))
+            XCTAssertTrue(app.frame.contains(point))
+            capture("SIMULATED-iso-drum-before-\(expected)")
+            // The drawing row need not own hit testing. Tap its actual visible centre.
+            app.coordinate(withNormalizedOffset: .zero).withOffset(
+                CGVector(dx: point.x - app.frame.minX, dy: point.y - app.frame.minY)).tap()
+            let tree = XCTAttachment(string: app.debugDescription)
+            tree.name = "SIMULATED-iso-drum-after-\(expected)-tree"
+            tree.lifetime = .keepAlways
+            add(tree)
+            assertReported(expected)
+            capture("SIMULATED-iso-drum-reported-\(expected)")
+        }
+
+        tapVisible("3200")
+        app.buttons["monitor.capture.close"].tap()
+        XCTAssertFalse(drum.exists)
+        XCTAssertEqual(iso.value as? String, "3200")
+        iso.tap()
+        XCTAssertTrue(drum.waitForExistence(timeout: 5))
+        assertReported("3200")
+        capture("SIMULATED-iso-drum-fresh-popup-3200")
+        tapVisible("1600")
+        app.buttons["monitor.capture.close"].tap()
+        XCTAssertEqual(iso.value as? String, "1600")
+    }
+
     func testPortraitToolsStayInPlaceWhenFitFillChanges() {
         app.launchEnvironment["OPV_UI_REVIEW_FIT"] = "1"
         app.launch()
@@ -125,7 +197,7 @@ final class MonitorUIFlowTests: XCTestCase {
         }
     }
 
-    func testSettingsTabsShareEdgesAndKeepSelection() {
+    func testSettingsTabsKeepBaselineSpacingAndSelection() {
         let physicalReview = ProcessInfo.processInfo.environment["OPV_PHYSICAL_UI_REVIEW"] == "1"
         if physicalReview { app.launchEnvironment["OPV_PHYSICAL_UI_REVIEW"] = "1" }
         app.launch()
@@ -147,10 +219,11 @@ final class MonitorUIFlowTests: XCTestCase {
             XCTAssertTrue(link.waitForExistence(timeout: 5))
             XCTAssertGreaterThanOrEqual(link.frame.height, 44 - 0.001)
             XCTAssertGreaterThanOrEqual(sharing.frame.height, 44 - 0.001)
+            // main's 6 pt tab spacing; the old shared-edge check failed on main the same way.
             if orientation == .portrait {
-                XCTAssertEqual(link.frame.maxX, sharing.frame.minX, accuracy: 0.5)
+                XCTAssertEqual(sharing.frame.minX - link.frame.maxX, 6, accuracy: 0.5)
             } else {
-                XCTAssertEqual(link.frame.maxY, sharing.frame.minY, accuracy: 0.5)
+                XCTAssertEqual(sharing.frame.minY - link.frame.maxY, 6, accuracy: 0.5)
             }
             sharing.tap()
             XCTAssertTrue(sharing.isSelected)
@@ -175,6 +248,20 @@ final class MonitorUIFlowTests: XCTestCase {
                 format: "identifier == %@ AND label == %@",
                 "monitor.settings.card.title", "Zebra")
         ).firstMatch
+        let falseColor = app.staticTexts.matching(
+            NSPredicate(format: "identifier == %@ AND label == %@",
+                "monitor.settings.card.title", "False Color")).firstMatch
+        let evMeter = app.staticTexts.matching(
+            NSPredicate(format: "identifier == %@ AND label == %@",
+                "monitor.settings.card.title", "EV Meter")).firstMatch
+        if app.frame.width > 700 {
+            // main: the tool cards stay in one column, with EV Meter and LUT beside them.
+            XCTAssertEqual(zebra.frame.minX, falseColor.frame.minX, accuracy: 1,
+                "Zebra sits in False Color's column")
+            XCTAssertGreaterThan(zebra.frame.minY, falseColor.frame.maxY)
+            XCTAssertGreaterThan(evMeter.frame.minX, falseColor.frame.maxX,
+                "EV Meter sits beside the tool column")
+        }
         for _ in 0..<6 where !zebra.isHittable {
             app.coordinate(withNormalizedOffset: CGVector(dx: 0.65, dy: 0.8))
                 .press(
@@ -1016,6 +1103,10 @@ final class MonitorUIFlowTests: XCTestCase {
         XCTAssertTrue(alert.waitForExistence(timeout: 5))
         XCTAssertTrue(alert.buttons["Open Settings"].exists)
         XCTAssertTrue(alert.buttons["Connect"].exists)
+        // Main named the camera that joins the hotspot.
+        XCTAssertTrue(
+            alert.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Studio camera joins this iPhone’s hotspot'"))
+                .firstMatch.exists)
         capture("hotspot-connect-prompt")
         alert.buttons["Cancel"].tap()
         XCTAssertFalse(app.staticTexts["CONNECTING"].exists)
@@ -1034,6 +1125,74 @@ final class MonitorUIFlowTests: XCTestCase {
             XCTAssertTrue(app.buttons["Cancel connecting to Studio camera"].exists)
             capture("connecting-progress-\(orientation.rawValue)")
         }
+    }
+
+    /// A nearby camera reads as main showed it, and Pair connects it at once on the four pages.
+    func testNearbyPairStartsThePocketWizard() {
+        app.launchEnvironment["OPV_UI_REVIEW_SCREEN"] = "cameras"
+        app.launch()
+        rotate(.portrait)
+        let pair = app.buttons["Pair OsmoPocket3-4D5E"]
+        XCTAssertTrue(pair.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Pocket · Osmo Pocket 3 · nearby"].exists)
+        XCTAssertTrue(app.staticTexts["Needs approval on the camera"].exists)
+        capture("nearby-card")
+        pair.tap()
+        XCTAssertTrue(
+            app.staticTexts[
+                "If the camera shows Approve, tap it on that camera's screen. First-time pairing can wait up to 90 seconds."
+            ].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Look for an Approve / pairing prompt"].exists)
+        XCTAssertTrue(app.staticTexts["Connecting (Bluetooth)…"].exists, "the live line is the connect's phase")
+        // Main's rail: step 2 is the approve page, not the connect plan's Bluetooth step.
+        XCTAssertTrue(app.descendants(matching: .any)["Step 2: Approve on the camera, current"].exists)
+        capture("pair-approve-from-nearby")
+    }
+
+    /// The wizard's Wi-Fi page and a Bluetooth permission failure, as main showed them.
+    func testPairWizardWiFiPageAndBluetoothFailure() {
+        let pages: [(String, [String])] = [
+            (
+                "pair-join",
+                [
+                    "We read the camera's network over Bluetooth, then join its Wi-Fi for you.",
+                    "Tap Join when iOS asks to join the camera network", "Bluetooth link", "Camera Wi-Fi",
+                ]
+            ),
+            (
+                "pair-bluetooth",
+                [
+                    "OpenPocketCine needs Bluetooth access to find the camera. Open Settings, turn on Bluetooth for OpenPocketCine, then try again.",
+                    "Open Settings",
+                ]
+            ),
+        ]
+        for (state, texts) in pages {
+            app.launchEnvironment["OPV_UI_REVIEW_SCREEN"] = "pair"
+            app.launchEnvironment["OPV_UI_REVIEW_STATE"] = state
+            app.launch()
+            rotate(.portrait)
+            XCTAssertTrue(app.staticTexts[texts[0]].waitForExistence(timeout: 10), state)
+            for text in texts.dropFirst() {
+                XCTAssertTrue(app.staticTexts[text].firstMatch.exists || app.buttons[text].exists, "\(state): \(text)")
+            }
+            capture(state)
+            app.terminate()
+        }
+    }
+
+    /// A setup chip's menu is main's: Forget for a setup that moves the camera, no Rename setup.
+    func testSetupChipMenuOffersForgetButNoRename() {
+        app.launchEnvironment["OPV_UI_REVIEW_SCREEN"] = "cameras"
+        app.launch()
+        rotate(.portrait)
+        let hotspot = app.buttons["cameras.setup.phoneHotspot"]
+        XCTAssertTrue(hotspot.waitForExistence(timeout: 10))
+        hotspot.press(forDuration: 1.2)
+        let forget = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Forget '")).firstMatch
+        XCTAssertTrue(forget.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Rename setup"].exists)
+        capture("setup-chip-menu")
     }
 
     private func reveal(_ tab: XCUIElement, in rail: XCUIElement, portrait: Bool) {
@@ -1080,7 +1239,8 @@ final class MonitorUIFlowTests: XCTestCase {
     }
 
     private func mediaClipCenter(_ filename: String) -> XCUICoordinate {
-        app.otherElements["monitor.media.clip.UI-REVIEW/\(filename)"]
+        // A clip is identified by its page key, `<storage>:<path>` (`MediaFile.id`), on main too.
+        app.otherElements["monitor.media.clip.0:UI-REVIEW/\(filename)"]
             .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
     }
 

@@ -1,3 +1,5 @@
+import MonitorUI
+
 #if targetEnvironment(simulator)
     import Foundation
     import MonitorPresentation
@@ -160,7 +162,7 @@
                                 .init(red: 0.08, green: 0.11, blue: 0.14),
                             ],
                             startPoint: .topLeading, endPoint: .bottomTrailing)
-                        OpcIcon.mountain.frame(width: 46, height: 46)
+                        MonitorIcon.mountain.frame(width: 46, height: 46)
                             .foregroundStyle(.white.opacity(0.16))
                     }
                     .accessibilityLabel("Generated review thumbnail for \(item.filename)")
@@ -178,6 +180,9 @@
                         cacheError = error.localizedDescription
                     }
                 #endif
+                // The shared playback owner admits player actions only while the library
+                // browses, which the real Media page starts on open (PocketMediaPort).
+                model.session.isBrowsingMedia = true
                 if MonitorUIReview.screen == "media-list" { layout = .list }
                 if MonitorUIReview.screen == "media-selection" {
                     selected = [MonitorMediaReview.file(0).id, MonitorMediaReview.file(2).id]
@@ -204,7 +209,7 @@
 
         private func handle(_ action: MonitorMediaAction) {
             switch action {
-            case .back: model.liveOperatorPanel = nil
+            case .back: model.shell.dismissCover()
             case .refresh: break
             case .cycleSort: ascending.toggle()
             case .category(let id): category = id

@@ -1,8 +1,10 @@
 import MonitorPresentation
 import Network
+import OpenCineCameraControls
 import OpenPocketViewCore
 import SwiftUI
 import XCTest
+import OpenCineDJIApple
 
 @testable import OpenPocketCine
 
@@ -10,7 +12,7 @@ import XCTest
 final class CapturePreviewTrafficTests: XCTestCase {
     func testMountedHeldPanelsAndTheirDetentsAreReadOnlyUntilExplicitReleaseCommit() async throws {
         let peer = try CaptureTrafficPeer()
-        let driver = DatalinkDriver.loopbackForTesting(port: try await peer.start())
+        let driver = DjiAppleDatalink.loopbackForTesting(port: try await peer.start())
         let model = AppModel()
         model.session = CameraSession(borrowing: HevcDecoder())
         model.session.datalink = driver
@@ -39,7 +41,12 @@ final class CapturePreviewTrafficTests: XCTestCase {
         status.whiteBalance = .custom(kelvin: 5600, tint: 17)
         status.whiteBalanceKelvin = 5600
         status.whiteBalanceTint = 17
-        model.session.status = status
+        // A body that meters audio: the AUDIO drum comes from its capability projection.
+        model.session.updateMultiview(
+            camera: DjiAppleSighting(
+                id: UUID(), name: "OsmoPocket4P-Test",
+                model: .resolve(modelId: 0x22, name: "OsmoPocket4P-Test"), modelId: 0x22),
+            driver: driver, status: status)
 
         for sheet in [CaptureSheet.iso, .audio, .wb] {
             let snapshot = try XCTUnwrap(CaptureQuickSnapshot.primary(sheet, model: model))
@@ -65,14 +72,15 @@ final class CapturePreviewTrafficTests: XCTestCase {
         // explicit commit, so the zero-traffic assertions cannot pass on a dead sink.
         let snapshot = try XCTUnwrap(CaptureQuickSnapshot.primary(.wb, model: model))
         let value = try XCTUnwrap(snapshot.changedValue(translation: -56, current: snapshot))
-        snapshot.apply(value, model: model)
+        snapshot.apply(value, host: model)
         let deadline = ContinuousClock.now.advanced(by: .seconds(1))
         while peer.cameraCommands == baseline, ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(10))
         }
         XCTAssertGreaterThan(peer.cameraCommands, baseline)
-        XCTAssertEqual(model.session.status.whiteBalanceKelvin, 5700)
-        XCTAssertEqual(model.session.status.whiteBalanceTint, 17)
+        // The commit is a pending request; reported status waits for the camera.
+        XCTAssertEqual(model.session.pendingWhiteBalance, .custom(kelvin: 5700, tint: 17))
+        XCTAssertEqual(model.session.status.whiteBalanceKelvin, 5600)
     }
 }
 

@@ -1,8 +1,10 @@
 import OpenPocketViewCore
 import UIKit
 import XCTest
+import OpenCineDJIApple
 
 @testable import OpenPocketCine
+@testable import OpenCineDJIApple
 
 @MainActor final class MultiviewRecoveryTests: XCTestCase {
     func testDelayedEnableGetsTheFullPictureDeadlineAfterReadinessReturns() {
@@ -51,10 +53,10 @@ import XCTest
     func testRetiredEndpointCannotChangeEitherCameraDecoder() {
         let first = MultiviewSession.Tile()
         let second = MultiviewSession.Tile()
-        let retired = DatalinkDriver(port: 9004, tcpPoke: false, pairingToken: "test")
+        let retired = DjiAppleDatalink(port: 9004, tcpPoke: false, pairingToken: "test")
         first.driver = retired
         first.bindPreviewInput(retired)
-        let current = DatalinkDriver(port: 9004, tcpPoke: false, pairingToken: "test")
+        let current = DjiAppleDatalink(port: 9004, tcpPoke: false, pairingToken: "test")
         first.driver = current
         first.bindPreviewInput(current)
         retired.onVideoDiscontinuity?()
@@ -69,7 +71,7 @@ import XCTest
 
     func testSuspendedDeliveryOverflowReachesTheTileRepairOwner() throws {
         let tile = MultiviewSession.Tile()
-        let driver = DatalinkDriver(port: 9004, tcpPoke: false, pairingToken: "test")
+        let driver = DjiAppleDatalink(port: 9004, tcpPoke: false, pairingToken: "test")
         tile.driver = driver
         tile.bindPreviewInput(driver)
         let host = DisplayLayerView(tile.decoder.displayLayer)
@@ -113,7 +115,7 @@ import XCTest
 
     func testTileSnapshotIncludesDecoderLossEvenWithFreshTransport() throws {
         let tile = MultiviewSession.Tile()
-        let driver = DatalinkDriver(port: 9004, tcpPoke: false, pairingToken: "test")
+        let driver = DjiAppleDatalink(port: 9004, tcpPoke: false, pairingToken: "test")
         tile.driver = driver
         let host = DisplayLayerView(tile.decoder.displayLayer)
         host.frame = CGRect(x: 0, y: 0, width: 64, height: 64)

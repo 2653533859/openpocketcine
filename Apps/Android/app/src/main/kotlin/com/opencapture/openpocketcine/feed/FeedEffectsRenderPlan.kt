@@ -1,263 +1,64 @@
 package com.opencapture.openpocketcine.feed
 
 import android.content.Context
+import com.opencapture.opencine.appkit.MonitorAssistRasterValues
+import com.opencapture.opencine.appkit.renderPlan
+import com.opencapture.opencine.appkit.renderToolVisible
 import android.util.Log
-import com.opencapture.openpocketcine.assists.FalseColorScale
-import com.opencapture.openpocketcine.assists.LiveAssistState
-import com.opencapture.openpocketcine.assists.LiveAssistTool
+import com.opencapture.opencine.vocabulary.CameraCommands
+import com.opencapture.monitorui.MonitorFalseColorSelection
+import com.opencapture.opencine.appkit.MonitorAssistState
+import com.opencapture.monitorui.MonitorAssistTool
 import com.opencapture.openpocketcine.bridge.SwiftCore
-import com.opencapture.openpocketcine.lut.LutCatalog
-import com.opencapture.openpocketcine.lut.LutExposureCompensation
-import com.opencapture.openpocketcine.session.CameraCommands
+import com.opencapture.opencine.vocabulary.LutCatalog
+import com.opencapture.opencine.media.MonitorLUTExposureCompensation
 import java.io.File
 import java.util.LinkedHashMap
+import com.opencapture.opencine.vocabulary.fromColorMode
+import com.opencapture.opencine.vocabulary.LutLookSource
+import com.opencapture.opencine.vocabulary.LutLookResolver
+import com.opencapture.opencine.media.FeedEffectsRenderPlan
+import com.opencapture.opencine.media.MonitorTransfer
+import com.opencapture.opencine.media.MonitorLUTCube
+import com.opencapture.opencine.media.ScopeTapPolicy
 
 private const val TAG = "OpcFeedFx"
 
-/**
- * Immutable GLES input for one live-monitor look.
- *
- * LUT is the displayed grade. FALSE / PEAK / ZEBRA measure encoded camera codes
- * and composite over that look — same order as iOS `LiveMonitorCompositor`.
- */
-internal class FeedEffectsRenderPlan(
-    val lutCube: FeedEffectsCube?,
-    val falseColorPaint: FeedEffectsCube?,
-    val falseColorWeight: FeedEffectsCube?,
-    val peaking: Boolean,
-    val peakingColor: FloatArray,
-    val peakingRatioThreshold: Float,
-    val peakingNoiseGate: Float,
-    val zebraHighlightOn: Boolean,
-    val zebraHighlightCode: Float,
-    val zebraHighlightColor: FloatArray,
-    val zebraMidtoneOn: Boolean,
-    val zebraMidtoneCode: Float,
-    val zebraMidtoneHalf: Float,
-    val zebraMidtoneColor: FloatArray,
-    val splitComparison: Boolean,
-    val splitVertical: Boolean,
-    val scopeTap: ScopeTapPolicy = ScopeTapPolicy.IDLE,
-) {
-    val falseColorOn: Boolean
-        get() = falseColorPaint != null && falseColorWeight != null
-
-    /** Same look; the present tap also feeds this inspector preview owner. */
-    fun withPreviewOwner(owner: Any?): FeedEffectsRenderPlan = FeedEffectsRenderPlan(
-        lutCube, falseColorPaint, falseColorWeight, peaking, peakingColor, peakingRatioThreshold,
-        peakingNoiseGate, zebraHighlightOn, zebraHighlightCode, zebraHighlightColor, zebraMidtoneOn,
-        zebraMidtoneCode, zebraMidtoneHalf, zebraMidtoneColor, splitComparison, splitVertical,
-        scopeTap.copy(previewOwner = owner),
-    )
-
-    /** Same shader set and cube textures; only uniforms or scope policy differ. */
-    fun sharesGlResources(other: FeedEffectsRenderPlan): Boolean =
-        lutCube === other.lutCube &&
-            falseColorPaint === other.falseColorPaint &&
-            falseColorWeight === other.falseColorWeight &&
-            peaking == other.peaking
-
-    /** LUT / PEAK / FALSE / ZEBRA — grade the player, not a CPU overlay. */
-    val hasPlaybackLook: Boolean
-        get() =
-            lutCube != null ||
-                falseColorOn ||
-                peaking ||
-                zebraHighlightOn ||
-                zebraMidtoneOn
-
-    /**
-     * Identity for `setVideoEffects`. WAVE / HISTO must not rebuild the
-     * Media3 graph — that was the LUT/false-colour "sometimes it doesn't".
-     */
-    val playbackLookKey: Int
-        get() {
-            var h = 17
-            h = 31 * h + System.identityHashCode(lutCube)
-            h = 31 * h + System.identityHashCode(falseColorPaint)
-            h = 31 * h + System.identityHashCode(falseColorWeight)
-            h = 31 * h + if (peaking) 1 else 0
-            h = 31 * h + peakingColor.contentHashCode()
-            h = 31 * h + peakingRatioThreshold.hashCode()
-            h = 31 * h + peakingNoiseGate.hashCode()
-            h = 31 * h + if (zebraHighlightOn) 1 else 0
-            h = 31 * h + zebraHighlightCode.hashCode()
-            h = 31 * h + zebraHighlightColor.contentHashCode()
-            h = 31 * h + if (zebraMidtoneOn) 1 else 0
-            h = 31 * h + zebraMidtoneCode.hashCode()
-            h = 31 * h + zebraMidtoneHalf.hashCode()
-            h = 31 * h + zebraMidtoneColor.contentHashCode()
-            h = 31 * h + if (splitComparison) 1 else 0
-            h = 31 * h + if (splitVertical) 1 else 0
-            return h
-        }
-
-    companion object {
-        val IDENTITY =
-            FeedEffectsRenderPlan(
-                lutCube = null,
-                falseColorPaint = null,
-                falseColorWeight = null,
-                peaking = false,
-                peakingColor = floatArrayOf(1f, 72f / 255f, 64f / 255f),
-                peakingRatioThreshold = 2.10f,
-                peakingNoiseGate = 0.00174f,
-                zebraHighlightOn = false,
-                zebraHighlightCode = 1f,
-                zebraHighlightColor = floatArrayOf(1f, 1f, 1f),
-                zebraMidtoneOn = false,
-                zebraMidtoneCode = 0.5f,
-                zebraMidtoneHalf = 5f / 255f,
-                zebraMidtoneColor = floatArrayOf(1f, 0.72f, 0.2f),
-                splitComparison = false,
-                splitVertical = true,
-            )
-    }
-}
 
 internal object FeedEffectsRenderPlanFactory {
     fun create(
         context: Context,
-        assist: LiveAssistState,
+        assist: MonitorAssistState,
         lutSelection: String,
         colorMode: Int,
         iso: Int,
         family: String,
         cameraName: String?,
         playback: Boolean = false,
-        previewTool: LiveAssistTool? = null,
+        previewTool: MonitorAssistTool? = null,
         isPhoto: Boolean = false,
+        lookProfile: com.opencapture.opencine.vocabulary.CameraLUTProfile = com.opencapture.opencine.dji.DjiCameraLUTProfile.make(family, cameraName),
     ): FeedEffectsRenderPlan {
-        val shown: (LiveAssistTool) -> Boolean =
-            if (previewTool != null) {
-                { it == previewTool }
-            } else if (playback) {
-                { assist.isPlaybackVisible(it) }
-            } else {
-                { assist.isVisible(it) }
-            }
-        val lutOn = shown(LiveAssistTool.LUT)
-        val peaking = shown(LiveAssistTool.PEAK)
-        val falseColor = shown(LiveAssistTool.FALSE)
-        val zebra = shown(LiveAssistTool.ZEBRA)
-        val inspectorDemand = assist.inspectorScopeDemand?.takeIf { it.playback == playback && previewTool == null }
-        val inspector = inspectorDemand?.tool
-        val previewOwner = inspectorDemand?.takeIf {
-            it.tool in listOf(LiveAssistTool.LUT, LiveAssistTool.PEAK, LiveAssistTool.FALSE, LiveAssistTool.ZEBRA, LiveAssistTool.DESQ)
-        }?.owner
-        val inspectorOnly = inspector != null && listOf(LiveAssistTool.WAVE, LiveAssistTool.PARADE,
-            LiveAssistTool.HISTO, LiveAssistTool.VECTOR, LiveAssistTool.LIGHTS, LiveAssistTool.ND).none(shown)
-        val waveform = shown(LiveAssistTool.WAVE) || inspector == LiveAssistTool.WAVE
-        val parade = shown(LiveAssistTool.PARADE) || inspector == LiveAssistTool.PARADE
-        val histogram = shown(LiveAssistTool.HISTO) || inspector == LiveAssistTool.HISTO
-        val vectorscope = shown(LiveAssistTool.VECTOR) || inspector == LiveAssistTool.VECTOR
-        val trafficLights = shown(LiveAssistTool.LIGHTS) || inspector == LiveAssistTool.LIGHTS
-        val look =
-            LutLookResolver.resolve(
-                selection = lutSelection,
-                lutOn = lutOn,
-                colorMode = colorMode,
-                family = family,
-                cameraName = cameraName,
-                isPhoto = isPhoto,
-            )
-        val lutCube = lutCube(context, look, assist.lutExposureStops, colorMode)
-        // Same gate as iOS `FeedPresentPolicy.appliesSplitComparison` (#218).
-        val split =
-            assist.splitComparison && lutCube != null && lutOn &&
-                (!falseColor || assist.falseColorScale == FalseColorScale.LIMITS)
-        val scalars =
-            if (SwiftCore.isAvailable) {
-                SwiftCore.feedAssistScalars(
-                    colorMode,
-                    iso,
-                    assist.zebraHighlightIRE.toFloat(),
-                    assist.zebraMidtoneIRE.toFloat(),
-                )
-            } else {
-                null
-            }
-        val highlightCode = scalars?.getOrNull(0) ?: (assist.zebraHighlightIRE / 100.0).toFloat()
-        val midtoneCode = scalars?.getOrNull(1) ?: (assist.zebraMidtoneIRE / 100.0).toFloat()
-        val midtoneHalf = scalars?.getOrNull(2) ?: (5.0 / 255.0).toFloat()
-        val gateScale = scalars?.getOrNull(3) ?: 1f
-        val paint =
-            if (falseColor) {
-                falseColorCube(paint = true, assist.falseColorScale, colorMode, iso, assist.falseColorRec709)
-            } else {
-                null
-            }
-        val weight =
-            if (falseColor) {
-                falseColorCube(paint = false, assist.falseColorScale, colorMode, iso, assist.falseColorRec709)
-            } else {
-                null
-            }
-        val peakRgb = assist.peakingColor.rgb
-        val hiRgb = assist.zebraHighlightColor.rgb
-        val midRgb = assist.zebraMidtoneColor.rgb
-        return FeedEffectsRenderPlan(
-            lutCube = lutCube,
-            falseColorPaint = paint,
-            falseColorWeight = weight,
-            peaking = peaking,
-            peakingColor =
-                floatArrayOf(peakRgb.first.toFloat(), peakRgb.second.toFloat(), peakRgb.third.toFloat()),
-            peakingRatioThreshold = assist.peakingSensitivity.ratioThreshold.toFloat(),
-            peakingNoiseGate = (assist.peakingSensitivity.noiseGate * gateScale).toFloat(),
-            zebraHighlightOn = zebra && assist.zebraHighlight,
-            zebraHighlightCode = highlightCode,
-            zebraHighlightColor =
-                floatArrayOf(hiRgb.first.toFloat(), hiRgb.second.toFloat(), hiRgb.third.toFloat()),
-            zebraMidtoneOn = zebra && assist.zebraMidtone,
-            zebraMidtoneCode = midtoneCode,
-            zebraMidtoneHalf = midtoneHalf,
-            zebraMidtoneColor =
-                floatArrayOf(midRgb.first.toFloat(), midRgb.second.toFloat(), midRgb.third.toFloat()),
-            splitComparison = split,
-            splitVertical = assist.splitVertical,
-            scopeTap =
-                ScopeTapPolicy(
-                    inspectorOnly = inspectorOnly,
-                    previewOwner = previewOwner,
-                    playback = playback,
-                    waveform = waveform,
-                    parade = parade,
-                    histogram = histogram,
-                    vectorscope = vectorscope,
-                    trafficLights = trafficLights,
-                    ndMeter = shown(LiveAssistTool.ND),
-                    trafficThreshold = assist.crushClipCompensation.pixelFractionThreshold,
-                    colorMode = colorMode,
-                    iso = if (iso in 50..102_400) iso else ScopeExposureCeiling.REFERENCE_EI,
-                    allowsTransferInference = playback || !isPhoto,
-                    vectorLut =
-                        if (vectorscope) {
-                            lutCube
-                                ?: when (colorMode) {
-                                    CameraCommands.COLOR_DLOG,
-                                    CameraCommands.COLOR_DLOG2,
-                                    ->
-                                        lutCube(
-                                            context,
-                                            LutLookResolver.resolve(
-                                                LutCatalog.AUTO,
-                                                lutOn = true,
-                                                colorMode = colorMode,
-                                                family = family,
-                                                cameraName = cameraName,
-                                                isPhoto = isPhoto,
-                                            ),
-                                            assist.lutExposureStops,
-                                            colorMode,
-                                        )
-                                    else -> null
-                                }
-                        } else {
-                            null
-                        },
-                ),
-        )
+        val lutOn = assist.renderToolVisible(MonitorAssistTool.LUT, playback, previewTool)
+        val falseColor = assist.renderToolVisible(MonitorAssistTool.FALSE, playback, previewTool)
+        val look = LutLookResolver.resolve(lutSelection, lutOn, colorMode, profile = lookProfile, isPhoto = isPhoto)
+        val lut = lutCube(context, look, assist.lutExposureStops, colorMode)
+        val scalars = if (SwiftCore.isAvailable) SwiftCore.feedAssistScalars(colorMode, iso,
+            assist.zebraHighlightIRE.toFloat(), assist.zebraMidtoneIRE.toFloat()) else null
+        val vectorscope = assist.renderToolVisible(MonitorAssistTool.VECTOR, playback, previewTool) ||
+            assist.inspectorScopeDemand?.takeIf { it.playback == playback && previewTool == null }?.tool == MonitorAssistTool.VECTOR
+        val vectorLook = if (vectorscope && lut == null &&
+            colorMode in listOf(CameraCommands.COLOR_DLOG, CameraCommands.COLOR_DLOG2)) {
+            lutCube(context, LutLookResolver.resolve(LutCatalog.AUTO, true, colorMode,
+                profile = lookProfile, isPhoto = isPhoto), assist.lutExposureStops, colorMode)
+        } else null
+        return assist.renderPlan(transfer = MonitorTransfer.fromColorMode(colorMode),
+            iso = iso.takeIf { it in 50..102_400 }, playback = playback, previewTool = previewTool, isPhoto = isPhoto,
+            raster = MonitorAssistRasterValues(lut = lut, vectorLook = vectorLook,
+                falseColorPaint = if (falseColor) falseColorCube(true, assist.falseColorScale, colorMode, iso, assist.falseColorRec709) else null,
+                falseColorWeight = if (falseColor) falseColorCube(false, assist.falseColorScale, colorMode, iso, assist.falseColorRec709) else null,
+                highlightCode = scalars?.getOrNull(0), midtoneCode = scalars?.getOrNull(1),
+                midtoneHalf = scalars?.getOrNull(2), noiseGateScale = scalars?.getOrNull(3)))
     }
 
     /**
@@ -271,7 +72,8 @@ internal object FeedEffectsRenderPlanFactory {
         family: String,
         cameraName: String?,
     ): Pair<FeedEffectsRenderPlan, String> {
-        val source = LutLookResolver.resolve(LutCatalog.AUTO, true, colorMode, family, cameraName)
+        val source = LutLookResolver.resolve(LutCatalog.AUTO, true, colorMode,
+            profile = com.opencapture.opencine.dji.DjiCameraLUTProfile.make(family, cameraName))
         if (source == LutLookSource.Off) {
             val caption = if (colorMode < 0) "Waiting for camera color" else "Auto · no conversion needed"
             return FeedEffectsRenderPlan.IDENTITY to caption
@@ -305,8 +107,8 @@ internal object FeedEffectsRenderPlanFactory {
         source: LutLookSource,
         exposureStops: Double,
         colorMode: Int,
-    ): FeedEffectsCube? {
-        val snapped = LutExposureCompensation.snap(exposureStops)
+    ): MonitorLUTCube? {
+        val snapped = MonitorLUTExposureCompensation.snap(exposureStops)
         val key =
             when (source) {
                 is LutLookSource.Asset -> "asset:${source.fileName}:$snapped:$colorMode"
@@ -342,19 +144,19 @@ internal object FeedEffectsRenderPlanFactory {
 
     private fun falseColorCube(
         paint: Boolean,
-        scale: FalseColorScale,
+        scale: MonitorFalseColorSelection,
         colorMode: Int,
         iso: Int,
         rec709: Boolean,
-    ): FeedEffectsCube? {
+    ): MonitorLUTCube? {
         if (!SwiftCore.isAvailable) return null
         // 4…7 = each scale read through the official Rec.709 look (Swift `FeedEffectsWire`).
         val ordinal =
             when (scale) {
-                FalseColorScale.STOPS -> if (rec709) 4 else 0
-                FalseColorScale.IRE -> if (rec709) 5 else 1
-                FalseColorScale.LIMITS -> if (rec709) 6 else 2
-                FalseColorScale.SCENE_STOPS -> if (rec709) 7 else 3
+                MonitorFalseColorSelection.STOPS -> if (rec709) 4 else 0
+                MonitorFalseColorSelection.IRE -> if (rec709) 5 else 1
+                MonitorFalseColorSelection.LIMITS -> if (rec709) 6 else 2
+                MonitorFalseColorSelection.SCENE_STOPS -> if (rec709) 7 else 3
             }
         val kind = if (paint) "paint" else "weight"
         return PackedCubeCache.value("$kind:$ordinal:$colorMode:$iso") {
@@ -370,15 +172,15 @@ internal object FeedEffectsRenderPlanFactory {
 private object PackedCubeCache {
     private const val MAX_ENTRIES = 8
     private val cubes =
-        object : LinkedHashMap<String, FeedEffectsCube>(MAX_ENTRIES, 0.75f, true) {
+        object : LinkedHashMap<String, MonitorLUTCube>(MAX_ENTRIES, 0.75f, true) {
             override fun removeEldestEntry(
-                eldest: MutableMap.MutableEntry<String, FeedEffectsCube>?,
+                eldest: MutableMap.MutableEntry<String, MonitorLUTCube>?,
             ): Boolean = size > MAX_ENTRIES
         }
 
-    fun value(key: String, bake: () -> ByteArray?): FeedEffectsCube? =
+    fun value(key: String, bake: () -> ByteArray?): MonitorLUTCube? =
         synchronized(cubes) {
             cubes[key]
-                ?: bake()?.let(FeedEffectsCube::fromPacked)?.also { cubes[key] = it }
+                ?: bake()?.let(MonitorLUTCube::fromPacked)?.also { cubes[key] = it }
         }
 }

@@ -38,9 +38,6 @@ object OpcFonts {
     val mono = sora
 }
 
-/** Compatibility names for existing consumers; UI 2.0 uses Sora throughout. */
-enum class LiveTypeDesign { Default, Rounded, Monospaced }
-
 /** One optical family for every surface. Numeric readouts use tabular Sora figures. */
 object LiveType {
     fun display(size: Float, weight: FontWeight = FontWeight.SemiBold) =
@@ -50,8 +47,7 @@ object LiveType {
 
     fun text(size: Float, weight: FontWeight = FontWeight.Normal) = display(size, weight)
 
-    fun ui(size: Float, weight: FontWeight = FontWeight.Normal, design: LiveTypeDesign = LiveTypeDesign.Default): TextStyle =
-        if (design == LiveTypeDesign.Monospaced) mono(size, weight) else display(size, weight)
+    fun ui(size: Float, weight: FontWeight = FontWeight.Normal): TextStyle = display(size, weight)
 
     fun mono(size: Float, weight: FontWeight = FontWeight.Medium) =
         display(size, weight).copy(fontFeatureSettings = "tnum")
@@ -103,20 +99,6 @@ object LiveDesign {
     val feedWell = Color.Black
 
     const val CORNER_RADIUS_DP = 12f
-    const val CONTROL_HEIGHT_DP = 44f
-    const val LOCK_SIZE_DP = 54f
-    const val RECORD_SIZE_DP = 70f
-    const val AUX_SIZE_DP = 54f
-    const val DISP_WIDTH_DP = 54f
-    const val DISP_HEIGHT_DP = 54f
-    const val RAIL_WIDTH_DP = 70f
-    const val ZOOM_CHIP_DP = 44f
-    const val GIMBAL_STICK_DP = com.opencapture.monitorui.MonitorLayoutPolicy.STICK_SIDE
-    const val GIMBAL_KNOB_DP = 41f
-    const val TOP_DECK_HEIGHT_DP = 35f
-    const val FOCUS_RESET_DP = 40f
-    const val TOP_PICKER_WIDTH_DP = 480f
-    const val CAPTURE_PICKER_WIDTH_DP = 480f
 }
 
 private val OpcTypography =

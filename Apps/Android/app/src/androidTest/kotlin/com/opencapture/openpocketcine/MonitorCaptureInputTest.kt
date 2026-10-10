@@ -1,5 +1,6 @@
 package com.opencapture.openpocketcine
 
+import com.opencapture.opencine.appkit.ShellModel
 import android.content.res.Configuration
 import android.os.SystemClock
 import android.view.InputDevice
@@ -41,12 +42,18 @@ import com.opencapture.monitorui.MonitorQuickPreview
 import com.opencapture.monitorui.MonitorReadoutDismissBackdrop
 import com.opencapture.monitorui.MonitorReadoutRegions
 import com.opencapture.monitorui.monitorReadoutGesture
-import com.opencapture.openpocketcine.session.CameraStatus
+import com.opencapture.monitorui.monitorPickerPassthrough
+import com.opencapture.opencine.cameracontrols.LiveControlSheet
+import com.opencapture.opencine.cameracontrols.LivePickerHost
+import com.opencapture.opencine.cameracontrols.LiveSheet
+import com.opencapture.opencine.cameracontrols.LockButton
+import com.opencapture.opencine.vocabulary.CameraStatus
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import com.opencapture.monitorui.MonitorIcon
 
 /** Reuses the existing native activity/instrumentation harness; no Compose test dependency. */
 @RunWith(AndroidJUnit4::class)
@@ -93,7 +100,7 @@ class MonitorCaptureInputTest {
         ActivityScenario.launch(BackdropRenderActivity::class.java).use { scenario ->
             var model: AppModel? = null
             try {
-                scenario.onActivity { model = AppModel(it) }
+                scenario.onActivity { model = AppModel(it).also(::presentSimulatedNativeMonitor) }
                 for (tablet in listOf(false, true)) {
                     val probe = NavigationProbe()
                     val layoutProbe = InputProbe()
@@ -101,8 +108,8 @@ class MonitorCaptureInputTest {
                         activity.setContent { NavigationFixture(checkNotNull(model), probe, layoutProbe, tablet) }
                     }
                     awaitReady(scenario, layoutProbe)
-                    for ((label, destination) in listOf("Settings" to LiveOperatorPanel.SETTINGS,
-                        "Media" to LiveOperatorPanel.MEDIA)) {
+                    for ((label, destination) in listOf("Settings" to ShellModel.Cover.SETTINGS,
+                        "Media" to ShellModel.Cover.MEDIA)) {
                         val target = nativeControlRect(scenario, label)
                         val down = SystemClock.uptimeMillis()
                         event(scenario, MotionEvent.ACTION_DOWN, target.center.x, target.center.y, down)
@@ -110,11 +117,11 @@ class MonitorCaptureInputTest {
                         event(scenario, MotionEvent.ACTION_UP, target.center.x, target.center.y, down)
                         settle()
                         scenario.onActivity {
-                            assertEquals(destination, model?.liveOperatorPanel,
+                            assertEquals(destination, model?.shellState?.cover,
                                 "First $label tap, tablet=$tablet, sheet=${probe.sheet}, target=$target")
                             assertEquals(LiveSheet.ISO, probe.sheet, "Navigation must retain the picker")
                             // Simulate the destination's close callback without replacing the monitor host.
-                            model?.liveOperatorPanel = null
+                            model?.shell?.dismissCover()
                         }
                         settle()
                         // Disabling a mounted control retires its hole without requiring relayout.
@@ -122,7 +129,7 @@ class MonitorCaptureInputTest {
                         settle()
                         tap(scenario, target)
                         scenario.onActivity {
-                            assertNull(model?.liveOperatorPanel, "Disabled navigation cannot bypass the backdrop")
+                            assertNull(model?.shellState?.cover, "Disabled navigation cannot bypass the backdrop")
                             assertNull(probe.sheet, "The disabled target becomes an outside-dismiss region")
                             probe.navigationEnabled = true
                             probe.sheet = LiveSheet.ISO
@@ -134,7 +141,7 @@ class MonitorCaptureInputTest {
                     settle()
                     tap(scenario, oldSettings)
                     scenario.onActivity {
-                        assertNull(model?.liveOperatorPanel, "Unmounting navigation must remove its hole")
+                        assertNull(model?.shellState?.cover, "Unmounting navigation must remove its hole")
                         assertNull(probe.sheet)
                         probe.showsNavigation = true
                         probe.sheet = LiveSheet.ISO
@@ -199,7 +206,7 @@ class MonitorCaptureInputTest {
         ActivityScenario.launch(BackdropRenderActivity::class.java).use { scenario ->
             var model: AppModel? = null
             try {
-                scenario.onActivity { model = AppModel(it) }
+                scenario.onActivity { model = AppModel(it).also(::presentSimulatedNativeMonitor) }
                 for (portrait in listOf(false, true)) {
                     for (sheet in listOf(LiveSheet.FORMAT, LiveSheet.COLOR, LiveSheet.MODE, LiveSheet.ISO)) {
                         var height = 0f
@@ -394,14 +401,30 @@ private fun NavigationFixture(model: AppModel, probe: NavigationProbe, layoutPro
             val floor = height - 100f
             // Production portrait controls and production picker host in their original sibling order.
             Box(Modifier.fillMaxSize()) {
-                Box(Modifier.offset(y = floor.dp).size(width.dp, 100.dp).onGloballyPositioned {
+                Box(Modifier.fillMaxSize().onGloballyPositioned {
                     layoutProbe.top = it.boundsInWindow()
                     layoutProbe.lower = it.boundsInWindow()
                 }) {
-                    LivePortraitSystemBar(model, model.assist, CameraStatus(), uiLocked = false,
-                        onLock = {}, chromeInteractive = probe.navigationEnabled, showsLock = true,
-                        showsRecord = true, showsMedia = probe.showsNavigation,
-                        showsSettings = probe.showsNavigation, controlBusy = false)
+                    val field = com.opencapture.monitorui.MonitorLayoutPolicy.fieldMonitor(
+                        width, height, 0f, 0f, 0f, 0f, 16f / 9f, false, true)
+                    com.opencapture.monitorui.MonitorSystemControls(field,
+                        com.opencapture.monitorui.MonitorSystemControlsVisibility(
+                            lock = true, settings = probe.showsNavigation, media = probe.showsNavigation, record = true),
+                        // Pocket keeps portrait navigation visible for a persistent picker;
+                        // its quick-edit gesture still hides it in the production composition.
+                        capturePresented = true, navigationHidden = false, interactive = probe.navigationEnabled,
+                        lock = { enabled -> LockButton(false, enabled = enabled, onClick = {}) },
+                        settings = { enabled -> AuxCircleButton(Modifier.monitorPickerPassthrough(enabled), enabled = enabled,
+                            onClick = { model.shell.open(com.opencapture.opencine.appkit.ShellModel.Cover.SETTINGS) }) {
+                            MonitorIcon(MonitorIcon.SETTINGS, "Settings", Modifier.fillMaxSize(), it)
+                        } },
+                        media = { enabled -> AuxCircleButton(Modifier.monitorPickerPassthrough(enabled), enabled = enabled,
+                            onClick = { model.shell.open(com.opencapture.opencine.appkit.ShellModel.Cover.MEDIA) }) {
+                            MonitorIcon(MonitorIcon.FILM, "Media", Modifier.fillMaxSize(), it)
+                        } },
+                        record = { enabled -> LiveCaptureButton(model, enabled, field.record.width, openMode = {}) },
+                        display = { enabled -> com.opencapture.monitorui.MonitorDisplayButton(false,
+                            field.display.width, field.display.height, enabled = enabled, onClick = {}) })
                 }
             }
             Box(Modifier.offset(2.dp, maxHeight - 6.dp).size(4.dp)

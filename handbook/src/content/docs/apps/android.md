@@ -42,11 +42,32 @@ new discoveries. Select a camera to see its connection progress and **Cancel**.
 **Pair new camera** opens the guided flow; select a discovered camera, then
 **Continue**. Media and Settings remain available without connecting.
 
+## Cameras and pairing
+
+The cameras page and pairing flow use the shared OpenCine shell. Select a nearby
+camera, tap **Continue**, approve on the camera if asked, and accept the Wi-Fi
+join prompt. Keep DJI Frame Tap off and force quit DJI Mimo before pairing.
+Saved-camera cards retain Camera Wi-Fi, Wi-Fi and Hotspot setups; **Add setup**
+opens the existing network wizard. A connection failure offers the relevant
+retry, setup-edit or Settings action. Multiview stays available from the cameras
+page.
+
+Long-press a Wi-Fi or hotspot setup to **Forget** it. **Privacy** and **Terms**
+are in Settings.
+
+Updates keep saved camera identities, network credentials, media favorites and
+preferences. The saved-camera document mirrors the legacy records so a later
+upgrade can merge edits made in an older build. **Forget** removes the camera's
+saved Wi-Fi credential as well as its saved card.
+
 ## Field Monitor interface
 
 The camera battery gauge shows the percentage reported by your Osmo, or a dash
 when unavailable. Top capture settings, STBY and timecode align in one row;
 Lock matches the Settings and Media button size.
+Settings and Media cover the current monitor while its camera and picture host
+remain active. Returning keeps the same connection. A Multiview member returns
+to its grid without ending that member's camera connection.
 The live signal indicator uses the Link Health colors from Settings: red for
 Poor (0–1 bars), orange for Watch (2–3), and green for Stable (4).
 
@@ -136,7 +157,10 @@ or the file on the card. WAVE and HISTO still measure the decoded picture. Turn
 it off indoors; extra brightness uses more power.
 
 Operator Setup and Media use a navigation rail in landscape and scrolling tabs
-in portrait. Settings groups use compact information buttons beside their labels;
+in portrait. Operator Setup tabs stay joined when switching orientations.
+View Assist cards use one column on a
+narrow page and two when there is room for both sets of controls. Saved options
+and clean-view pins stay in place when switching tabs or resizing the page. Settings groups use compact information buttons beside their labels;
 Controls groups touch safety, gimbal options, and the on-screen joystick separately.
 Use Android’s system Back button or back gesture to return from
 Settings, Media library and pairing. These pages omit the large in-app Back button.
@@ -302,7 +326,7 @@ pattern, not Skip/SKIE:
 3. Gradle `:app:stageSwiftCore` (`just android-core`) builds
    `aarch64-unknown-linux-android29` and stages `libOpenPocketCineAndroid.so`.
    **arm64-v8a only.** Toolchain pin: Swift **6.3.3**.
-4. Kotlin `core-api` wraps JNI. Kotlin does not pack protocol bytes. Live
+4. The Kotlin session (`PocketCameraSession`) wraps JNI. Kotlin does not pack protocol bytes. Live
    handshake / first-picture / enable-once policy is `cameraSoftAPDecision` in
    the Swift facade — a handshake miss is a recoverable session error, not a
    crash.

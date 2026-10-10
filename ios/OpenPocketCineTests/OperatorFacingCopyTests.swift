@@ -1,3 +1,8 @@
+import MonitorUI
+import OpenCineAppKitApple
+import OpenCineCameraControls
+import OpenCineCore
+import OpenCineDJIApple
 import OpenPocketViewCore
 import XCTest
 
@@ -6,6 +11,28 @@ import XCTest
 /// Operator-facing copy must never name a sister app, another camera brand,
 /// or Adobe's integrator-program name.
 final class OperatorFacingCopyTests: XCTestCase {
+    func testSharedTransportFailureRetainsAppCopyAndCallerFallback() {
+        let denied = DjiAppleDatalink.DatalinkError.localNetworkDenied
+        XCTAssertEqual(djiConnectionFailureDescription(denied), StartupConnectionCopy.localNetworkDenied)
+        XCTAssertEqual(djiConnectionFailureDescription(denied, fallback: "generic"),
+            StartupConnectionCopy.localNetworkDenied)
+        let network = NSError(domain: "SIMULATED transport", code: 7,
+            userInfo: [NSLocalizedDescriptionKey: "Existing network detail"])
+        XCTAssertEqual(djiConnectionFailureDescription(network, fallback: network.localizedDescription),
+            "Existing network detail")
+        XCTAssertEqual(djiConnectionFailureDescription(network), "\(network)")
+    }
+
+    func testUnknownNativeQueueAgeMapsOnlyAtLegacyIncidentBoundary() {
+        let unknown = DjiAppleQueueObservation()
+        XCTAssertNil(unknown.ageMilliseconds)
+        let legacy = FeedIncidentQueue(unknown)
+        XCTAssertEqual(legacy.ageMilliseconds, 0)
+        XCTAssertEqual(legacy.count, 0)
+        XCTAssertEqual(FeedIncidentQueue(DjiAppleQueueObservation(bytes: 12, count: 1,
+            ageMilliseconds: 18)).ageMilliseconds, 18)
+    }
+
     func testHelpCopyDoesNotNameSisterApps() {
         let facing = Self.operatorFacingCopy
         XCTAssertFalse(facing.isEmpty)
@@ -42,10 +69,10 @@ final class OperatorFacingCopyTests: XCTestCase {
             ZebraAssist.unitsHelp,
             ZebraAssist.highlightHelp,
             ZebraAssist.midtoneHelp,
-            SettingsNumberField.doneTitle,
+            MonitorSettingsNumberField.doneTitle,
             PeakingAssist.sensitivityHelp,
             PeakingAssist.colorHelp,
-            FalseColorAssist.scaleHelp,
+            FalseColorLooks.app.scaleHelp,
             FalseColorAssist.referenceHelp,
             WaveformAssist.brightnessHelp,
             ParadeAssist.brightnessHelp,
@@ -71,10 +98,10 @@ final class OperatorFacingCopyTests: XCTestCase {
             SettingsHelpCopy.stream,
             SettingsHelpCopy.shareFeed,
             SettingsHelpCopy.editView,
-            PocketDispMode.live.settingsTitle,
-            PocketDispMode.clean.settingsTitle,
-            PocketDispMode.live.settingsCaption,
-            PocketDispMode.clean.settingsCaption,
+            SettingsHelpCopy.liveDisplayTitle,
+            SettingsHelpCopy.cleanDisplayTitle,
+            SettingsHelpCopy.liveDisplayCaption,
+            SettingsHelpCopy.cleanDisplayCaption,
             SettingsHelpCopy.frameIO,
             SettingsHelpCopy.shareThisFeed,
             SettingsHelpCopy.watchAFeed,
@@ -84,7 +111,7 @@ final class OperatorFacingCopyTests: XCTestCase {
             SettingsHelpCopy.recordConfirmation,
             SettingsHelpCopy.haptics,
             SettingsHelpCopy.headTracking,
-            LiveHeadTrackCalibrateButton.calibrateTitle,
+            HeadphoneMotionBridge.calibrateTitle,
             SettingsHelpCopy.joystickSensitivity,
             SettingsHelpCopy.virtualJoystickInvertPan,
             SettingsHelpCopy.virtualJoystickInvertTilt,
@@ -101,7 +128,6 @@ final class OperatorFacingCopyTests: XCTestCase {
             NDAssist.notationHelp,
             SettingsHelpCopy.themeHelp,
             SettingsHelpCopy.shareDiagnostics,
-            StartupConnectionCopy.shareDiagnostics,
             SettingsHelpCopy.sourceHelp,
             SettingsHelpCopy.linkHealth,
             SettingsHelpCopy.feedUpscaler,

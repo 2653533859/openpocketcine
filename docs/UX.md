@@ -22,10 +22,10 @@ to do next.
 
 ## FTUE
 
-First pair is the wizard in `ConnectionSetupView` (Android matches):
+First pair uses the shared OpenCine `PairScreen` on both platforms:
 
 1. **FIRST RUN** — “Pair your camera.” Copy promises about a minute.
-2. BLE scan → tap a row.
+2. BLE scan: select a row, then Continue.
 3. Approve on the Pocket if asked.
 4. Join camera Wi-Fi (OS prompt — do not hide it). On 5.8 GHz the camera AP
    can take about a minute to appear; both shells keep trying (#235).
@@ -40,6 +40,10 @@ connection actions wait until the attempt finishes or is cancelled. On iOS,
 camera-list header. Settings does not start a new pair. The wizard always shows
 **Report a problem** below the pairing target so a stuck first pair can open the
 native report form. **Share Diagnostics** remains in the overflow menu.
+
+Long-press a saved connection setup that moves the camera (Wi-Fi or hotspot) to
+**Forget** it; setups have no rename, as on main. **Privacy** and **Terms** live
+in Settings; the startup pages carry no legal links, as on main.
 
 Pocket and Nano are separate bodies. If Bluetooth reached a different camera
 than the one tapped, say so and tell the operator to pick the matching row.

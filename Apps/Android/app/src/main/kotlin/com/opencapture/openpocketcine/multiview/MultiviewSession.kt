@@ -1,5 +1,22 @@
 package com.opencapture.openpocketcine.multiview
 
+import com.opencapture.opencine.dji.applyAttitude
+import com.opencapture.opencine.dji.fromJson
+import com.opencapture.opencine.dji.toJson
+import com.opencapture.opencine.vocabulary.CameraStatus
+import com.opencapture.opencine.vocabulary.FoundCamera
+import com.opencapture.opencine.vocabulary.GimbalStickMapping
+
+import com.opencapture.opencine.dji.hasMultiviewPreview
+import com.opencapture.opencine.dji.multicamSupport
+import com.opencapture.opencine.dji.MultiviewDiscovery
+import com.opencapture.opencine.dji.MultiviewFailure
+import com.opencapture.opencine.dji.MultiviewNetworkStore
+import com.opencapture.opencine.dji.MultiviewProvisioner
+import com.opencapture.opencine.dji.SharedWiFi
+import com.opencapture.opencine.dji.restoreCameraWiFiWithRetry
+import com.opencapture.opencine.dji.DjiNative
+import com.opencapture.opencine.dji.StationJoin
 import android.content.Context
 import android.os.SystemClock
 import android.util.Log
@@ -9,22 +26,28 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.opencapture.monitorui.MultiviewArrangement
+import com.opencapture.opencine.core.MonitorEntryID
+import com.opencapture.opencine.core.PictureHealth
+import com.opencapture.opencine.core.StreamID
+import com.opencapture.opencine.multicam.EditorLeaseException
+import com.opencapture.opencine.multicam.EditorLeases
+import com.opencapture.opencine.multicam.RecordDirection
+import com.opencapture.opencine.multicam.RecordPlan
+import com.opencapture.opencine.multicam.ResourceAdmission
+import com.opencapture.opencine.multicam.ResourceRequest
 import com.opencapture.openpocketcine.AppModel
-import com.opencapture.openpocketcine.bridge.SwiftCore
 import com.opencapture.openpocketcine.diagnostics.DiagnosticCenter
-import com.opencapture.openpocketcine.feed.FeedEffectsRenderPlan
+import com.opencapture.opencine.media.FeedEffectsRenderPlan
 import com.opencapture.openpocketcine.feed.FeedEffectsRenderPlanFactory
-import com.opencapture.openpocketcine.session.BleLink
-import com.opencapture.openpocketcine.session.CameraStatus
-import com.opencapture.openpocketcine.session.DatalinkDriver
-import com.opencapture.openpocketcine.session.DumlFrame
-import com.opencapture.openpocketcine.session.FoundCamera
-import com.opencapture.openpocketcine.session.GimbalStickMapping
-import com.opencapture.openpocketcine.session.HevcDecoder
-import com.opencapture.openpocketcine.session.LiveViewEnablePolicy
-import com.opencapture.openpocketcine.session.MultiviewControlLease
-import com.opencapture.openpocketcine.session.StatusExtras
-import com.opencapture.openpocketcine.session.interruptibleDatalinkOpen
+import com.opencapture.opencine.dji.BleLink
+import com.opencapture.opencine.dji.DatalinkDriver
+import com.opencapture.opencine.dji.DjiCameraSessionAdapter
+import com.opencapture.opencine.dji.DumlFrame
+import com.opencapture.opencine.decoder.HevcDecoder
+import com.opencapture.opencine.dji.LiveViewEnablePolicy
+import com.opencapture.opencine.dji.MultiviewControlLease
+import com.opencapture.opencine.dji.StatusExtras
+import com.opencapture.opencine.dji.interruptibleDatalinkOpen
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -45,32 +68,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
+import kotlin.time.Duration.Companion.seconds
+import com.opencapture.opencine.runtime.InspectorPreviewPipeline
+import com.opencapture.opencine.runtime.ScopeSampleBus
 
 private const val TAG = "Multiview"
-
-/** Model support from the shared core (`MulticamSupport`). Cached per model identity. */
-data class MulticamSupportInfo(val appears: Boolean, val preview: Boolean, val missingRoleQueryE0: Boolean)
-
-private val supportCache = HashMap<String, MulticamSupportInfo>()
-
-fun FoundCamera.multicamSupport(): MulticamSupportInfo {
-    val key = "${modelId ?: -1}|$name|${model.name}"
-    synchronized(supportCache) { supportCache[key]?.let { return it } }
-    val request = JSONObject().put("name", model.name.ifEmpty { name })
-    modelId?.let { request.put("modelId", it) }
-    val raw = if (SwiftCore.isAvailable) SwiftCore.multicamDecision("support", request.toString()) else null
-    val json = raw?.let { runCatching { JSONObject(it) }.getOrNull() }
-    val info = MulticamSupportInfo(
-        appears = json?.optBoolean("appears") ?: false,
-        preview = json?.optBoolean("preview") ?: false,
-        missingRoleQueryE0 = json?.optBoolean("missingRoleQueryE0") ?: false,
-    )
-    synchronized(supportCache) { supportCache[key] = info }
-    return info
-}
-
-val FoundCamera.appearsInMultiview: Boolean get() = multicamSupport().appears
-val FoundCamera.hasMultiviewPreview: Boolean get() = multicamSupport().preview
 
 /** iOS `MultiviewLayout` raw values; persisted in the stage. */
 enum class MultiviewLayout(val raw: String) {
@@ -87,15 +89,15 @@ enum class MultiviewLayout(val raw: String) {
 
 /** Each tile owns one bounded repair ladder (core `MultiviewRecovery`). A healthy take resets its budget. */
 class MultiviewRecoveryLadder {
-    private var handle = if (SwiftCore.isAvailable) SwiftCore.multiviewRecoveryCreate() else 0L
+    private var handle = if (DjiNative.isAvailable) DjiNative.multiviewRecoveryCreate() else 0L
     fun action(snapshotJSON: String): String =
-        if (handle == 0L) "none" else SwiftCore.multiviewRecoveryCall(handle, "action", snapshotJSON) ?: "none"
-    fun beginRejoin(): Boolean = handle != 0L && SwiftCore.multiviewRecoveryCall(handle, "beginRejoin", "{}") == "true"
-    fun fail() { if (handle != 0L) SwiftCore.multiviewRecoveryCall(handle, "fail", "{}") }
-    val failed: Boolean get() = handle != 0L && SwiftCore.multiviewRecoveryCall(handle, "failed", "{}") == "true"
-    fun reset() { if (handle != 0L) SwiftCore.multiviewRecoveryCall(handle, "reset", "{}") }
+        if (handle == 0L) "none" else DjiNative.multiviewRecoveryCall(handle, "action", snapshotJSON) ?: "none"
+    fun beginRejoin(): Boolean = handle != 0L && DjiNative.multiviewRecoveryCall(handle, "beginRejoin", "{}") == "true"
+    fun fail() { if (handle != 0L) DjiNative.multiviewRecoveryCall(handle, "fail", "{}") }
+    val failed: Boolean get() = handle != 0L && DjiNative.multiviewRecoveryCall(handle, "failed", "{}") == "true"
+    fun reset() { if (handle != 0L) DjiNative.multiviewRecoveryCall(handle, "reset", "{}") }
     fun close() {
-        if (handle != 0L) SwiftCore.multiviewRecoveryDestroy(handle)
+        if (handle != 0L) DjiNative.multiviewRecoveryDestroy(handle)
         handle = 0L
     }
 }
@@ -114,9 +116,54 @@ class MultiviewSession(
     private val app = context.applicationContext
 
     /** Nested, not inner: Compose needs stability metadata on this type (an inner class has none). */
-    class Tile(val index: Int, private val app: Context) {
+    class Tile(
+        val index: Int,
+        private val app: Context,
+        scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+    ) {
         val id: String = UUID.randomUUID().toString()
-        val decoder = HevcDecoder()
+        /** Stable multicam slot: this tile's identity through layout, selection and rotation. */
+        val entryId = MonitorEntryID(UUID.fromString(id))
+        /** The tile's picture stream, named for the multicam engine. */
+        val stream = StreamID()
+        val decoder = HevcDecoder(errorJournal = DiagnosticCenter::logDecoderError)
+        val scopeBus = com.opencapture.opencine.runtime.ScopeSampleBus()
+        val inspectorPreview = com.opencapture.opencine.runtime.InspectorPreviewPipeline(
+            scopeBus, { com.opencapture.opencine.runtime.NativeGlBackend.create(it) }, "OpcTileInspector")
+        /** Record-only control port on this tile's own link (MULTI-02); see [MultiviewTileControl]. */
+        internal val controlPort = MultiviewTileControl(
+            state = ::recordState,
+            send = { start ->
+                val endpoint = driver
+                if (endpoint == null || endpoint.isClosed) {
+                    false
+                } else {
+                    lastCommandAt = SystemClock.elapsedRealtime()
+                    withContext(Dispatchers.IO) {
+                        endpoint.sendCommand(if (start) DjiNative.CMD_RECORD_START else DjiNative.CMD_RECORD_STOP)
+                    }
+                    true
+                }
+            },
+            reply = { since ->
+                responses[RECORD_KEY]?.takeIf { it.second >= since }?.first?.let {
+                    it.payload.size == 1 && it.payload[0].toInt() == 0
+                }
+            },
+            setBusy = { recordingBusy = it },
+            scope = scope,
+            clock = SystemClock::elapsedRealtime,
+        )
+        /**
+         * This tile's camera as a common session: one per tile for its lifetime, so selection,
+         * layout and rotation never change it. Its control epoch advances when the tile's link or
+         * camera is replaced.
+         */
+        val control = DjiCameraSessionAdapter(controlPort, scope).apply {
+            // Backstops only: the tile's own 8 s confirmation window decides first.
+            wireTimeout = 9.seconds
+            readbackTimeout = 9.seconds
+        }
         var liveModel by mutableStateOf<AppModel?>(null)
         /** Settings use their own command model, never the tile's presentation owner. */
         var controlsModel by mutableStateOf<AppModel?>(null)
@@ -125,25 +172,33 @@ class MultiviewSession(
             controlsModel?.close()
             controlsModel = null
         }
-        fun openControls(available: () -> Boolean): AppModel? {
+        /** [admits]: the session's engine lease and availability (`MultiviewSession.openControls`). */
+        fun openControls(admits: () -> Boolean): AppModel? {
             closeControls()
             val camera = camera ?: return null
             val endpoint = driver ?: return null
             val recording = latestSettings.isRecording
             val lease = MultiviewControlLease(
-                isCurrent = { this.camera?.id == camera.id && driver === endpoint && latestSettings.isRecording == recording && available() },
+                isCurrent = {
+                    this.camera?.id == camera.id && driver === endpoint &&
+                        latestSettings.isRecording == recording && admits()
+                },
                 onSet = { lastCommandAt = it },
             )
             if (!lease.allows()) return null
             return AppModel(app, borrowing = decoder, controlLease = lease).also {
                 it.session.updateMultiview(camera, endpoint, latestSettings)
+                // The capture drums edit through the shared control model; close() unbinds it.
+                it.control.bind(it.session.control)
                 controlsModel = it
             }
         }
         var driver: DatalinkDriver? = null
             set(value) {
-                if (field !== value) closeControls()
+                val replaced = field !== value
+                if (replaced) closeControls()
                 field = value
+                if (replaced) control.linkDidChange()
                 liveModel?.session?.updateMultiview(camera, value, latestSettings)
             }
         var connecting by mutableStateOf(false)
@@ -153,7 +208,14 @@ class MultiviewSession(
         var identity: ByteArray? = null
         /** Latest reply per DUML key with its receive time. */
         val responses = HashMap<Int, Pair<DumlFrame, Long>>()
-        var camera by mutableStateOf<FoundCamera?>(null)
+        private var cameraState by mutableStateOf<FoundCamera?>(null)
+        var camera: FoundCamera?
+            get() = cameraState
+            set(value) {
+                val replaced = value?.id != cameraState?.id
+                cameraState = value
+                if (replaced) control.linkDidChange()
+            }
         var status by mutableStateOf("Add camera")
         var failureMessage by mutableStateOf<String?>(null)
         val recovery = MultiviewRecoveryLadder()
@@ -191,15 +253,14 @@ class MultiviewSession(
 
         val timecodeReadout: String?
             get() {
-                val cam = camera ?: return null
-                if (cam.model.family == "nano") return null
+                if (camera == null || !control.layout().timecode) return null
                 return settings.timecodeClock
             }
 
         fun updateSettings(frame: DumlFrame) {
             val cam = camera ?: return
             val prev = latestSettings
-            val json = SwiftCore.applyStatus(frame.cmdSet, frame.cmdId, frame.payload, prev.toJson())
+            val json = DjiNative.applyStatus(frame.cmdSet, frame.cmdId, frame.payload, prev.toJson())
             var next = if (json != null) CameraStatus.fromJson(json) else prev
             if (json == null || !next.hasHudFields) next = next.preservingExtras(prev)
             next = StatusExtras.apply(frame, next, cam.model.name, cam.model.family)
@@ -241,6 +302,33 @@ class MultiviewSession(
 
         fun claimedInput(): Long = inputOwner
 
+        internal fun recordState() = TileRecordState(
+            link = driver,
+            controlHost = controlHost != null,
+            connecting = connecting,
+            recovering = recovering,
+            cameraId = camera?.id,
+            shootingMode = settings.shootingMode,
+            recordingBusy = recordingBusy,
+            observation = recordingObservation,
+            recordingAvailable = recordingAvailable,
+            batteryPercent = settings.batteryPercent,
+            storageFreeMb = settings.storageFreeMb,
+            storageTotalMb = settings.storageTotalMb,
+            model = camera?.model,
+        )
+
+        internal fun multicam() = MulticamTile(
+            entryId, camera?.name.orEmpty(), stream, control,
+            busy = recordingBusy || connecting || recovering,
+            picture = when {
+                failureMessage != null -> PictureHealth.FAILED
+                recovering -> PictureHealth.STALLED
+                hasPicture -> PictureHealth.LIVE
+                else -> PictureHealth.STARTING
+            },
+        )
+
         fun reset() {
             repairJob?.cancel()
             repairJob = null
@@ -276,7 +364,8 @@ class MultiviewSession(
         }
     }
 
-    val tiles: List<Tile> = List(4) { Tile(it, app) }
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    val tiles: List<Tile> = List(MultiviewQualificationPolicy.tileCount) { Tile(it, app, scope) }
     private val scanner = BleLink(app)
     val found = mutableStateListOf<FoundCamera>()
     var busy by mutableStateOf(false)
@@ -288,9 +377,29 @@ class MultiviewSession(
     var groupRecordingNote by mutableStateOf<String?>(null)
     val recordingTiles: List<Tile> get() = tiles.filter { it.camera != null }
     val anyRecording: Boolean get() = recordingTiles.any { it.recordingObservation?.first == true }
-    val canRecordTogether: Boolean
-        get() = !busy && !groupRecordingBusy && recordingTiles.isNotEmpty() &&
-            recordingTiles.all { it.recordingAvailable && !it.recordingBusy }
+    val canRecordTogether: Boolean get() = !busy && !groupRecordingBusy && recordPlan().isExecutable
+
+    /** Settings-editor leases (OpenCineMulticam): one open editor, asked before every SET. */
+    private val editorLeases = EditorLeases()
+
+    /**
+     * The engine's view of [of] (those with a camera), now. A one-tile plan or lease check reads
+     * only that tile, so its composable recomposes only for that camera; such plans equal plans
+     * built over every tile (non-requested entries never matter).
+     */
+    internal fun multicam(of: List<Tile> = recordingTiles) =
+        MultiviewMulticam(of.filter { it.camera != null }.map { it.multicam() })
+
+    /**
+     * The operator's record button as an explicit strict plan: stop when any requested camera
+     * reports recording, else start. `tile == null` is Record all. The confirmation dialog holds
+     * this value; any change to it (camera, link epoch, mode, availability, reported recording)
+     * dismisses the dialog, routine telemetry does not.
+     */
+    fun recordPlan(tile: Tile? = null): RecordPlan {
+        val requested = tile?.let { listOf(it) } ?: recordingTiles
+        return multicam(requested).plan(requested.map { it.entryId }, stop = requested.any { it.recordingObservation?.first == true })
+    }
 
     var networkConfigured by mutableStateOf(false)
     var configuringNetwork by mutableStateOf(false)
@@ -306,7 +415,6 @@ class MultiviewSession(
     var closing by mutableStateOf(false)
     val connectingCameras: Boolean get() = tiles.any { it.connecting }
     val path = SharedWiFi(app)
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val provisioners = HashMap<String, MultiviewProvisioner>()
     private val searches = HashMap<String, MultiviewDiscovery>()
     private val connectionJobs = HashMap<String, Job>()
@@ -326,6 +434,25 @@ class MultiviewSession(
             tile.driver?.let { !it.isClosed && !it.isRebuilding } == true &&
             !tile.connecting && !tile.recovering && tile.failureMessage == null && tile.liveModel == null
 
+    /**
+     * One settings editor at a time. The engine's editor lease names the tile's session and control
+     * epoch: switching tiles, a replaced link or camera, or lost authority retires it, so a queued
+     * SET can never reach another camera (plan 7.5).
+     */
+    fun openControls(tile: Tile): AppModel? {
+        editorLeases.closeAll()
+        val view = multicam(listOf(tile))
+        val lease = try {
+            editorLeases.open(tile.entryId, view.group, view.state)
+        } catch (_: EditorLeaseException) {
+            return null
+        }
+        return tile.openControls {
+            val now = multicam(listOf(tile))
+            editorLeases.refusal(lease, now.group, now.state) == null && controlsAvailable(tile)
+        }
+    }
+
     // --- Borrowed Live View -------------------------------------------------------------------
 
     fun openLiveView(tile: Tile) {
@@ -336,21 +463,24 @@ class MultiviewSession(
         model.session.updateMultiview(camera, tile.driver, tile.latestSettings)
         model.session.adoptMultiviewPose(tile.pose)
         model.setBorrowedLut(tile.lutEnabled)
+        model.borrowMonitor(camera) { releaseLiveView(tile) }
         tile.liveModel = model
     }
 
+    private fun releaseLiveView(tile: Tile) {
+        val model = tile.liveModel ?: return
+        tile.liveModel = null
+        tile.lutEnabled = model.borrowedLutEnabled()
+        tile.pose = model.session.multiviewPose
+        model.session.releaseMultiview()
+        model.multiviewExit = null
+        model.close()
+        tile.poseViewFlip = tile.pose.poseViewFlip
+        tile.updateLUT()
+    }
+
     fun closeLiveView() {
-        for (tile in tiles) {
-            val model = tile.liveModel ?: continue
-            tile.lutEnabled = model.borrowedLutEnabled()
-            tile.pose = model.session.multiviewPose
-            model.session.releaseMultiview()
-            model.multiviewExit = null
-            model.close()
-            tile.liveModel = null
-            tile.poseViewFlip = tile.pose.poseViewFlip
-            tile.updateLUT()
-        }
+        for (tile in tiles) releaseLiveView(tile)
         // Every tile feed remounts with a fresh surface. A fresh codec takes the IRAP this
         // enable requests, rather than waiting for the watchdog to find a frozen picture.
         for (tile in tiles) {
@@ -446,7 +576,7 @@ class MultiviewSession(
         stop()
         path.release()
         scanner.close()
-        tiles.forEach { it.recovery.close() }
+        tiles.forEach { it.inspectorPreview.close(); it.recovery.close() }
         scope.cancel()
     }
 
@@ -586,7 +716,13 @@ class MultiviewSession(
     }
 
     suspend fun add(camera: FoundCamera, tile: Tile, experimental: Boolean = false) {
-        if (!camera.appearsInMultiview || !(camera.hasMultiviewPreview || experimental)) {
+        val reasons = ResourceAdmission.reasons(
+            ResourceRequest(tile.entryId, device = null, claims = emptyList()),
+            camera.multicamSupport().qualification(experimental),
+            recordingTiles.map { ResourceRequest(it.entryId, device = null, claims = emptyList()) },
+            MultiviewQualificationPolicy.budget,
+        )
+        if (reasons.isNotEmpty()) {
             error = "Multiview preview is not available for this camera model yet."
             return
         }
@@ -609,7 +745,7 @@ class MultiviewSession(
             client.connect(camera)
             if (camera.model.family == "nano") {
                 tile.status = "Waking camera Wi-Fi"
-                val wake = client.exchange(SwiftCore.CMD_SESSION_5310).payload.map { it.toInt() and 0xFF }
+                val wake = client.exchange(DjiNative.CMD_SESSION_5310).payload.map { it.toInt() and 0xFF }
                 if (wake != listOf(1, 0, 0, 0)) {
                     throw MultiviewFailure.Message(
                         "The Nano did not confirm its Wi-Fi wake. Keep it powered on and try again.")
@@ -687,15 +823,15 @@ class MultiviewSession(
      */
     private suspend fun readIdentity(client: MultiviewProvisioner): ByteArray =
         try {
-            client.exchange(SwiftCore.CMD_GET_WIFI_SSID).payload
+            client.exchange(DjiNative.CMD_GET_WIFI_SSID).payload
         } catch (_: MultiviewFailure.Timeout) {
             log("multiview: identity reply missing; sending Wi-Fi wake once")
             try {
-                client.exchange(SwiftCore.CMD_SESSION_5310, timeoutMs = 2_000)
+                client.exchange(DjiNative.CMD_SESSION_5310, timeoutMs = 2_000)
             } catch (_: MultiviewFailure) {
             }
             delay(600)
-            client.exchange(SwiftCore.CMD_GET_WIFI_SSID).payload
+            client.exchange(DjiNative.CMD_GET_WIFI_SSID).payload
         }
 
     suspend fun reconnect(tile: Tile) {
@@ -837,7 +973,7 @@ class MultiviewSession(
                         tile.liveModel?.session?.receiveMultiview(frame)
                         tile.controlsModel?.session?.receiveMultiview(frame)
                         if (frame.cmdSet == 0x02 && frame.cmdId == 0x80 && frame.payload.size >= 13) {
-                            val json = SwiftCore.applyStatus(frame.cmdSet, frame.cmdId, frame.payload, CameraStatus().toJson())
+                            val json = DjiNative.applyStatus(frame.cmdSet, frame.cmdId, frame.payload, CameraStatus().toJson())
                             val recording = json?.let { CameraStatus.fromJson(it).isRecording } ?: false
                             tile.recordingObservation = recording to SystemClock.elapsedRealtime()
                         }
@@ -846,7 +982,7 @@ class MultiviewSession(
             }
             withTimeout(STATION_OPEN_MS) { interruptibleDatalinkOpen { driver.open(identityOnly = true) } }
             val sent = SystemClock.elapsedRealtime()
-            driver.sendCommand(SwiftCore.CMD_GET_WIFI_SSID)
+            driver.sendCommand(DjiNative.CMD_GET_WIFI_SSID)
             val deadline = sent + 8_000
             var reply: DumlFrame? = null
             while (SystemClock.elapsedRealtime() < deadline) {
@@ -897,7 +1033,7 @@ class MultiviewSession(
                 val nanoGate = camera.model.usesNanoLiveViewGate
                 if (nanoGate) driver.sendNanoGate(start = true)
                 if (camera.model.sendsLiveViewPrepare) {
-                    driver.sendCommand(SwiftCore.CMD_TAP_FOCUS_HINT)
+                    driver.sendCommand(DjiNative.CMD_TAP_FOCUS_HINT)
                 }
                 driver.startLiveView(camera.model.liveViewEnableReceiver)
             }
@@ -952,7 +1088,7 @@ class MultiviewSession(
             age(tile.lastEnable)?.let { append(",\"secondsSinceLastEnable\":$it") }
             age(tile.lastCommandAt)?.let { append(",\"secondsSinceCameraSet\":$it") }
             // A lost packet leaves the decoder waiting for an IRAP the Pocket only sends
-            // when asked; these let the core watchdog see that (PocketCameraSession parity).
+            // when asked; these let the core watchdog see that (DjiCameraSession parity).
             age(tile.decoder.lastDecoderOutputAt)?.let { append(",\"lastDecoderOutputAge\":$it") }
             append(",\"decoderOutputExpected\":${tile.decoder.decoderOutputExpected}")
             append(",\"referenceRecoveryNeeded\":${tile.decoder.referenceRecoveryNeeded}")
@@ -1046,61 +1182,39 @@ class MultiviewSession(
 
     // --- Recording -----------------------------------------------------------------------------
 
-    suspend fun toggleAllRecording() {
-        if (!canRecordTogether) return
-        val stop = anyRecording
-        val targets = recordingTiles.filter { it.recordingObservation?.first != !stop }
-        groupRecordingBusy = true
-        groupRecordingNote = if (stop) "Stopping cameras…" else "Starting cameras…"
-        coroutineScope { targets.map { tile -> async { recording(!stop, tile) } }.awaitAll() }
-        val expected = if (stop) "Recording stopped" else "Recording"
-        val confirmed = targets.count { it.recordingNote == expected }
-        val allMatch = recordingTiles.all { it.recordingAvailable && it.recordingObservation?.first == !stop }
-        groupRecordingNote = if (confirmed == targets.size && allMatch) {
-            if (stop) "Recording stopped" else "Recording on $confirmed cameras"
-        } else {
-            "$confirmed of ${targets.size} confirmed · check camera tiles"
+    /**
+     * Sends an approved plan: one explicit start or stop per camera, revalidated first, each
+     * outcome on its own tile. A partial result is never compensated; stopping a camera that
+     * started is a separate operator action.
+     */
+    suspend fun record(plan: RecordPlan, together: Boolean) {
+        if (busy || closing || groupRecordingBusy) return
+        val start = plan.direction == RecordDirection.START
+        if (together) {
+            groupRecordingBusy = true
+            groupRecordingNote = if (start) "Starting cameras…" else "Stopping cameras…"
         }
-        groupRecordingBusy = false
-    }
-
-    suspend fun toggleRecording(tile: Tile) {
-        if (groupRecordingBusy) return
-        val observation = tile.recordingObservation ?: return
-        if (SystemClock.elapsedRealtime() - observation.second >= 3_000) return
-        recording(!observation.first, tile)
-    }
-
-    /** Commands share the tile's existing UDP session; opening another would replace preview. */
-    suspend fun recording(enabled: Boolean, tile: Tile) {
-        val driver = tile.driver ?: return
-        if (!running || tile.recordingBusy || tile.controlHost == null) return
-        tile.recordingBusy = true
         try {
-            val sent = SystemClock.elapsedRealtime()
-            tile.lastCommandAt = sent
-            withContext(Dispatchers.IO) {
-                driver.sendCommand(if (enabled) SwiftCore.CMD_RECORD_START else SwiftCore.CMD_RECORD_STOP)
+            for (tile in recordingTiles) {
+                if (plan.targets.any { tile.entryId in it.entries }) tile.recordingNote = "Waiting for camera confirmation"
             }
-            tile.recordingNote = "Waiting for camera confirmation"
-            val deadline = sent + 8_000
-            while (running && tile.driver === driver && SystemClock.elapsedRealtime() < deadline) {
-                delay(100)
-                val reply = tile.responses[RECORD_KEY]?.takeIf { it.second >= sent }?.first
-                if (reply != null && !(reply.payload.size == 1 && reply.payload[0].toInt() == 0)) {
-                    tile.recordingNote = "Recording command rejected · check camera"
-                    return
-                }
-                val observation = tile.recordingObservation
-                if (observation != null && observation.second > sent && observation.first == enabled) {
-                    log("multiview: station recording confirmed active=$enabled")
-                    tile.recordingNote = if (enabled) "Recording" else "Recording stopped"
-                    return
-                }
+            val result = multicam().submit(plan)
+            if (result == null) {
+                // Stale: a camera, link or mode changed after the operator approved.
+                if (together) groupRecordingNote = "Cameras changed · try again"
+                return
             }
-            tile.recordingNote = "No confirmation · check camera"
+            val group = multicam().group
+            for (tile in tiles) {
+                val outcome = result.outcome(tile.entryId, group) ?: continue
+                recordingNote(outcome, start)?.let { tile.recordingNote = it }
+            }
+            if (together) {
+                val allMatch = recordingTiles.all { it.recordingAvailable && it.recordingObservation?.first == start }
+                groupRecordingNote = groupRecordingNote(result, allMatch)
+            }
         } finally {
-            tile.recordingBusy = false
+            if (together) groupRecordingBusy = false
         }
     }
 
@@ -1212,7 +1326,7 @@ class MultiviewSession(
         val client = MultiviewProvisioner(app)
         return try {
             client.connect(restoredCamera(saved), pairingTimeoutMs = 12_000)
-            val reply = client.exchange(SwiftCore.CMD_MULTICAM_STATION_MODE, "0").payload.hexString()
+            val reply = client.exchange(DjiNative.CMD_MULTICAM_STATION_MODE, "0").payload.hexString()
             val accepted = reply == "00" || reply == "0000"
             log("multiview: return camera Wi-Fi accepted=$accepted")
             accepted
@@ -1227,8 +1341,8 @@ class MultiviewSession(
     }
 
     private fun restoredCamera(saved: MultiviewStageStore.Camera): FoundCamera {
-        val model = com.opencapture.openpocketcine.session.CameraModel.fromJson(
-            SwiftCore.resolveCameraModel(saved.modelId ?: -1, saved.name, saved.bleAddress, true))
+        val model = com.opencapture.opencine.vocabulary.CameraModel.fromJson(
+            DjiNative.resolveCameraModel(saved.modelId ?: -1, saved.name, saved.bleAddress, true))
         return FoundCamera(saved.id, saved.bleAddress, saved.name, model, saved.modelId)
     }
 

@@ -1,5 +1,11 @@
 package com.opencapture.openpocketcine
 
+import com.opencapture.opencine.appkit.applyMonitorSystemBars
+import com.opencapture.opencine.appkit.LocalOperatorHaptics
+import com.opencapture.opencine.appkit.rememberOperatorHaptics
+import com.opencapture.opencine.runtime.MonitorHDRDisplay
+import com.opencapture.opencine.vocabulary.ConnectionPhase
+import com.opencapture.openpocketcine.diagnostics.AppDiagnostics
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.content.Intent
@@ -31,8 +37,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -53,10 +57,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.InfiniteAnimationPolicy
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.createLifecycleAwareWindowRecomposer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -64,25 +65,31 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.max
 import androidx.compose.ui.unit.sp
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
-import com.opencapture.openpocketcine.core.ConnectionPhase
-import com.opencapture.openpocketcine.diagnostics.AutomaticReportsPrompt
+import com.opencapture.opencine.appkit.diagnostics.AutomaticReportsPrompt
 import com.opencapture.openpocketcine.diagnostics.DiagnosticCenter
-import com.opencapture.openpocketcine.diagnostics.ManualProblemReport
-import com.opencapture.openpocketcine.diagnostics.ReliabilityReporting
-import com.opencapture.openpocketcine.diagnostics.ReliabilityReportingConsent
-import com.opencapture.openpocketcine.pairing.PairingExperience
-import com.opencapture.openpocketcine.pairing.SavedCamerasExperience
-import com.opencapture.openpocketcine.pairing.StartupColors
-import com.opencapture.openpocketcine.pairing.StartupConnectionCopy
-import com.opencapture.openpocketcine.pairing.isBusy
-import com.opencapture.openpocketcine.pairing.DiscoveryPermissions
-import com.opencapture.openpocketcine.pairing.PermissionGate
+import com.opencapture.openpocketcine.multiview.MultiviewQualificationPolicy
+import androidx.activity.compose.BackHandler
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.opencapture.opencine.appkit.AppShell
+import com.opencapture.opencine.appkit.ShellBrand
+import com.opencapture.opencine.appkit.ShellActions
+import com.opencapture.opencine.appkit.ShellModel
+import com.opencapture.opencine.appkit.PairingWizard
+import com.opencapture.opencine.platform.LocalVPNProbe
+import com.opencapture.openpocketcine.diagnostics.ManualProblemReportDialog
+import com.opencapture.opencine.appkit.DiscoveryPermissions
+import com.opencapture.openpocketcine.pairing.PairingCallouts
+import com.opencapture.opencine.appkit.PermissionGate
 import com.opencapture.openpocketcine.pairing.rememberPermissionGate
 import com.opencapture.openpocketcine.pairing.startupBackdrop
 import java.util.concurrent.atomic.AtomicBoolean
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+    private var reviewState: String? = null
     private val composeFirstFrameDrawn = AtomicBoolean(false)
     internal lateinit var model: AppModel
         private set
@@ -97,7 +104,13 @@ class MainActivity : ComponentActivity() {
         val splashScreen = installSplashScreen()
         splashScreen.setKeepOnScreenCondition { !composeFirstFrameDrawn.get() }
         super.onCreate(savedInstanceState)
-        model = AppModel(applicationContext)
+        // Debug review only: a scripted connection state of the cameras and pair pages.
+        val review = if (BuildConfig.DEBUG) intent?.getStringExtra("opv_review_state") else null
+        model = AppModel(applicationContext, discovers = true, review = review)
+        if (review == "multiview") model.showsMultiview = true
+        if (review?.startsWith("pair-") == true) model.pairing = true
+        if (review != null) lifecycleScope.launch { ReviewCameras.start(review, model) }
+        reviewState = review
         model.gimbalGamepad.ensureListening(this, model)
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
@@ -116,6 +129,7 @@ class MainActivity : ComponentActivity() {
                 val haptics = rememberOperatorHaptics { model.hapticsEnabled }
                 CompositionLocalProvider(LocalOperatorHaptics provides haptics) {
                     OpenPocketCineApp(model)
+                    ReviewCameras.AddSetup(reviewState, model)
                 }
             }
         }
@@ -128,16 +142,16 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onPause() {
-        if (::model.isInitialized) model.session.noteSceneBecameInactive()
-        ManualProblemReport.setForeground(false)
+        if (::model.isInitialized) model.shell.setSceneActive(false)
+        AppDiagnostics.manualReport.setForeground(false)
         super.onPause()
     }
 
     override fun onResume() {
         super.onResume()
-        ManualProblemReport.setForeground(true)
+        AppDiagnostics.manualReport.setForeground(true)
         if (::model.isInitialized) {
-            model.session.noteSceneBecameActive()
+            model.shell.setSceneActive(true)
             model.gimbalGamepad.ensureListening(this, model)
         }
     }
@@ -200,9 +214,10 @@ private fun OpenPocketCineApp(model: AppModel) {
         model.showsLaunchSplash = false
     }
 
-    val showLive = phase == ConnectionPhase.LIVE || model.session.holdsMonitor
+    val shell by model.shell.state.collectAsState()
+    val showLive = shell.monitor != null
     LaunchedEffect(model.hdrDisplay, model.screenCaptured, activity) {
-        HdrDisplay.apply(activity, enabled = model.hdrDisplayActive)
+        MonitorHDRDisplay.apply(activity, enabled = model.hdrDisplayActive)
     }
     DisposableEffect(activity) {
         val windowManager = activity?.windowManager
@@ -222,7 +237,7 @@ private fun OpenPocketCineApp(model: AppModel) {
         }
         onDispose { runCatching { windowManager.removeScreenRecordingCallback(callback) } }
     }
-    val hideNavigation = (showLive && model.liveOperatorPanel == null) || model.showsMultiview
+    val hideNavigation = (showLive && model.shellState.cover == null) || model.showsMultiview
     LaunchedEffect(activity, hideNavigation) {
         (activity as? MainActivity)?.hideSystemNavigation = hideNavigation
         (activity as? MainActivity)?.updateSystemBars()
@@ -231,8 +246,6 @@ private fun OpenPocketCineApp(model: AppModel) {
     Box(Modifier.fillMaxSize().startupBackdrop()) {
         if (model.showsMultiview && !showLive) {
             com.opencapture.openpocketcine.multiview.MultiviewScreen(model, onClose = model::closeMultiview)
-        } else if (showLive) {
-            LiveViewScreen(model)
         } else {
             LinkExperience(
                 model = model,
@@ -241,23 +254,24 @@ private fun OpenPocketCineApp(model: AppModel) {
             )
         }
         LaunchSplashOverlay(visible = launchSplashVisible)
-        if (model.homePanel != null && !showLive && !model.showsMultiview) {
+        if (model.showsLegalPanel && !model.showsMultiview) {
             AppPanelHost(model)
         }
         var showAutomaticPrompt by remember {
-            mutableStateOf(ReliabilityReportingConsent.shouldOfferAutomaticPrompt())
+            mutableStateOf(AppDiagnostics.consent.shouldOfferAutomaticPrompt())
         }
         if (!launchSplashVisible && !showLive && !model.showsMultiview && showAutomaticPrompt &&
             model.homePanel != AppPanel.PRIVACY
         ) {
             AutomaticReportsPrompt(
+                product = AppDiagnostics.host.product,
                 onPrivacy = { model.homePanel = AppPanel.PRIVACY },
                 onEnable = {
-                    ReliabilityReporting.setConsent(true)
+                    AppDiagnostics.reporting.setConsent(true)
                     showAutomaticPrompt = false
                 },
                 onNotNow = {
-                    ReliabilityReporting.setConsent(false)
+                    AppDiagnostics.reporting.setConsent(false)
                     showAutomaticPrompt = false
                 },
             )
@@ -265,8 +279,42 @@ private fun OpenPocketCineApp(model: AppModel) {
     }
 }
 
+/**
+ * The pair wizard in OpenPocketCine's words (the Android pair page it has always shown): the four
+ * Pocket and Nano pages, and Nearby devices or Bluetooth as the primary action while discovery
+ * cannot run.
+ */
+internal fun pairingWizard(
+    label: String,
+    joinedNetwork: String?,
+    vpnActive: Boolean,
+    granted: Boolean,
+    needsSettings: Boolean,
+    radioOn: Boolean,
+) = PairingWizard(
+    bodies = listOf(
+        "Turn the camera on and keep the phone nearby. Pocket and Nano both appear. Choose the one you want.",
+        "If the camera shows Approve, tap it on that camera's screen. First-time pairing can wait up to 90 seconds.",
+        "We read the camera's network over Bluetooth, then join its Wi-Fi for you.",
+        "Exposure, LUTs and scopes go live as soon as the video link is up.",
+    ),
+    approveLines = listOf("Look for an Approve / pairing prompt", "Tap it on the camera screen"),
+    joinLines = listOf("Leave the camera on. It brings up its own Wi-Fi", "On 5.8 GHz that can take about a minute; we keep trying"),
+    label = label,
+    joinedNetwork = joinedNetwork,
+    vpnActive = vpnActive,
+    blocker = when {
+        !granted && needsSettings -> "Open Settings"
+        !granted -> "Allow ${DiscoveryPermissions.settingsName(DiscoveryPermissions.discovery()).lowercase()}"
+        !radioOn -> "Turn Bluetooth on"
+        else -> null
+    },
+)
+
+/** Permission granted or Bluetooth on: look again, unless a camera is connecting or live. */
 private fun beginDiscovery(model: AppModel, onBluetoothOff: () -> Unit = {}) {
-    model.session.startScan()
+    val state = model.cameras.state.value
+    if (state.attempts.isEmpty() && state.connected == null && !model.isLive) model.session.startScan()
     if (!model.session.radioOn.value) onBluetoothOff()
 }
 
@@ -276,44 +324,64 @@ private fun LinkExperience(
     discovery: PermissionGate,
     onEnableBluetooth: () -> Unit,
 ) {
-    val density = LocalDensity.current
-    val layoutDir = LocalLayoutDirection.current
-    val configuration = LocalConfiguration.current
-    val camerasHome = !model.shouldShowWizard
-    val landscapeHome = configuration.screenWidthDp > configuration.screenHeightDp
-    val homeSide = with(density) {
-        val leading = WindowInsets.safeDrawing.getLeft(this, layoutDir).toDp()
-        val trailing = WindowInsets.safeDrawing.getRight(this, layoutDir).toDp()
-        com.opencapture.monitorui.MonitorLayoutPolicy.pageSideInsets(
-            landscape = true, safeLeading = leading.value, safeTrailing = trailing.value,
-        ).first.dp
-    }
-    Column(
-        Modifier
-            .fillMaxSize()
-            // Cameras landscape mirrors the larger cutout onto both sides so the list stays
-            // centered; pairing and live chrome keep their own edges.
-            .then(
-                if (camerasHome && landscapeHome) {
-                    Modifier
-                        .padding(start = homeSide, end = homeSide)
-                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical))
-                } else {
-                    Modifier.windowInsetsPadding(WindowInsets.safeDrawing)
+    val context = LocalContext.current
+    val state by model.cameras.state.collectAsState()
+    // No saved camera opens the pair page, as at first launch.
+    val pairing = state.saved.isEmpty() || model.pairing
+    var showProblemReport by remember { mutableStateOf(false) }
+    var showReportingPrivacy by remember { mutableStateOf(false) }
+    val phase by model.session.phaseFlow.collectAsState()
+    val radioOn by model.session.radioOn.collectAsState()
+    // Main's setup chip menu: Forget only, no Rename setup.
+    AppShell(model.shell, ShellBrand("OpenPocketCine", renamesSetups = false),
+        ShellActions(
+            diagnostics = { DiagnosticCenter.shareReport(context, model.session) },
+            reportProblem = { showProblemReport = true },
+            multiview = if (MultiviewQualificationPolicy.tileCount > 1) model::openMultiview else null,
+            // Pair on a nearby card connects it at once, on the pair page.
+            pair = {
+                model.shell.beginPairing()
+                state.nearby.firstOrNull { it.id == model.cameras.state.value.selection }?.let(model.cameras::connect)
+            }),
+        monitor = { LiveViewScreen(model) },
+        page = { ShellCoverPage(model, it) },
+        coverPresentation = com.opencapture.opencine.appkit.ShellCoverPresentation.SHELL,
+        pageFrame = { route, content ->
+            val pair = route == ShellModel.Route.PAIR
+            if (pair) {
+                Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(vertical = 16.dp)) {
+                    Box(Modifier.weight(1f).padding(horizontal = 14.dp)) {
+                        // As the pair page always did: Back stops a connect and leaves the page.
+                        BackHandler(enabled = state.attempts.isNotEmpty() || state.saved.isNotEmpty()) {
+                            model.cameras.cancelAll()
+                            model.shell.endPairing()
+                        }
+                        content()
+                    }
+                }
+            } else content()
+        },
+        pairingFlow = pairingWizard(
+            label = PairingWizard.phaseLabel(
+                when {
+                    state.attempts.isEmpty() -> ConnectionPhase.SCANNING
+                    phase == ConnectionPhase.IDLE -> ConnectionPhase.CONNECTING_GATT
+                    else -> phase
                 },
-            )
-            .padding(vertical = 16.dp),
-    ) {
-        Box(Modifier.weight(1f).padding(
-            start = if (model.shouldShowWizard) 14.dp else 18.dp,
-            end = if (model.shouldShowWizard) 14.dp else 18.dp,
-            top = if (model.shouldShowWizard) 0.dp else 8.dp,
-        )) {
-            if (model.shouldShowWizard) {
-                PairingExperience(model, discovery, onEnableBluetooth)
-            } else {
-                SavedCamerasExperience(model)
-            }
+            ),
+            joinedNetwork = model.session.joinedSSID, vpnActive = LocalVPNProbe.isActive(context),
+            granted = discovery.granted, needsSettings = discovery.needsSettings, radioOn = radioOn,
+        ).flow(
+            model.cameras, onDone = model.shell::endPairing, rescan = model.session::startScan,
+            onBlocker = { if (!discovery.granted) discovery.request() else onEnableBluetooth() },
+            content = { PairingCallouts(model, discovery, onEnableBluetooth) },
+        ))
+    if (showProblemReport) {
+        ManualProblemReportDialog(model = model, onClose = { showProblemReport = false }, onPrivacy = { showReportingPrivacy = true })
+    }
+    if (showReportingPrivacy) {
+        Dialog(onDismissRequest = { showReportingPrivacy = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            LegalDocumentScreen(kind = LegalKind.PRIVACY, onClose = { showReportingPrivacy = false })
         }
     }
 }
