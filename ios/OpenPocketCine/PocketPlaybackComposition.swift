@@ -233,7 +233,8 @@ struct PocketPlaybackLook: Equatable, Sendable {
                     cameraName: value.cameraName ?? model.assist.monitorCameraName))
         })
     }
-    func values(record: MonitorMediaRecord<MediaFile>, model: AppModel) -> MonitorPlaybackSourceValues {
+    func values(record: MonitorMediaRecord<MediaFile>, model: AppModel,
+        owner: MonitorOperatorMediaModel<MediaFile, PocketPlaybackLook>) -> MonitorPlaybackSourceValues {
         let file = record.payload
         let grade = model.session.cacheGrade(for: file)
         let availability: MonitorPlaybackAvailability
@@ -244,13 +245,17 @@ struct PocketPlaybackLook: Equatable, Sendable {
         availability = grade == .original ? .original : grade.isProxyOnly ? .proxy : .camera
         #endif
         let transfer = model.monitorTransfer ?? model.assist.monitorColorMode.map(MonitorTransfer.init)
-        let buffered = currentNative?.player.currentItem?.loadedTimeRanges.map {
-            CMTimeGetSeconds(CMTimeRangeGetEnd($0.timeRangeValue))
-        }.filter(\.isFinite).max()
+        let buffered = owner.playback.flatMap { playback -> Double? in
+            guard playback.ready, owner.isCurrent(playback.token),
+                playback.active?.asset.id == record.asset.id, playback.native === currentNative
+            else { return nil }
+            return currentNative?.bufferedThroughSeconds(token: playback.token)
+        }
         return .init(availability: availability,
-            progress: model.session.mediaDownloadProgress[file.path], buffered: buffered,
+            progress: model.session.mediaDownloadProgress[file.path],
             colorLabel: model.session.shotColor(for: file)?.label,
             transfer: transfer,
-            clipByte: transfer.map { model.frameSamples.exposureCeiling.clipByte(transfer: $0) })
+            clipByte: transfer.map { model.frameSamples.exposureCeiling.clipByte(transfer: $0) },
+            bufferedThroughSeconds: buffered)
     }
 }
