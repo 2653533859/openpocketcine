@@ -264,6 +264,26 @@ tasks.named("preBuild").configure {
     dependsOn(stageSwiftCore)
 }
 
+// ML Kit instantiates its ComponentRegistrar classes reflectively; a shrunk bundle without their
+// constructors crashes face detection (OPENPOCKETCINE-ANDROID-18). Every bundleRelease checks the dex.
+val releaseBundle = layout.buildDirectory.file("outputs/bundle/release/app-release.aab")
+val verifyReleaseComponentRegistrars =
+    tasks.register<Exec>("verifyReleaseComponentRegistrars") {
+        group = "verification"
+        description = "Fail when R8 strips a ComponentRegistrar constructor from the release bundle."
+        dependsOn("bundleRelease")
+        inputs.file(releaseBundle)
+        environment("ANDROID_HOME", androidComponents.sdkComponents.sdkDirectory.get().asFile.absolutePath)
+        commandLine(
+            "bash",
+            repositoryRoot.resolve("../OpenCine/scripts/android-verify-component-registrars.sh").absolutePath,
+            releaseBundle.get().asFile.absolutePath,
+        )
+    }
+tasks.matching { it.name == "bundleRelease" }.configureEach {
+    finalizedBy(verifyReleaseComponentRegistrars)
+}
+
 dependencies {
     implementation(libs.opencine.monitor.ui)
     // Cameras and pairing pages, the connection model and the saved-camera store (SHELL-02).
