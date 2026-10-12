@@ -102,12 +102,16 @@ class AppModel(
         java.io.File(appContext.noBackupFilesDir, "OpenPocketCine/media"))
     val mediaCache = com.opencapture.openpocketcine.media.MediaCache(appContext.noBackupFilesDir,
         appContext.getSharedPreferences("openpocketcine.media", Context.MODE_PRIVATE), mediaCacheRoot)
-    private val _mediaCacheRevision = kotlinx.coroutines.flow.MutableStateFlow(0L)
-    val mediaCacheRevision: kotlinx.coroutines.flow.StateFlow<Long> = _mediaCacheRevision
-    /** Bounded cache IO used by the captured common settings action. */
-    suspend fun clearOperatorMediaCacheOwned() {
-        try { OperatorMediaCache.clearOwned(mediaCacheRoot) { OperatorMediaCache.clear(appContext) } }
-        finally { _mediaCacheRevision.value += 1 }
+    private var mediaOwner: com.opencapture.openpocketcine.media.MediaLibraryController? = null
+    /**
+     * The gallery's library owner for the current camera, created when first asked for. The gallery
+     * and Settings share it, so Settings counts and clears that camera's cache, as Insta and iOS do.
+     */
+    fun mediaController(): com.opencapture.openpocketcine.media.MediaLibraryController {
+        val camera = com.opencapture.openpocketcine.media.MediaLibraryController.cameraKey(session, mediaCache)
+        mediaOwner?.let { if (it.cameraId == camera) return it; it.release() }
+        return com.opencapture.openpocketcine.media.MediaLibraryController(appContext, session, cacheOwner = mediaCache)
+            .also { mediaOwner = it }
     }
 
     init {
@@ -684,6 +688,7 @@ class AppModel(
     override fun close() {
         multiview?.dispose()
         multiview = null
+        mediaOwner?.release()
         gimbalGamepad.stopListening()
         control.unbind()
         val monitor = shell.state.value.monitor

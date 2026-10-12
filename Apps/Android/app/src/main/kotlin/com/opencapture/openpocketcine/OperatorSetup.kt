@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import com.opencapture.opencine.cameracontrols.OperatorAppInformation
@@ -11,7 +12,6 @@ import com.opencapture.opencine.cameracontrols.OperatorDiagnostics
 import com.opencapture.opencine.cameracontrols.OperatorHelpCopy
 import com.opencapture.opencine.cameracontrols.OperatorLegalPage
 import com.opencapture.opencine.cameracontrols.OperatorLinkSample
-import com.opencapture.opencine.cameracontrols.OperatorMediaCacheDirs
 import com.opencapture.opencine.cameracontrols.OperatorSetupApp
 import com.opencapture.opencine.cameracontrols.OperatorSetupState
 import com.opencapture.opencine.cameracontrols.formatAppVersion
@@ -21,7 +21,6 @@ import com.opencapture.openpocketcine.diagnostics.DiagnosticCenter
 import com.opencapture.opencine.runtime.MonitorGlesUpscaler
 import com.opencapture.openpocketcine.lut.LUTPicker
 import com.opencapture.openpocketcine.settings.PanelCloseButton
-import java.io.File
 
 object SettingsHelpCopy : OperatorHelpCopy("OpenPocketCine") {
     const val PROTOCOL =
@@ -37,19 +36,6 @@ object OpenPocketCineLinks {
         "https://github.com/erik-sutton95/OpenPocketCine/discussions/new?category=ideas"
     const val PRIVACY = "https://openpocketcine.app/privacy/"
     const val TERMS = "https://openpocketcine.app/terms/"
-}
-
-internal object OperatorMediaCache : OperatorMediaCacheDirs({ context ->
-    listOf(File(context.noBackupFilesDir, "OpenPocketCine/media"), File(context.filesDir, "OpenPocketCine/media"))
-}) {
-    /** Same canonical root object retires gallery writes before removing cache bytes. */
-    suspend fun clearOwned(root: com.opencapture.opencine.appkit.MonitorMediaCacheRoot, fallback: () -> Unit) {
-        if (!root.root.isDirectory) { fallback(); return }
-        root.root.listFiles()?.forEach { cameraDir ->
-            if (!cameraDir.isDirectory || cameraDir.name.startsWith(".retiring-") || cameraDir.name.startsWith(".clearing-")) return@forEach
-            root.directory(cameraDir.name).clear(preserving = listOf("index.json"))
-        }
-    }
 }
 
 internal fun lutPickerAvailable(): Boolean = true
@@ -96,18 +82,10 @@ internal fun operatorSetupApp(model: AppModel) = OperatorSetupApp(
     ),
     legalPage = { page, onClose -> LegalDocumentScreen(kind = page.kind, onClose = onClose) },
     lutPicker = { onClose -> LUTPicker(model = model, onClose = onClose) },
-    cacheSource = { context ->
-        val revision by model.mediaCacheRevision.collectAsState()
+    cacheSource = {
+        // The current camera's gallery cache, the one rule Insta and iOS follow; a camera change recomposes it.
         val shell by model.shell.state.collectAsState()
-        val source = shell.monitor?.id
-        val capturedRevision = revision
-        com.opencapture.opencine.appkit.MonitorSettingsCacheSource(
-            com.opencapture.opencine.appkit.MonitorSettingsCacheIdentity(model.mediaCacheRoot.root.absolutePath, source?.toString()),
-            capturedRevision,
-            isCurrent = { model.shell.state.value.monitor?.id == source && model.mediaCacheRevision.value == capturedRevision },
-            count = { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { OperatorMediaCache.byteCount(context) } },
-            clear = { model.clearOperatorMediaCacheOwned() },
-        )
+        key(shell.monitor?.id) { com.opencapture.opencine.cameracontrols.monitorSettingsCacheSource(model.mediaController().library) }
     },
 )
 

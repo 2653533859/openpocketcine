@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import com.opencapture.opencine.appkit.*
 import com.opencapture.opencine.cameracontrols.*
 import com.opencapture.opencine.media.MediaAssetKind
@@ -19,19 +18,14 @@ import com.opencapture.opencine.vocabulary.ConnectionPhase
 
 @Composable
 fun MediaLibraryScreen(model: AppModel, onClose: () -> Unit) {
-    val context = LocalContext.current
-    // Persisted namespace only routes existing cache files; it grants no source admission.
-    val actualCameraID = model.session.mediaConnectionIdentity?.cameraID
-        ?: context.getSharedPreferences("openpocketcine.media", android.content.Context.MODE_PRIVATE).getString("opc.media.lastCameraID", null)
-    val controller = remember(model, actualCameraID) { MediaLibraryController(context.applicationContext, model.session, cacheOwner = model.mediaCache) }
+    // The app model owns the library for the current camera; Settings counts and clears the same one.
+    val controller = model.mediaController()
     val library = controller.library
     val state by library.state.collectAsState()
-    val cacheRevision by model.mediaCacheRevision.collectAsState()
-    LaunchedEffect(controller, cacheRevision) { controller.cacheContentsChanged() }
     val phase by model.session.phaseFlow.collectAsState()
     val isLive = phase == ConnectionPhase.LIVE
     LaunchedEffect(controller, phase) { controller.visibilityChanged() }
-    DisposableEffect(controller) { onDispose { controller.release() } }
+    DisposableEffect(controller) { onDispose { controller.endBrowse() } }
     var presented by remember(library) { mutableStateOf<MonitorMediaGalleryOpen<MediaFile>?>(null) }
     var deliveryFiles by remember(library) { mutableStateOf<List<MediaFile>?>(null) }
     var deliveryActive by remember(library) { mutableStateOf(false) }
