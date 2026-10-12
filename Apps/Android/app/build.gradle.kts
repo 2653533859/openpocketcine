@@ -202,8 +202,9 @@ androidComponents {
         val identity = providers.exec {
             workingDir = repositoryRoot
             commandLine(
-                pythonExecutable.get(), repositoryRoot.resolve("tools/build-identity.py").absolutePath,
-                "--platform", "android", "--configuration",
+                pythonExecutable.get(),
+                repositoryRoot.resolve("../OpenCine/scripts/sentry/build-identity.py").absolutePath,
+                "--root", repositoryRoot.absolutePath, "--platform", "android", "--configuration",
                 "${variant.name}-$resolvedVersionName-$resolvedVersionCode-${gradle.gradleVersion}",
             )
         }.standardOutput.asText.map { value ->
@@ -298,7 +299,9 @@ dependencies {
     implementation(libs.media3.ui)
     implementation(libs.okhttp)
     implementation(libs.mlkit.face.detection)
-    implementation(libs.sentry.android)
+    // The shared reporting adapter: appkit's reporting sink, transport and problem report upload on
+    // the Sentry SDK (sentry-android comes with it, at the version OpenCine pins).
+    implementation("com.opencapture.opencine:appkit-sentry:0.1.0-SNAPSHOT")
 
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test:core:1.7.0")
@@ -309,7 +312,6 @@ dependencies {
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.json)
     testImplementation(libs.kotlinx.coroutines.test)
-    testImplementation(libs.okhttp.mockwebserver)
 }
 
 abstract class LocalReliabilityDsnValueSource :

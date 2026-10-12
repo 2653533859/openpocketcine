@@ -18,7 +18,7 @@ class AppSessionHost(context: Context) : DjiSessionHost {
     override fun setShutterAngleDegrees(degrees: Double) = OperatorPrefs.setShutterAngleDegrees(appContext, degrees)
     override fun nativeISOHopEnabled(): Boolean = OperatorPrefs.nativeISOHopEnabled(appContext)
 
-    override fun setCameraSessionActive(active: Boolean) = AppDiagnostics.reporting.setCameraSessionActive(active)
+    override fun beginCameraPath(): AutoCloseable = AppDiagnostics.reporting.beginCameraPath()
     override val incidents: FeedIncidentSink get() = AppDiagnostics.incidents
     override fun incidentTestSource(): FeedIncidentTestSource = AppDiagnostics.origin.currentTestSource()
     override fun incidentBuildIdentity(): String = AppDiagnostics.origin.currentBuildIdentity()

@@ -17,6 +17,7 @@ import androidx.core.net.toUri
 import com.opencapture.opencine.dji.DjiLog
 import com.opencapture.opencine.media.DecoderErrorRecord
 import com.opencapture.opencine.platform.LocalVPNProbe
+import com.opencapture.opencine.dji.DjiCameraNetwork
 import com.opencapture.opencine.vocabulary.PrivacyRedactor
 import com.opencapture.openpocketcine.BuildConfig
 import com.opencapture.opencine.appkit.DiscoveryPermissions
@@ -95,13 +96,13 @@ object DiagnosticCenter {
                 exceptions = exceptionLines(),
                 extras = AppDiagnostics.incidents.reportExtras(),
                 cap = minOf(maxChars, BoundedDiagnosticFormatter.CHARACTER_CAP),
-                isSafeNetwork = PrivacyRedactor::isCameraNetwork,
+                isSafeNetwork = DjiCameraNetwork::isAccessPoint,
             )
         return ManualProblemReportEnvelope.utf8Prefix(body, maxBytes)
     }
 
     fun log(level: String, category: String, code: String, message: String) {
-        val line = PrivacyRedactor.redact("$level $category $code $message")
+        val line = DjiCameraNetwork.redact("$level $category $code $message")
         when (level) {
             "error", "fault" -> Log.e(TAG, line)
             "warning" -> Log.w(TAG, line)
@@ -116,7 +117,7 @@ object DiagnosticCenter {
         log("warning", "decoder", record.origin.wire, record.journalLine())
 
     fun recordFault(code: String, stack: String) {
-        log("fault", "diagnostics", code, PrivacyRedactor.redact(stack.take(4000)))
+        log("fault", "diagnostics", code, DjiCameraNetwork.redact(stack.take(4000)))
     }
 
     fun writeReport(context: Context, session: DjiCameraSession): File? {
@@ -294,7 +295,7 @@ object DiagnosticCenter {
             lines += "recent:"
             lines += tail
         }
-        return PrivacyRedactor.clampCompact(PrivacyRedactor.redact(lines.joinToString("\n")))
+        return PrivacyRedactor.clampCompact(DjiCameraNetwork.redact(lines.joinToString("\n")))
     }
 
     private fun fullReport(
@@ -330,7 +331,7 @@ object DiagnosticCenter {
                 "Journal (last ${minOf(journal.size, JOURNAL_CAP)} lines)\n" +
                     journal.takeLast(JOURNAL_CAP).joinToString("\n")
         }
-        return PrivacyRedactor.redact(sections.joinToString("\n\n"))
+        return DjiCameraNetwork.redact(sections.joinToString("\n\n"))
     }
 
     private fun filesDir(): File? {

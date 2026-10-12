@@ -132,6 +132,8 @@ final class CameraSession {
     private var firstPictureFormatPoked: Bool { firstPictureFormat.snapshot.poked }
     /// One `0x09/0xa8` write in flight. Overlapping enables are a black well.
     @ObservationIgnored private var incidentSessionActive = false
+    /// This session's hold on the reporting camera path, from connect start until disconnect.
+    @ObservationIgnored private var cameraPathLease: ReliabilityCameraPathLease?
     @ObservationIgnored private var incidentSessionSource: FeedIncidentSessionSource?
     @ObservationIgnored private var incidentAssistState: String?
     @ObservationIgnored private var incidentPrevious: (at: Double, counts: [Int])?
@@ -755,7 +757,7 @@ final class CameraSession {
             guard isCurrent() else { return nil }
             cameraReportedCapture = CameraStatus()
         }
-        AppDiagnostics.reporting.setCameraSessionActive(true)
+        if cameraPathLease == nil { cameraPathLease = AppDiagnostics.reporting.beginCameraPath() }
         guard isCurrent() else { return nil }
         LocalVPNNotice.app.noteIfActive()
         guard isCurrent() else { return nil }
@@ -792,7 +794,8 @@ final class CameraSession {
         cameraReportedCapture = CameraStatus()
         // Before the link closes: do not leave the camera on Fast for the next session.
         gimbal.restorePrepNow()
-        AppDiagnostics.reporting.setCameraSessionActive(false)
+        cameraPathLease?.end()
+        cameraPathLease = nil
         let outgoingIncidentSource = incidentSessionSource
         incidentSessionSource = nil
         incidentAssistState = nil
