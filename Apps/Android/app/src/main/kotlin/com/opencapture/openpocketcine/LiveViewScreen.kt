@@ -1,5 +1,6 @@
 package com.opencapture.openpocketcine
 
+import com.opencapture.opencine.cameracontrols.MonitorOperatorRecoveryCard
 import com.opencapture.opencine.cameracontrols.*
 
 import com.opencapture.opencine.appkit.ShellModel
@@ -134,7 +135,6 @@ import android.os.SystemClock
 import com.opencapture.monitorui.MonitorQuickGestureOwner
 import com.opencapture.monitorui.monitorReadoutGesture
 import com.opencapture.opencine.core.LocalVPNFilter
-import com.opencapture.opencine.appkit.MonitorRecoveryOverlay
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import com.opencapture.opencine.vocabulary.CamFov
@@ -145,7 +145,6 @@ import com.opencapture.opencine.vocabulary.ControlHud
 import com.opencapture.opencine.vocabulary.FocusOverlay
 import com.opencapture.opencine.vocabulary.LiveFeedFocusGesture
 import com.opencapture.opencine.vocabulary.SessionRecoveryCopy
-import com.opencapture.opencine.vocabulary.SessionRecoveryUi
 import com.opencapture.opencine.vocabulary.TrackingBox
 import com.opencapture.opencine.vocabulary.VideoResolution
 import kotlinx.coroutines.delay
@@ -561,17 +560,12 @@ fun LiveViewScreen(model: AppModel) {
 
                     }
         Box(Modifier.fillMaxSize().zIndex(30f)) {
-            if (recovery.isRecovering) {
-                MonitorRecoveryOverlay(
-                    retrying = recovery is SessionRecoveryUi.Retrying,
-                    title = SessionRecoveryCopy.title(recovery),
-                    detail = SessionRecoveryCopy.detail(recovery, model.session.connectedCamera?.name.orEmpty()),
-                    retryTitle = SessionRecoveryCopy.RETRY_CONNECTION,
-                    operatorMenuTitle = SessionRecoveryCopy.OPERATOR_MENU,
-                    onRetry = { model.session.retrySessionRecovery() },
-                    onOperatorMenu = { model.disconnect() },
-                )
-            }
+            // The shared card owns the first-retry grace and the 48 dp actions (A3-24).
+            MonitorOperatorRecoveryCard(
+                recovery, model.session.connectedCamera?.name.orEmpty(),
+                onRetry = { model.session.retrySessionRecovery() },
+                onOperatorMenu = { model.disconnect() },
+            )
         }
 
     }
