@@ -16,7 +16,7 @@ import com.opencapture.openpocketcine.feed.rememberMonitorBackdropFeed
 import com.opencapture.monitorui.MonitorMaterial
 import com.opencapture.monitorui.monitorMaterial
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
+import com.opencapture.opencine.appkit.MonitorBitmapDecoder
 import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
@@ -159,13 +159,13 @@ fun MediaPhotoViewer(model: AppModel, file: MediaFile, controller: MediaLibraryC
     val loaders = com.opencapture.opencine.appkit.MonitorMediaPictureLoaders<MediaFile, Bitmap>(
         cached = { request ->
             if (!request.isCurrent()) null else (controller.localFile(request.record.payload) ?: controller.thumbnailFile(request.record.payload))?.let { location ->
-                withContext(Dispatchers.IO) { BitmapFactory.decodeFile(location.absolutePath) }
+                withContext(Dispatchers.IO) { MonitorBitmapDecoder.decode(location, MonitorBitmapDecoder.PAGE_EDGE) }
             }
         }, source = { request ->
             if (!request.isCurrent()) null else {
                 val location = controller.cacheForPlayback(request.record.payload)
                 if (location == null || !request.isCurrent()) null
-                else withContext(Dispatchers.IO) { BitmapFactory.decodeFile(location.absolutePath) }
+                else withContext(Dispatchers.IO) { MonitorBitmapDecoder.decode(location, MonitorBitmapDecoder.PAGE_EDGE) }
             }
         })
     val operations = com.opencapture.opencine.appkit.MonitorMediaGalleryOperations<MediaFile>(
