@@ -18,6 +18,7 @@ import com.opencapture.opencine.vocabulary.fromColorMode
 import com.opencapture.openpocketcine.AppModel
 import com.opencapture.openpocketcine.OperatorPrefs
 import com.opencapture.openpocketcine.lut.AppLutPickerCopy
+import com.opencapture.openpocketcine.lut.appLutLibrary
 import com.opencapture.openpocketcine.settings.SettingsPalette
 import com.opencapture.monitorui.MonitorAssistTool
 import com.opencapture.opencine.appkit.MonitorAssistState
@@ -67,6 +68,7 @@ fun AssistOptionsPopup(
                 OperatorPrefs.setLutSelection(context, id)
             }
         },
+        library = appLutLibrary(context),
         profile = model?.session?.connectedCamera?.model?.captureProfile?.looks ?: com.opencapture.opencine.dji.DjiCameraLUTProfile.make("pocket", null),
         colorMode = colorMode,
     )
