@@ -1,6 +1,5 @@
 package com.opencapture.openpocketcine
 
-import com.opencapture.monitorui.MonitorBatteryOutlineRow
 import com.opencapture.opencine.cameracontrols.CaptureLists
 import com.opencapture.opencine.cameracontrols.chromeClickable
 import androidx.compose.animation.core.snap
@@ -469,20 +468,6 @@ internal fun RecordButton(
         com.opencapture.monitorui.MonitorRecordLamp(
             recording = recording, photo = photo, modifier = Modifier.fillMaxSize(),
         )
-    }
-}
-
-@Composable
-fun BatteryPair(
-    phonePercent: Int,
-    phoneCharging: Boolean,
-    cameraPercent: Int,
-    cameraCharging: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        MonitorBatteryOutlineRow(percent = phonePercent, charging = phoneCharging, camera = false)
-        MonitorBatteryOutlineRow(percent = cameraPercent, charging = cameraCharging, camera = true)
     }
 }
 
