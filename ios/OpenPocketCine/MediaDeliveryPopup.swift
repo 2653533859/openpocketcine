@@ -49,7 +49,7 @@ private struct CapturedMediaDeliveryPopup: View {
 }
 
 /// Immutable selection/source and actual SDK account/export facts only.
-@MainActor private struct MediaDeliveryPreparationSource {
+@MainActor struct MediaDeliveryPreparationSource {
     let model: AppModel
     let files: [MediaFile]
     let preparation: MonitorDeliveryPreparationModel<LogColorTransform, MediaExportFormat,
@@ -59,9 +59,10 @@ private struct CapturedMediaDeliveryPopup: View {
         self.model = model; self.files = files
         let session = model.session, library = session.mediaLibrary, directory = library.cache.directory
         let cameraID = session.mediaCameraID, generation = directory.generation
-        let current: () -> Bool = {
+        let source = MonitorDeliveryAdmission {
             model.session === session && session.mediaLibrary === library && session.mediaCameraID == cameraID && directory.generation == generation
         }
+        let current = { source.isCurrent() }
         isCurrent = current
         var configuration = MediaDeliveryConfiguration()
         if let first = files.filter({ $0.kind == .video }).compactMap({ session.shotColor(for: $0) })
@@ -98,7 +99,8 @@ private struct CapturedMediaDeliveryPopup: View {
             filename: { configuration in files.count == 1 ? files.first.map {
                 MediaDelivery.filename(for: $0, configuration: configuration,
                     transform: configuration.convertLog ? configuration.logTransform : nil)
-            } : nil }), remote: remote, preferredDestination: preferredDestination?.shared, sourceCurrent: current)
+            } : nil }), remote: remote, preferredDestination: preferredDestination?.shared, sourceCurrent: current,
+            beforeInternetHop: { try await model.delivery.cacheBeforeInternetHop(files, session: session, source: source) })
     }
     func begin(_ request: MonitorDeliveryPreparedRequest<LogColorTransform, MediaExportFormat, FrameioInternetHop.Token>) {
         guard isCurrent() else { if let token = request.internetLease { model.endInternetHop(token) }; return }
