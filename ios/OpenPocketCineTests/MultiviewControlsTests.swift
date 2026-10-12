@@ -2,6 +2,7 @@ import CoreVideo
 import OpenCineApple
 import OpenPocketViewCore
 import XCTest
+import struct OpenCineCore.CameraTimecode
 import OpenCineDJIApple
 
 @testable import OpenPocketCine
@@ -167,7 +168,8 @@ import OpenCineDJIApple
         XCTAssertTrue(session.tiles[1].lutEnabled)
         XCTAssertEqual(tile.timecodeReadout, "14:32:08")
         XCTAssertEqual(
-            tile.settings.timecode, "14:32:08:12", "Protocol telemetry retains frame data")
+            tile.settings.timecode, CameraTimecode(hours: 14, minutes: 32, seconds: 8, frames: 12),
+            "Protocol telemetry retains frame data")
     }
 
     private func fixture() -> MultiviewSession {
