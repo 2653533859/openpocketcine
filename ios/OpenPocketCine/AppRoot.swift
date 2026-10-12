@@ -1210,6 +1210,7 @@ struct LinkExperience: View {
             if old == .media, next != .media { model.session.endMediaBrowse() }
         }
         .ignoresSafeArea()
+        .overlay { MonitorOperatorDeliveryChrome(model: model.delivery.lifetime, scope: .root, remoteDisplayName: "Frame.io") }
         .background(StartupColors.background.ignoresSafeArea())
         .foregroundStyle(StartupColors.ink)
         .onAppear {
