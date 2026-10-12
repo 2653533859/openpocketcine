@@ -55,7 +55,7 @@
             android:launchMode="singleTop"
             android:theme="@style/Theme.OpenPocketCine.Starting"
             android:screenOrientation="user"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden">
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density|fontScale">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
