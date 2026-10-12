@@ -978,15 +978,7 @@ struct AppRoot: View {
     var body: some View {
         ZStack {
             MonitorTheme.background.ignoresSafeArea()
-            #if targetEnvironment(simulator)
-                if MonitorMediaReview.isActive {
-                    MonitorMediaReviewView()
-                } else {
-                    primaryExperience
-                }
-            #else
-                primaryExperience
-            #endif
+            primaryExperience
 
             if model.showsLaunchSplash {
                 LaunchSplashOverlay(isVisible: Bindable(model).showsLaunchSplash)

@@ -83,27 +83,11 @@ struct PocketPlaybackLook: Equatable, Sendable {
     }
 
     func mediaPlaybackRecord(for file: MediaFile) -> MonitorMediaRecord<MediaFile>? {
-        if let record = mediaRecord(for: file) { return record }
-        #if targetEnvironment(simulator)
-            if MonitorMediaReview.isActive, file.path.hasPrefix(MonitorMediaReview.pathPrefix) {
-                // The explicit simulator review accepts its fixture files outside its catalog, with
-                // or without supplied footage: the player's controls work without it, as on main.
-                // A typed local value is not inserted into a camera catalog or local index.
-                let codec = PocketMediaCatalogCodec(
-                    source: { nil }, sourceOwnsFavorites: { false }, shotColor: { _ in nil })
-                return codec.record(file)
-            }
-        #endif
-        return nil
+        mediaRecord(for: file)
     }
 
     func playbackCandidates(_ record: MonitorMediaRecord<MediaFile>) -> [MonitorPlaybackCandidate] {
         let file = record.payload
-        #if targetEnvironment(simulator)
-            if let url = MonitorMediaReview.clipURL(for: file) {
-                return [.cached(.init(url: url, mimeType: "video/mp4", sourceKey: file.path))]
-            }
-        #endif
         var choices: [MonitorPlaybackCandidate] = []
         func cached(_ source: MediaPlaybackSource) -> MonitorPlaybackCandidate {
             .cached(
@@ -237,13 +221,8 @@ struct PocketPlaybackLook: Equatable, Sendable {
         owner: MonitorOperatorMediaModel<MediaFile, PocketPlaybackLook>) -> MonitorPlaybackSourceValues {
         let file = record.payload
         let grade = model.session.cacheGrade(for: file)
-        let availability: MonitorPlaybackAvailability
-        #if targetEnvironment(simulator)
-        if MonitorMediaReview.clipURL(for: file) != nil { availability = .original }
-        else { availability = grade == .original ? .original : grade.isProxyOnly ? .proxy : .camera }
-        #else
-        availability = grade == .original ? .original : grade.isProxyOnly ? .proxy : .camera
-        #endif
+        let availability: MonitorPlaybackAvailability =
+            grade == .original ? .original : grade.isProxyOnly ? .proxy : .camera
         let transfer = model.monitorTransfer ?? model.assist.monitorColorMode.map(MonitorTransfer.init)
         let buffered = owner.playback.flatMap { playback -> Double? in
             guard playback.ready, owner.isCurrent(playback.token),

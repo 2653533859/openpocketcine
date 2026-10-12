@@ -165,6 +165,11 @@ ios-test *args: ios-generate
 ios-ui-test device *args: ios-generate
     xcodebuild -project ios/OpenPocketCine.xcodeproj -scheme OpenPocketCineUIReview -destination 'platform=iOS Simulator,id={{device}}' {{args}} test
 
+# The shared conformance scenarios (OpenCine docs/conformance/SCENARIOS.md) on the simulator `udid`,
+# which needs accessibility enabled (OpenCine scripts/ios-private-simulator.py create).
+conformance-ios udid result="": ios-generate
+    xcodebuild -project ios/OpenPocketCine.xcodeproj -scheme OpenPocketCineUIReview -destination 'platform=iOS Simulator,id={{udid}}' -parallel-testing-enabled NO {{ if result != "" { "-resultBundlePath " + result } else { "" } }} -only-testing:OpenPocketCineUITests/GalleryRoundTrip -only-testing:OpenPocketCineUITests/ShareRoundTrip -only-testing:OpenPocketCineUITests/ConfirmationCancel -only-testing:OpenPocketCineUITests/ChromeEditReturn -only-testing:OpenPocketCineUITests/AccessibilityTraversal -only-testing:OpenPocketCineUITests/ConformanceCoverageTests test
+
 # Opt-in navigation on an attached physical iPhone/iPad; never records or moves a camera.
 ios-physical-ui-test device test="OpenPocketCineUITests/PhysicalNavigationTests": ios-generate
     TEST_RUNNER_OPV_PHYSICAL_UI_REVIEW=1 xcodebuild -project ios/OpenPocketCine.xcodeproj -scheme OpenPocketCineUIReview -destination 'platform=iOS,id={{device}}' -allowProvisioningUpdates -only-testing:{{test}} test
