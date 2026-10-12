@@ -1,5 +1,15 @@
 package com.opencapture.openpocketcine
 
+import com.opencapture.opencine.appkit.DiscoveryRestart
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import com.opencapture.opencine.appkit.MonitorActivityLaunch
+import com.opencapture.opencine.appkit.MonitorAppRoot
+import com.opencapture.opencine.appkit.MonitorLaunchBrand
+import com.opencapture.opencine.appkit.MonitorReportsOffer
+import com.opencapture.opencine.appkit.retainedMonitorRoot
+import androidx.compose.ui.graphics.Color
 import com.opencapture.opencine.appkit.applyMonitorSystemBars
 import com.opencapture.opencine.appkit.LocalOperatorHaptics
 import com.opencapture.opencine.appkit.rememberOperatorHaptics
@@ -11,59 +21,29 @@ import android.bluetooth.BluetoothAdapter
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
-import android.util.Log
 import android.view.KeyEvent
 import android.view.MotionEvent
-import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import android.os.Build
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.InfiniteAnimationPolicy
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.createLifecycleAwareWindowRecomposer
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.max
-import androidx.compose.ui.unit.sp
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
-import androidx.core.view.WindowCompat
-import com.opencapture.opencine.appkit.diagnostics.AutomaticReportsPrompt
 import com.opencapture.openpocketcine.diagnostics.DiagnosticCenter
 import com.opencapture.openpocketcine.multiview.MultiviewQualificationPolicy
 import androidx.activity.compose.BackHandler
@@ -81,14 +61,9 @@ import com.opencapture.openpocketcine.pairing.PairingCallouts
 import com.opencapture.opencine.appkit.PermissionGate
 import com.opencapture.openpocketcine.pairing.rememberPermissionGate
 import com.opencapture.openpocketcine.pairing.startupBackdrop
-import java.util.concurrent.atomic.AtomicBoolean
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
-class MainActivity : ComponentActivity() {
-    private var reviewState: String? = null
-    private val composeFirstFrameDrawn = AtomicBoolean(false)
+open class MainActivity : ComponentActivity() {
+    private val launch = MonitorActivityLaunch()
     internal lateinit var model: AppModel
         private set
     var hideSystemNavigation = false
@@ -99,47 +74,28 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        val splashScreen = installSplashScreen()
-        splashScreen.setKeepOnScreenCondition { !composeFirstFrameDrawn.get() }
+        installSplashScreen().setKeepOnScreenCondition { !launch.firstFrameDrawn }
         super.onCreate(savedInstanceState)
-        // Debug review only: a scripted connection state of the cameras and pair pages.
-        val review = if (BuildConfig.DEBUG) intent?.getStringExtra("opv_review_state") else null
-        model = AppModel(applicationContext, discovers = true, review = review)
-        if (review == "multiview") model.showsMultiview = true
-        if (review?.startsWith("pair-") == true) model.pairing = true
-        if (review != null) lifecycleScope.launch { ReviewCameras.start(review, model) }
-        reviewState = review
+        // One model per task: a recreated activity keeps the session; finishing closes it.
+        model = retainedMonitorRoot { createModel().also(AppModel::prepareStartup) }
         model.gimbalGamepad.ensureListening(this, model)
-        // Target SDK 35+ enforces edge-to-edge on Android 15 and later.
-        if (Build.VERSION.SDK_INT < 35) {
-            WindowCompat.enableEdgeToEdge(window)
-        }
-        WindowCompat.getInsetsController(window, window.decorView).apply {
-            isAppearanceLightStatusBars = false
-            isAppearanceLightNavigationBars = false
-        }
-        window.isNavigationBarContrastEnforced = false
-        window.attributes.layoutInDisplayCutoutMode =
-            if (Build.VERSION.SDK_INT >= 35) {
-                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
-            } else {
-                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-            }
-        // Compose's Popup polls its anchor with an infinite frame loop, so the always-mounted
-        // assist palette alone woke Main every vsync (120 Hz) over live view. Pace every
-        // infinite loop (Popup polls, REC pulse, spinners) like iOS's 30 Hz pulse timeline.
-        val recomposer = window.decorView.createLifecycleAwareWindowRecomposer(PacedInfiniteAnimations, lifecycle)
-        setContent(parent = recomposer) {
-            SideEffect { composeFirstFrameDrawn.set(true) }
+        launch.setContent(this) {
             OpenPocketCineTheme {
                 val haptics = rememberOperatorHaptics { model.hapticsEnabled }
                 CompositionLocalProvider(LocalOperatorHaptics provides haptics) {
                     OpenPocketCineApp(model)
-                    ReviewCameras.AddSetup(reviewState, model)
+                    Overlay(model)
                 }
             }
         }
     }
+
+    /** The activity's root model; the debug review activity scripts its camera port. */
+    protected open fun createModel(): AppModel = AppModel(applicationContext, discovers = true)
+
+    /** Drawn over the app; empty outside the debug review activity. */
+    @Composable
+    protected open fun Overlay(model: AppModel) {}
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
@@ -162,11 +118,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onDestroy() {
-        if (::model.isInitialized) model.close()
-        super.onDestroy()
-    }
-
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
         if (::model.isInitialized && model.gimbalGamepad.onMotion(event, model)) return true
         return super.dispatchGenericMotionEvent(event)
@@ -181,8 +132,6 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun OpenPocketCineApp(model: AppModel) {
-    val phase by model.session.phaseFlow.collectAsState()
-    var launchSplashVisible by remember { mutableStateOf(true) }
     val activity = LocalActivity.current
     lateinit var discovery: PermissionGate
     val enableBluetooth =
@@ -199,49 +148,18 @@ private fun OpenPocketCineApp(model: AppModel) {
         beginDiscovery(model) { requestBluetoothOn() }
     }
 
-    LaunchedEffect(model.keepScreenAwake, activity) {
-        val window = activity?.window ?: return@LaunchedEffect
-        if (model.keepScreenAwake) {
-            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        } else {
-            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
-    }
-
     LaunchedEffect(Unit) {
-        model.prepareStartup()
         if (discovery.granted) {
             beginDiscovery(model, onBluetoothOff = { requestBluetoothOn() })
         } else if (!discovery.needsSettings) {
             discovery.request()
         }
-        delay(2_250)
-        launchSplashVisible = false
-        model.showsLaunchSplash = false
     }
 
     val shell by model.shell.state.collectAsState()
     val showLive = shell.monitor != null
-    LaunchedEffect(model.hdrDisplay, model.screenCaptured, activity) {
+    LaunchedEffect(model.hdrDisplayActive, activity) {
         MonitorHDRDisplay.apply(activity, enabled = model.hdrDisplayActive)
-    }
-    DisposableEffect(activity) {
-        val windowManager = activity?.windowManager
-        if (activity == null || windowManager == null || Build.VERSION.SDK_INT < 35) {
-            return@DisposableEffect onDispose { }
-        }
-        val callback = java.util.function.Consumer<Int> { state ->
-            model.screenCaptured = state == WindowManager.SCREEN_RECORDING_STATE_VISIBLE
-        }
-        // Knowing about screen recording only dims the HDR boost. A ROM that
-        // refuses the callback must cost the boost, never the whole app.
-        try {
-            windowManager.addScreenRecordingCallback(activity.mainExecutor, callback)
-        } catch (denied: SecurityException) {
-            Log.w("OpcHdr", "screen-recording callback denied; the boost stays on while recording", denied)
-            return@DisposableEffect onDispose { }
-        }
-        onDispose { runCatching { windowManager.removeScreenRecordingCallback(callback) } }
     }
     val hideNavigation = (showLive && model.shellState.cover == null) || model.showsMultiview
     LaunchedEffect(activity, hideNavigation) {
@@ -249,38 +167,30 @@ private fun OpenPocketCineApp(model: AppModel) {
         (activity as? MainActivity)?.updateSystemBars()
     }
 
-    Box(Modifier.fillMaxSize().startupBackdrop()) {
-        if (model.showsMultiview && !showLive) {
-            com.opencapture.openpocketcine.multiview.MultiviewScreen(model, onClose = model::closeMultiview)
-        } else {
-            LinkExperience(
-                model = model,
-                discovery = discovery,
-                onEnableBluetooth = { requestBluetoothOn() },
-            )
-        }
-        LaunchSplashOverlay(visible = launchSplashVisible)
-        if (model.showsLegalPanel && !model.showsMultiview) {
-            AppPanelHost(model)
-        }
-        var showAutomaticPrompt by remember {
-            mutableStateOf(AppDiagnostics.consent.shouldOfferAutomaticPrompt())
-        }
-        if (!launchSplashVisible && !showLive && !model.showsMultiview && showAutomaticPrompt &&
-            model.homePanel != AppPanel.PRIVACY
-        ) {
-            AutomaticReportsPrompt(
-                product = AppDiagnostics.host.product,
-                onPrivacy = { model.homePanel = AppPanel.PRIVACY },
-                onEnable = {
-                    AppDiagnostics.reporting.setConsent(true)
-                    showAutomaticPrompt = false
-                },
-                onNotNow = {
-                    AppDiagnostics.reporting.setConsent(false)
-                    showAutomaticPrompt = false
-                },
-            )
+    MonitorAppRoot(
+        brand = MonitorLaunchBrand(R.drawable.opc_app_logo, "OpenPocketCine", Color(0xFF0E0E0E), BrandColors.ink, OpcFonts.sora),
+        keepScreenAwake = model.keepScreenAwake || model.showsMultiview,
+        reports = MonitorReportsOffer(AppDiagnostics.consent, AppDiagnostics.reporting, AppDiagnostics.host.product) {
+            model.homePanel = AppPanel.PRIVACY
+        },
+        reportsAllowed = !showLive && !model.showsMultiview && model.homePanel != AppPanel.PRIVACY,
+        // Knowing about screen recording only dims the HDR boost.
+        onScreenRecording = { model.screenCaptured = it },
+    ) {
+        Box(Modifier.fillMaxSize().startupBackdrop()) {
+            val stage = model.multiview?.takeIf { !showLive }
+            // The stage is a page over the shell, which keeps its own state underneath.
+            Box(if (stage != null) Modifier.clearAndSetSemantics { } else Modifier) {
+                LinkExperience(
+                    model = model,
+                    discovery = discovery,
+                    onEnableBluetooth = { requestBluetoothOn() },
+                )
+            }
+            stage?.let { com.opencapture.openpocketcine.multiview.MultiviewScreen(model, it, onClose = model::closeMultiview) }
+            if (model.showsLegalPanel && !model.showsMultiview) {
+                AppPanelHost(model)
+            }
         }
     }
 }
@@ -317,10 +227,12 @@ internal fun pairingWizard(
     },
 )
 
-/** Permission granted or Bluetooth on: look again, unless a camera is connecting or live. */
+/** DJI `startScan` clears the session's reconnect target, so it never interrupts an attempt. */
+private val DISCOVERY_RESTART = DiscoveryRestart.WHEN_IDLE
+
+/** Permission granted or Bluetooth on: look again when the integration allows it now. */
 private fun beginDiscovery(model: AppModel, onBluetoothOff: () -> Unit = {}) {
-    val state = model.cameras.state.value
-    if (state.attempts.isEmpty() && state.connected == null && !model.isLive) model.session.startScan()
+    if (DISCOVERY_RESTART.allows(model.cameras.state.value, model.isLive)) model.session.startScan()
     if (!model.session.radioOn.value) onBluetoothOff()
 }
 
@@ -389,67 +301,5 @@ private fun LinkExperience(
         Dialog(onDismissRequest = { showReportingPrivacy = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
             LegalDocumentScreen(kind = LegalKind.PRIVACY, onClose = { showReportingPrivacy = false })
         }
-    }
-}
-
-@Composable
-private fun LaunchSplashOverlay(visible: Boolean) {
-    AnimatedVisibility(
-        visible = visible,
-        enter = androidx.compose.animation.EnterTransition.None,
-        exit = fadeOut(tween(durationMillis = 350)),
-    ) {
-        BoxWithConstraints(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xFF0E0E0E))) {
-            val landscape = maxWidth >= maxHeight
-            val logoSize = minOf(maxWidth * if (landscape) 0.16f else 0.28f, 96.dp)
-            val logoCorner = logoSize * 0.22f
-            val wordmarkSp = if (landscape) 34.sp else 30.sp
-            @Composable
-            fun OpcMark() {
-                Image(
-                    painter = painterResource(R.drawable.opc_app_logo),
-                    contentDescription = "OpenPocketCine",
-                    modifier = Modifier
-                        .size(logoSize)
-                        .clip(RoundedCornerShape(logoCorner)),
-                    contentScale = ContentScale.Fit,
-                )
-            }
-            if (landscape) {
-                Row(
-                    Modifier.fillMaxSize().padding(horizontal = max(32.dp, maxWidth * 0.08f)),
-                    horizontalArrangement = Arrangement.spacedBy(max(32.dp, maxWidth * 0.06f), Alignment.CenterHorizontally),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    OpcMark()
-                    Text(
-                        "OpenPocketCine",
-                        color = BrandColors.ink,
-                        style = LiveType.display(wordmarkSp.value, FontWeight.Bold),
-                    )
-                }
-            } else {
-                Column(
-                    Modifier.fillMaxSize(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterVertically),
-                ) {
-                    OpcMark()
-                    Text(
-                        "OpenPocketCine",
-                        color = BrandColors.ink,
-                        style = LiveType.display(wordmarkSp.value, FontWeight.Bold),
-                    )
-                }
-            }
-        }
-    }
-}
-
-/** Infinite frame loops tick at about 30 Hz instead of every vsync; finite animations are untouched. */
-private object PacedInfiniteAnimations : InfiniteAnimationPolicy {
-    override suspend fun <R> onInfiniteOperation(block: suspend () -> R): R {
-        delay(25)
-        return block()
     }
 }
