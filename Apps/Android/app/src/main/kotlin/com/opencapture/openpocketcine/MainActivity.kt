@@ -13,6 +13,8 @@ import androidx.compose.ui.graphics.Color
 import com.opencapture.opencine.appkit.applyMonitorSystemBars
 import com.opencapture.opencine.appkit.LocalOperatorHaptics
 import com.opencapture.opencine.appkit.rememberOperatorHaptics
+import com.opencapture.opencine.cameracontrols.MonitorLegalDocumentScreen
+import com.opencapture.opencine.cameracontrols.MonitorLegalPage
 import com.opencapture.opencine.runtime.MonitorHDRDisplay
 import com.opencapture.opencine.vocabulary.ConnectionPhase
 import com.opencapture.openpocketcine.diagnostics.AppDiagnostics
@@ -272,7 +274,7 @@ private fun LinkExperience(
     }
     if (showReportingPrivacy) {
         Dialog(onDismissRequest = { showReportingPrivacy = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-            LegalDocumentScreen(kind = LegalKind.PRIVACY, onClose = { showReportingPrivacy = false })
+            MonitorLegalDocumentScreen(PocketLegalDocuments, MonitorLegalPage.PRIVACY) { showReportingPrivacy = false }
         }
     }
 }
