@@ -112,16 +112,12 @@ import com.opencapture.opencine.appkit.LocalOperatorHaptics
 import com.opencapture.openpocketcine.MonitorGlass
 import com.opencapture.monitorui.MonitorIcon
 import com.opencapture.openpocketcine.OperatorPrefs
-import com.opencapture.openpocketcine.assists.AssistOptionsPopup
 import com.opencapture.opencine.cameracontrols.AudioAssist
 import com.opencapture.opencine.cameracontrols.AssistAudioOverlay
 import com.opencapture.monitorui.MonitorScopeRect
 import com.opencapture.opencine.appkit.MonitorAssistState
-import com.opencapture.openpocketcine.assists.LiveAssistLayer
 import com.opencapture.monitorui.MonitorAssistTool
 import com.opencapture.opencine.cameracontrols.MirrorAssist
-import com.opencapture.openpocketcine.assists.PlaybackAssistBar
-import com.opencapture.openpocketcine.assists.scopePanelChrome
 import com.opencapture.openpocketcine.feed.rememberLiveFeedEffectsPlan
 import com.opencapture.opencine.vocabulary.PlaybackLutColor
 import kotlinx.coroutines.Dispatchers
