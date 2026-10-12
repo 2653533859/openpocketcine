@@ -215,9 +215,6 @@ import OpenCineDJIApple
             default: break
             }
             model.isPairingNewCamera = screen == .pair
-            // Every review starts from the first-run display chrome, as it does from first-run assists.
-            model.dispLive = .liveDefaults
-            model.dispClean = .cleanDefaults
             guard let launch, launch.screen != .cameras, launch.screen != .pair else { return }
             #if DEBUG
                 if launch.commonControls, let body {
