@@ -26,7 +26,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Debug review only (MainActivity `opv_review_state`, debug builds): a scripted DJI pipeline and
+ * Debug review only ([ReviewActivity] `opv_review_state`): a scripted DJI pipeline and
  * the two saved cameras as the shipping app stored them, so the cameras and pair pages show each
  * connection state on an emulator. Never connects, never stores a credential. States: `empty`,
  * `saved-nearby`, `connecting`, `failure`, `add-setup`, `multiview`, `pair-choose`,

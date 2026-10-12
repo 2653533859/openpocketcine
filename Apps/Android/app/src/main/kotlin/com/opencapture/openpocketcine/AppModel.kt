@@ -82,27 +82,32 @@ import com.opencapture.opencine.appkit.MonitorDisplayMode
  * [borrowing] builds a Live View model over a Multiview tile's decoder (iOS
  * `CameraSession(borrowing:)`). [discovers]: the cameras and pair pages discover and connect
  * through this model (the activity's one root model; a Multiview tile's, a preview's or a test's
- * never does). [review]: a debug review state of those pages.
+ * never does). [connectPort] replaces the session's connect port (the debug review activity's scripted
+ * pipeline).
  */
 class AppModel(
     context: Context,
     borrowing: com.opencapture.opencine.decoder.HevcDecoder? = null,
     controlLease: com.opencapture.opencine.dji.MultiviewControlLease? = null,
     discovers: Boolean = false,
-    review: String? = null,
-) : GamepadHost, GimbalChromeHost, CaptureSheetHost, OperatorSetupModel {
+    connectPort: (DjiCameraSession) -> DjiConnectPort = { it },
+) : GamepadHost, GimbalChromeHost, CaptureSheetHost, OperatorSetupModel, AutoCloseable {
     private val appContext = context.applicationContext
     /** One actual cache root/lifetime shared by gallery IO and operator settings. */
     val mediaCacheRoot = com.opencapture.opencine.appkit.MonitorMediaCacheRoot(
         java.io.File(appContext.noBackupFilesDir, "OpenPocketCine/media"))
     val mediaCache = com.opencapture.openpocketcine.media.MediaCache(appContext.noBackupFilesDir,
         appContext.getSharedPreferences("openpocketcine.media", Context.MODE_PRIVATE), mediaCacheRoot)
-    private val _mediaCacheRevision = kotlinx.coroutines.flow.MutableStateFlow(0L)
-    val mediaCacheRevision: kotlinx.coroutines.flow.StateFlow<Long> = _mediaCacheRevision
-    /** Bounded cache IO used by the captured common settings action. */
-    suspend fun clearOperatorMediaCacheOwned() {
-        try { OperatorMediaCache.clearOwned(mediaCacheRoot) { OperatorMediaCache.clear(appContext) } }
-        finally { _mediaCacheRevision.value += 1 }
+    private var mediaOwner: com.opencapture.openpocketcine.media.MediaLibraryController? = null
+    /**
+     * The gallery's library owner for the current camera, created when first asked for. The gallery
+     * and Settings share it, so Settings counts and clears that camera's cache, as Insta and iOS do.
+     */
+    fun mediaController(): com.opencapture.openpocketcine.media.MediaLibraryController {
+        val camera = com.opencapture.openpocketcine.media.MediaLibraryController.cameraKey(session, mediaCache)
+        mediaOwner?.let { if (it.cameraId == camera) return it; it.release() }
+        return com.opencapture.openpocketcine.media.MediaLibraryController(appContext, session, cacheOwner = mediaCache)
+            .also { mediaOwner = it }
     }
 
     init {
@@ -121,7 +126,7 @@ class AppModel(
      * the session, with its Wi-Fi passwords in the Multiview store; forget drops the camera's saved
      * Wi-Fi (D1). Nearby cards read in this app's words; Add setup is the station wizard.
      */
-    private val port: DjiConnectPort = review?.let { ReviewCameras.port(it, session) } ?: session
+    private val port: DjiConnectPort = connectPort(session)
     val integration = DjiIntegration(
         port,
         loadNetwork = networkStore::load,
@@ -144,8 +149,7 @@ class AppModel(
         },
         camerasStore(
             appContext.getSharedPreferences(CAMERAS, Context.MODE_PRIVATE).stored("document"),
-            appContext.getSharedPreferences(LEGACY_CAMERAS, Context.MODE_PRIVATE).also { ReviewCameras.seed(review, it) }
-                .stored("records-json"),
+            appContext.getSharedPreferences(LEGACY_CAMERAS, Context.MODE_PRIVATE).stored("records-json"),
         ),
         scope,
     ).also { model ->
@@ -181,7 +185,6 @@ class AppModel(
     var pairing: Boolean
         get() = shellState.pairing
         set(value) { if (value) shell.beginPairing() else shell.endPairing() }
-    var showsLaunchSplash by mutableStateOf(true)
     /** Long-press on the tap-focus box locks it: feed taps no longer move focus. */
     var focusBoxLocked by mutableStateOf(false)
     var coreVersion by mutableStateOf<String?>(null)
@@ -199,8 +202,14 @@ class AppModel(
                 else -> legalPanel = value
             }
         }
+    /**
+     * The open Multiview stage. Owned here, not by its screen, so whatever the root composes (a late
+     * connect going live, a recreated activity) its tiles live until [closeMultiview].
+     */
+    var multiview by mutableStateOf<com.opencapture.openpocketcine.multiview.MultiviewSession?>(null)
+        private set
     /** The Multiview stage covers the camera home until it closes. */
-    var showsMultiview by mutableStateOf(false)
+    val showsMultiview: Boolean get() = multiview != null
     internal val operatorSession = MonitorOperatorSessionModel(shell, assist, OperatorPrefs.displayPreferences(appContext), scope)
     override var operatorSettingsTab: MonitorSettingsTab
         get() = operatorSession.settingsTab
@@ -627,11 +636,12 @@ class AppModel(
         if (session.phaseFlow.value.isBusy() || session.isReconnecting.value) return
         disconnect()
         session.ble.stopScan()
-        showsMultiview = true
+        if (multiview == null) multiview = com.opencapture.openpocketcine.multiview.MultiviewSession(appContext).also { it.start() }
     }
 
     fun closeMultiview() {
-        showsMultiview = false
+        multiview?.dispose()
+        multiview = null
         session.startScan()
     }
 
@@ -645,7 +655,10 @@ class AppModel(
             advertisedName = camera.name, model = camera.model.name), session.control), release)
     }
 
-    fun close() {
+    override fun close() {
+        multiview?.dispose()
+        multiview = null
+        mediaOwner?.release()
         gimbalGamepad.stopListening()
         control.unbind()
         val monitor = shell.state.value.monitor

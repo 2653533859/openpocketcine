@@ -35,6 +35,7 @@ includeBuild("../../../OpenCine/Android") {
         substitute(module("com.opencapture.opencine:monitor-ui")).using(project(":monitor-ui"))
         substitute(module("com.opencapture.opencine:appkit")).using(project(":appkit"))
         substitute(module("com.opencapture.opencine:appkit-sentry")).using(project(":appkit-sentry"))
+        substitute(module("com.opencapture.opencine:media3")).using(project(":media3"))
         substitute(module("com.opencapture.opencine:camera-controls")).using(project(":camera-controls"))
     }
 }

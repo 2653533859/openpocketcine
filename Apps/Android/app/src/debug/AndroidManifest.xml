@@ -3,6 +3,10 @@
         <activity android:name=".MonitorPreviewActivity" android:exported="true" android:screenOrientation="user"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:theme="@style/Theme.OpenPocketCine" />
+        <!-- Debug only, SIMULATED: the real root over the scripted review pipeline (ReviewCameras). -->
+        <activity android:name=".ReviewActivity" android:exported="true" android:launchMode="singleTop"
+            android:theme="@style/Theme.OpenPocketCine.Starting"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density|fontScale" />
         <activity android:name=".BackdropRenderActivity" android:exported="true" android:theme="@style/Theme.OpenPocketCine" />
     </application>
 </manifest>
