@@ -26,11 +26,6 @@ fun AppPanelHost(model: AppModel) {
     }
 }
 
-@Composable
-fun MediaLibraryHost(model: AppModel) {
-    MediaLibraryScreen(model) { model.homePanel = null }
-}
-
 /** Native page content over navigation and monitor ownership supplied by the shared shell. */
 @Composable
 internal fun ShellCoverPage(model: AppModel, cover: ShellModel.Cover) {

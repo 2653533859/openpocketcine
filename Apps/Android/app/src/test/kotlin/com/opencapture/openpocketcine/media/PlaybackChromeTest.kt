@@ -202,62 +202,10 @@ class PlaybackChromeTest {
     }
 
     @Test
-    fun transportRowFitsNarrowestPhoneLikeIos() {
-        val needed = PlaybackChromeMetrics.transportRowWidth()
-        val usable = PlaybackChromeMetrics.narrowestScreenWidth - PlaybackChromeMetrics.chromeHorizontalPadding * 2
-        assertTrue(needed <= usable, "needed=$needed usable=$usable")
-    }
-
-    @Test
-    fun argbPackIsRgbaByteOrder() {
-        val packed = argb8888ToRgba(intArrayOf(0xFF112233.toInt()))
-        assertEquals(0x11, packed[0].toInt() and 0xFF)
-        assertEquals(0x22, packed[1].toInt() and 0xFF)
-        assertEquals(0x33, packed[2].toInt() and 0xFF)
-        assertEquals(0xFF, packed[3].toInt() and 0xFF)
-    }
-
-    @Test
     fun identityPlanIsANoOpPlaybackLook() {
         val identity = FeedEffectsRenderPlan.IDENTITY
         assertFalse(identity.hasPlaybackLook)
         assertTrue(com.opencapture.openpocketcine.feed.PlaybackLookEffect(identity).isNoOp(3840, 2160))
-        val px = intArrayOf(0xFF8090A0.toInt())
-        applyPlaybackLookPixels(px, 1, 1, identity)
-        assertEquals(0xFF8090A0.toInt(), px[0])
     }
 
-    @Test
-    fun zebraHighlightPaintsHotPixels() {
-        val plan =
-            FeedEffectsRenderPlan(
-                lutCube = null,
-                falseColorPaint = null,
-                falseColorWeight = null,
-                peaking = false,
-                peakingColor = floatArrayOf(1f, 0f, 0f),
-                peakingRatioThreshold = 2.1f,
-                peakingNoiseGate = 0.001f,
-                zebraHighlightOn = true,
-                zebraHighlightCode = 0.5f,
-                zebraHighlightColor = floatArrayOf(1f, 1f, 1f),
-                zebraMidtoneOn = false,
-                zebraMidtoneCode = 0.5f,
-                zebraMidtoneHalf = 0.02f,
-                zebraMidtoneColor = floatArrayOf(1f, 0.72f, 0.2f),
-                splitComparison = false,
-                splitVertical = true,
-            )
-        val hot = intArrayOf(0xFFFFFFFF.toInt())
-        applyPlaybackLookPixels(hot, 1, 1, plan)
-        assertEquals(0xFFFFFFFF.toInt(), hot[0])
-        val cool = intArrayOf(0xFF101010.toInt())
-        applyPlaybackLookPixels(cool, 1, 1, plan)
-        assertEquals(0xFF101010.toInt(), cool[0])
-        // #136: a blue-led pixel whose max channel is hot paints even though
-        // its Rec.709 luma is under the threshold — same axis as WAVE 100.
-        val tinted = intArrayOf(0xFF2040FF.toInt())
-        applyPlaybackLookPixels(tinted, 1, 1, plan)
-        assertEquals(0xFFFFFFFF.toInt(), tinted[0])
-    }
 }

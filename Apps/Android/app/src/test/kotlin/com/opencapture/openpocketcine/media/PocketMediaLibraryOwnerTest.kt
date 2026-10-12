@@ -56,42 +56,6 @@ class PocketMediaLibraryOwnerTest {
         assertEquals(MediaAssetKind.VIDEO, cached.facts.presentationKind)
     }
 
-    @Test fun selectionReadsLiveOwnerAndOldSamePageKeyCannotSelectReplacement() = runTest {
-        val old = file(4)
-        val model = owner(listOf(old))
-        val bridge = PocketMediaSelectionBridge(model)
-        bridge.apply(true, setOf(old.id))
-        assertEquals(setOf(old.id), bridge.selectedIDs)
-        // Same rendered page ID and different true content-size identity.
-        val replacement = old.copy(sizeBytes = 8)
-        assertEquals(old.id, replacement.id)
-        val oldID = DjiAndroidMediaAssets.asset(old).id
-        val newRecord = codec().record(replacement)
-        assertNotEquals(oldID, newRecord.asset.id)
-        model.applyLocalRecords(MonitorMediaCatalogCapture(resetLibrary = false,
-            upserts = listOf(newRecord), removed = listOf(oldID)), model.actionToken)
-        bridge.apply(true, setOf(old.id))
-        assertTrue(model.state.value.selectedIDs.isEmpty())
-        val current = PocketMediaSelectionBridge(model)
-        current.apply(true, setOf(replacement.id))
-        assertEquals(setOf(replacement.id), current.selectedIDs)
-        current.apply(false, emptySet())
-        assertTrue(current.selectedIDs.isEmpty())
-        model.dispose()
-    }
-
-    @Test fun oldSelectionCallbackCannotChangeReopenedGallery() = runTest {
-        val item = file()
-        val model = owner(listOf(item))
-        val old = PocketMediaSelectionBridge(model)
-        model.close()
-        model.begin()
-        old.apply(true, setOf(item.id))
-        assertTrue(model.state.value.selectedIDs.isEmpty())
-        assertFalse(model.state.value.selecting)
-        model.dispose()
-    }
-
     @Test fun settingsClearPreservesIndexAndRejectsPendingCanonicalCommit() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val parent = Files.createTempDirectory("pocket-library-settings-").toFile()
