@@ -148,7 +148,8 @@ upload is enabled.
 Set `SENTRY_DSN_ANDROID` in the build environment, or put the same key in
 `.local/reliability.properties` at the repository root. The non-empty environment
 value takes precedence. The local file is ignored by Git and is read by both
-Android Studio and the `just android-build` / `just android-install` recipes.
+Android Studio and the `just android-build` / `just android-install` recipes
+(through OpenCine's `com.opencapture.opencine.reporting` Gradle plugin).
 Use the Android project's public HTTPS DSN, never an upload token.
 
 A build without a valid destination cannot offer automatic reporting. It leaves
