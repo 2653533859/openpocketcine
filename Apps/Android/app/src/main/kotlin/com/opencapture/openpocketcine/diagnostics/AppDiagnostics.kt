@@ -9,7 +9,9 @@ import com.opencapture.opencine.appkit.diagnostics.ReliabilityReportingConsent
 import com.opencapture.opencine.appkit.diagnostics.ReliabilityReportingDSN
 import com.opencapture.opencine.appkit.diagnostics.ReliabilityReportingGate
 import com.opencapture.opencine.appkit.diagnostics.ReliabilityReportingHostPolicy
-import com.opencapture.opencine.vocabulary.PrivacyRedactor
+import com.opencapture.opencine.appkit.sentry.OkHttpManualReportUpload
+import com.opencapture.opencine.appkit.sentry.SentryReliabilitySink
+import com.opencapture.opencine.dji.DjiCameraNetwork
 import com.opencapture.openpocketcine.BuildConfig
 
 /** The app's diagnostics: OpenCine's runtime with this app's names, destination, Sentry and OkHttp. */
@@ -26,7 +28,7 @@ internal object AppDiagnostics {
             reportingClient = "openpocketcine-android",
             supportEmail = "support@openpocketcine.app",
             preferencesName = "openpocketcine.operator",
-            redact = PrivacyRedactor::redact,
+            redact = DjiCameraNetwork::redact,
         )
     val dsn = ReliabilityReportingDSN()
     val consent = ReliabilityReportingConsent(dsn)
