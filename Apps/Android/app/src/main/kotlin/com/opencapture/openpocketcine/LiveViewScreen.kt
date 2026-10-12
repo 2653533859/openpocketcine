@@ -152,9 +152,6 @@ import kotlinx.coroutines.delay
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.graphics.createBitmap
-import com.opencapture.openpocketcine.assists.AssistOptionsPopup
-import com.opencapture.openpocketcine.assists.LiveAssistBar
-import com.opencapture.openpocketcine.assists.LiveAssistLayer
 import com.opencapture.opencine.appkit.MonitorAssistState
 import com.opencapture.monitorui.MonitorAssistTool
 import com.opencapture.opencine.media.FeedEffectsRenderPlan
