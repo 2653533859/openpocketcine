@@ -25,7 +25,9 @@ ios-privacy-test:
 
 # Verify release reporting configuration without network or real credentials.
 sentry-test:
-    bash tools/sentry-test.sh
+    OPC_APP_ROOT=. OPC_APP_NAME=OpenPocketCine bash ../OpenCine/scripts/sentry/sentry-test.sh
+    python3 tools/ios-package-resolved-check.py
+    bash scripts/ios-package-resolved-test.sh
 
 # Reject tracked proprietary, secret-bearing, generated, or machine-specific files.
 hygiene:

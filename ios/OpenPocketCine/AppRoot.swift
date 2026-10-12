@@ -822,10 +822,9 @@ final class AppModel {
         disconnect()
     }
 
-    /// OpenZCine `NativeAppModel.setDisplayMode` — feed swipe jumps, it does not cycle.
+    /// A feed swipe jumps to a mode through the display owner (refused while locked); it does not cycle.
     func setDisplayMode(clean: Bool) {
-        guard assist.clean != clean else { return }
-        assist.clean = clean
+        operatorSession.select(clean ? .clean : .live)
     }
 
     func activateWatchRelay() {
@@ -1202,6 +1201,7 @@ struct LinkExperience: View {
             if old == .media, next != .media { model.session.endMediaBrowse() }
         }
         .ignoresSafeArea()
+        .overlay { MonitorOperatorDeliveryChrome(model: model.delivery.lifetime, scope: .root, remoteDisplayName: "Frame.io") }
         .background(StartupColors.background.ignoresSafeArea())
         .foregroundStyle(StartupColors.ink)
         .onAppear {

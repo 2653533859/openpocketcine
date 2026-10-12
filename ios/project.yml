@@ -10,9 +10,6 @@ options:
   postGenCommand: sh sync-package-resolved.sh
 
 packages:
-  Sentry:
-    url: https://github.com/getsentry/sentry-cocoa
-    exactVersion: 9.24.0
   OpenPocketViewCore:
     path: ..
   # The OpenCine platform package (shared UI MonitorUI/MonitorPresentation, OpenCineCore and its
@@ -22,6 +19,9 @@ packages:
   # targets that name it. Swap to the published URL + exact version when it has a remote.
   OpenCine:
     path: ../../OpenCine
+  # OpenCine's optional reporting adapter (sentry-cocoa), its own package in the same checkout.
+  OpenCineSentryApple:
+    path: ../../OpenCine/Packages/OpenCineSentryApple
 
 targets:
   OpenPocketCine:
@@ -31,11 +31,12 @@ targets:
       - OpenPocketCine
     postBuildScripts:
       - name: Stamp source revision
-        script: bash "${SRCROOT}/../tools/stamp-source-revision.sh"
+        script: bash "${SRCROOT}/../../OpenCine/scripts/sentry/stamp-source-revision.sh"
+        # Ordered after Info.plist processing, which otherwise may rerun after it and drop the stamp.
+        inputFiles:
+          - $(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)
         basedOnDependencyAnalysis: false
     dependencies:
-      - package: Sentry
-        product: Sentry
       - package: OpenPocketViewCore
         product: OpenPocketViewCore
       - package: OpenCine
@@ -78,6 +79,10 @@ targets:
       # pair screens over the DJI integration.
       - package: OpenCine
         product: OpenCineAppKit
+      # The shared reporting adapter: the app shell's reporting sink on the Sentry SDK
+      # (sentry-cocoa comes with it, at the version OpenCine pins).
+      - package: OpenCineSentryApple
+        product: OpenCineSentryApple
       - target: OpenPocketCineWatch
         embed: true
         codeSign: true
