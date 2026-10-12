@@ -25,7 +25,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.opencapture.monitorui.MonitorTimecodeFormat
 import com.opencapture.monitorui.MultiviewArrangement
+import com.opencapture.opencine.appkit.label
 import com.opencapture.opencine.core.MonitorEntryID
 import com.opencapture.opencine.core.PictureHealth
 import com.opencapture.opencine.core.StreamID
@@ -251,10 +253,11 @@ class MultiviewSession(
         var surfaceMounted = false
         private var inputOwner = 0L
 
+        /** The body's clock at its declared precision, only where it declares one (Nano has none). */
         val timecodeReadout: String?
             get() {
                 if (camera == null || !control.layout().timecode) return null
-                return settings.timecodeClock
+                return MonitorTimecodeFormat.label(control.current)
             }
 
         fun updateSettings(frame: DumlFrame) {

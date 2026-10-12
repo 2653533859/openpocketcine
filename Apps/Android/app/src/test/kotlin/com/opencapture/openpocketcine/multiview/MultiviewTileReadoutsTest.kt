@@ -25,22 +25,14 @@ class MultiviewTileReadoutsTest {
     }
 
     @Test fun eachCameraKeepsItsOwnTimecodeAndRecordingConfirmation() {
-        val one = readouts(CameraStatus(timecode = "01:02:03:04", recordElapsedSec = 84), true, true)
-        val two = readouts(CameraStatus(timecode = "10:20:30:12"), false, true)
+        val one = readouts(CameraStatus(recordElapsedSec = 84), true, true, timecode = "01:02:03")
+        val two = readouts(CameraStatus(), false, true, timecode = "10:20:30")
         assertEquals("01:02:03", one.timecode)
         assertEquals("REC 1:24", one.recording)
         assertEquals("10:20:30", two.timecode)
         assertEquals("STBY", two.recording)
         val stale = readouts(CameraStatus(recordElapsedSec = 84), true, false)
         assertEquals("REC —", stale.recording)
-    }
-
-    @Test fun displayClockDoesNotChangeProtocolTimecode() {
-        val status = CameraStatus(timecode = "01:02:03:24")
-        assertEquals("01:02:03", status.timecodeClock)
-        assertEquals("01:02:03:24", status.timecode)
-        assertEquals("01:02:03", CameraStatus(timecode = "01:02:03").timecodeClock)
-        assertEquals(null, CameraStatus(timecode = "").timecodeClock)
     }
 
     @Test fun compactReadoutsRetainIdentityAndUnknownFields() {
@@ -52,8 +44,9 @@ class MultiviewTileReadoutsTest {
         assertEquals("8 GB", readouts.storage)
     }
 
-    private fun readouts(settings: CameraStatus, observed: Boolean?, available: Boolean) = multiviewTileReadouts(
-        1, "Side angle", "Osmo Pocket 4", settings, settings.timecode, observed, available,
+    /** [timecode] is the tile's clock as the shared status formats it (`MultiviewSession.Tile.timecodeReadout`). */
+    private fun readouts(settings: CameraStatus, observed: Boolean?, available: Boolean, timecode: String? = null) = multiviewTileReadouts(
+        1, "Side angle", "Osmo Pocket 4", settings, timecode, observed, available,
         recordingBusy = false, recovering = false, hasPicture = true, failure = null,
     )
 }

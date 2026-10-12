@@ -18,16 +18,15 @@ class PocketMonitorCapabilitiesTest {
         appLayoutBase,
     )
 
-    @Test fun singleViewShowsTheTimecodeOnANano() {
+    @Test fun theLayoutIsTheDeclarationWithNoAppTimecodeOverride() {
         val nano = declared(CameraModel(name = "Osmo Nano", family = "nano", verified = true))
-        // Multi View reads the declaration and hides the Nano clock, as main did.
+        // Multi View reads the declaration and hides the Nano clock, as main did. The single-view
+        // clock slot is the shared DISP rule (MonitorOperatorVocabularySurface), not an app flag.
         assertFalse(nano.timecode)
-        assertTrue(singleViewLayout(nano).timecode)
-        assertTrue(singleViewLayout(declared(CameraModel(name = "Osmo Pocket 3", verified = true))).timecode)
+        assertTrue(declared(CameraModel(name = "Osmo Pocket 3", verified = true)).timecode)
     }
 
     @Test fun audioPinAndTileStayOfferedBeforeTheBodyIsKnown() {
-        assertTrue(singleViewLayout(declared(null)).audio)
-        assertTrue(singleViewLayout(declared(null)).timecode)
+        assertTrue(declared(null).audio)
     }
 }

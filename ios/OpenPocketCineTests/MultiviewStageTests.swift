@@ -1,3 +1,4 @@
+import OpenCineCore
 import OpenPocketViewCore
 import XCTest
 import OpenCineDJIApple
@@ -35,7 +36,7 @@ import OpenCineDJIApple
                 model: .resolve(modelId: nil, name: name), modelId: nil)
             tile.settings.timecode = nil
             XCTAssertNil(tile.timecodeReadout)
-            tile.settings.timecode = "01:02:03:04"
+            tile.settings.timecode = CameraTimecode(hours: 1, minutes: 2, seconds: 3, frames: 4)
             XCTAssertEqual(tile.timecodeReadout, name.contains("Nano") ? nil : "01:02:03")
         }
     }

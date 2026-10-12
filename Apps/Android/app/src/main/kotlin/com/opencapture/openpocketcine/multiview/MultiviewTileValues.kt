@@ -9,7 +9,6 @@ import com.opencapture.opencine.dji.hasMultiviewPreview
 import com.opencapture.opencine.vocabulary.CameraCommands
 import com.opencapture.opencine.vocabulary.CameraStatus
 import com.opencapture.opencine.vocabulary.VideoResolution
-import com.opencapture.opencine.vocabulary.timecodeClock
 
 /** Display values come from the existing throttled tile status; no telemetry polling. */
 internal data class MultiviewTileReadouts(
@@ -49,7 +48,7 @@ internal fun multiviewTileReadouts(
     val color = if (settings.colorMode < 0) "—" else CameraCommands.colorLabel(settings.colorMode, colorFamily)
     return MultiviewTileReadouts(
         letter = ('A' + index.coerceIn(0, 3)).toString(), name = name, model = model,
-        timecode = timecodeClock(timecode) ?: "—",
+        timecode = timecode ?: "\u2014",
         battery = if (settings.batteryPercent in 0..100) "${settings.batteryPercent}%" else "—",
         batteryPercent = settings.batteryPercent,
         charging = settings.charging,
@@ -106,7 +105,7 @@ internal fun MultiviewSession.stageTile(index: Int): MultiviewTile? {
     return MultiviewTile(
         name = camera.name, model = camera.model.name, format = readouts.format,
         battery = tile.settings.batteryPercent.takeIf { it in 0..100 }, charging = readouts.charging,
-        storage = readouts.storage, timecode = timecodeClock(tile.timecodeReadout),
+        storage = readouts.storage, timecode = tile.timecodeReadout,
         tally = readouts.recording, recording = readouts.isRecording, lut = tile.lutEnabled,
         readouts = multiviewStageReadouts(tile.settings),
         status = readouts.recovery?.let { text ->
