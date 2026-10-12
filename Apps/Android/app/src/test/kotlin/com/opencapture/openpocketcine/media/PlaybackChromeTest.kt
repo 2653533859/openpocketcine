@@ -3,8 +3,6 @@ package com.opencapture.openpocketcine.media
 import com.opencapture.monitorui.MonitorPlaybackChromeSwipe
 import com.opencapture.monitorui.MonitorPlaybackFrameScrub
 import com.opencapture.opencine.media.MonitorAudioMeterBallistics
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -14,8 +12,6 @@ import com.opencapture.opencine.media.FeedEffectsRenderPlan
 import com.opencapture.opencine.media.MonitorAudioMeterChannel
 import com.opencapture.monitorui.MonitorPlaybackZoom
 
-private const val ENCODING_PCM_16BIT = 2
-private const val ENCODING_PCM_FLOAT = 4
 
 class PlaybackChromeTest {
     @Test
@@ -161,51 +157,9 @@ class PlaybackChromeTest {
     }
 
     @Test
-    fun pcmFloatAndInt16PeaksMatchIosMaxMagnitude() {
-        val floatBuf =
-            ByteBuffer.allocate(4 * 4).order(ByteOrder.LITTLE_ENDIAN).apply {
-                asFloatBuffer().put(floatArrayOf(0.25f, -0.5f, 1f, 0.1f))
-                rewind()
-            }
-        val floatPeaks = PlaybackPcmPeaks.ingest(floatBuf, ENCODING_PCM_FLOAT, 2)
-        assertEquals(1f, floatPeaks.first, 0.001f)
-        assertEquals(0.5f, floatPeaks.second, 0.001f)
-
-        val pcm16 =
-            ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN).apply {
-                asShortBuffer().put(shortArrayOf(32767, 16384, 0, -8192))
-                rewind()
-            }
-        val intPeaks = PlaybackPcmPeaks.ingest(pcm16, ENCODING_PCM_16BIT, 2)
-        assertEquals(1f, intPeaks.first, 0.02f)
-        assertEquals(0.5f, intPeaks.second, 0.02f)
-
-        val mono =
-            ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN).apply {
-                asFloatBuffer().put(floatArrayOf(0.4f, -0.8f))
-                rewind()
-            }
-        val monoPeaks = PlaybackPcmPeaks.ingest(mono, ENCODING_PCM_FLOAT, 1)
-        assertEquals(0.8f, monoPeaks.first, 0.001f)
-        assertEquals(0.8f, monoPeaks.second, 0.001f)
-    }
-
-    @Test
-    fun metersMuteWhileConformingAndKeepPeaksOtherwise() {
-        val box = AudioLevelTapBox()
-        box.ingest(0.9f, 0.4f)
-        assertEquals(0f to 0f, box.peaksForMeters(conforming = true))
-        box.ingest(0.7f, 0.2f)
-        val live = box.peaksForMeters(conforming = false)
-        assertEquals(0.7f, live.first, 0.001f)
-        assertEquals(0.2f, live.second, 0.001f)
-    }
-
-    @Test
     fun identityPlanIsANoOpPlaybackLook() {
         val identity = FeedEffectsRenderPlan.IDENTITY
         assertFalse(identity.hasPlaybackLook)
         assertTrue(com.opencapture.openpocketcine.feed.PlaybackLookEffect(identity).isNoOp(3840, 2160))
     }
-
 }

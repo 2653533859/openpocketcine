@@ -3,6 +3,7 @@
 package com.opencapture.openpocketcine.media
 
 import com.opencapture.monitorui.MonitorConfirmPopup
+import com.opencapture.opencine.media3.Media3PlaybackOwner
 import com.opencapture.opencine.cameracontrols.chromeClickable
 import com.opencapture.opencine.vocabulary.CameraStatus
 import com.opencapture.opencine.vocabulary.colorMode
@@ -185,13 +186,14 @@ fun MediaPlayerScreen(files: List<MediaFile>, startingAt: MediaFile, controller:
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var composition by remember(controller) { mutableStateOf<PocketAndroidPlaybackOwner?>(null) }
+    var composition by remember(controller) { mutableStateOf<Media3PlaybackOwner<MediaFile, PocketPlaybackLook>?>(null) }
     val owner = remember(controller) {
         com.opencapture.opencine.appkit.MonitorOperatorMediaModel<MediaFile, PocketPlaybackLook>(controller.library,
             scope = scope, makeAdmittedPlayback = { _, admission ->
                 composition?.close()
                 if (!admission.isCurrent()) null else {
-                    val next = PocketAndroidPlaybackOwner(context, controller)
+                    val next = Media3PlaybackOwner(context, controller.library, controller::playbackCandidates,
+                        controller::resolvePlaybackLook, controller::playbackAdmission) { it.fps?.toDouble() }
                     if (!admission.isCurrent()) { next.close(); null } else {
                         composition = next
                         if (!admission.isCurrent()) { next.close(); null } else next.playback
