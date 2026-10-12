@@ -54,10 +54,13 @@ targets:
         product: MonitorPresentation
       - package: OpenCine
         product: OpenCineCore
-      # Optional Frame.io delivery (OpenCine plan OPTIONAL-01). Pocket keeps OAuth UI, the
-      # callback scheme, client ID and its keychain namespace (Frameio/FrameioCredentials.swift).
+      # Optional Frame.io delivery (OpenCine plan OPTIONAL-01). Pocket keeps the callback
+      # scheme, client ID and its keychain, destination and history namespaces (MediaDelivery.swift);
+      # the account, sign-in and uploads are OpenCineFrameIOApple's.
       - package: OpenCine
         product: OpenCineFrameIO
+      - package: OpenCine
+        product: OpenCineFrameIOApple
       # Apple media runtime (OpenCine plan MEDIA-02): the VideoToolbox decoder runtime under
       # HevcDecoder and decoded-frame leases. iOS app only; the watch never decodes live video.
       - package: OpenCine

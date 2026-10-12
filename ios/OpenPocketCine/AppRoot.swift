@@ -7,6 +7,7 @@ import OpenCineAppKitApple
 import OpenCineCameraControls
 import OpenCineCore
 import OpenCineFrameIO
+import OpenCineFrameIOApple
 import OpenCineRelay
 import OpenCineRelayApple
 import OpenCineWatch
@@ -390,9 +391,9 @@ final class AppModel {
         }
     }
     var portraitRailExpanded = false
-    var frameioConnecting = false
-    var frameioUser: FrameioUser?
-    var delivery = MediaDeliveryCoordinator()
+    /// The app-scoped delivery owner: runs survive leaving the gallery or the player.
+    let delivery = MonitorDeliveryCoordinator()
+    let frameio = FrameioAccountModel(namespace: .openPocketCine)
     var relayHost = WatcherRelayHost(
         versionMismatchReason: WatcherRelayJoin.versionMismatchReason,
         logSubsystem: "com.opencapture.openpocketcine", journal: { ControlLiveLog.line($0) })
@@ -450,99 +451,28 @@ final class AppModel {
             locked: session.isLocked, busy: session.controlBusy, phase: session.phase,
             target: session.control.target)
     }
-    @ObservationIgnored private var internetHopState = FrameioInternetHop()
-    @ObservationIgnored private var internetHopRevision: UInt64 = 0
-    @ObservationIgnored private var internetHopNotifying = false
-    var internetHop: FrameioInternetHop {
-        get { access(keyPath: \.internetHop); return internetHopState }
-        set {
-            internetHopState = newValue
-            internetHopRevision &+= 1
-            guard !internetHopNotifying else { return }
-            internetHopNotifying = true
-            defer { internetHopNotifying = false }
-            var delivered: UInt64
-            repeat {
-                delivered = internetHopRevision
-                withMutation(keyPath: \.internetHop) {}
-            } while delivered != internetHopRevision
-        }
-    }
-    var internetHopActive: Bool { internetHop.token != nil }
-    @ObservationIgnored private var internetHopSSID: String?
-    @ObservationIgnored private var internetHopSession: CameraSession?
-    @ObservationIgnored private var internetHopSessionID: CameraSessionID?
-    @ObservationIgnored private var internetHopReturnToken: FrameioInternetHop.Token?
-    @ObservationIgnored private var internetHopReturnSessionID: CameraSessionID?
+    /// The one internet hop off the camera's Wi-Fi (A2-16): the DJI joiner leaves and rejoins,
+    /// and only the session that left is ever rejoined.
+    @ObservationIgnored lazy var internetHop = MonitorInternetHop<PocketHopRoute>(
+        port: .init(
+            onCameraNetwork: { DjiAppleWiFiJoiner.isCameraPathReady() },
+            leave: { route, _ in
+                if let ssid = route.ssid { DjiAppleWiFiJoiner.leave(ssid: ssid) }
+                return route
+            },
+            admitsReturn: { [weak self] route in
+                guard let self else { return false }
+                return self.session === route.session && route.session.control.id == route.sessionID
+            },
+            rejoin: { route, _ in await route.session.rejoinSoftAPAfterInternetHop() }))
 
-    var isOnCameraAccessPoint: Bool { DjiAppleWiFiJoiner.isCameraPathReady() }
+    var isOnCameraAccessPoint: Bool { internetHop.onCameraNetwork }
 
-    @discardableResult func beginInternetHop() -> FrameioInternetHop.Token {
-        internetHopReturnToken = nil
-        internetHopReturnSessionID = nil
-        let capturedSession = session
-        let capturedID = capturedSession.control.id
-        let token = internetHop.begin()
-        guard internetHop.owns(token), session === capturedSession,
-            capturedSession.control.id == capturedID, internetHop.owns(token),
-            session === capturedSession else { return token }
-        internetHopSession = capturedSession
-        internetHopSessionID = capturedID
-        internetHopSSID = capturedSession.joinedSSID ?? capturedSession.cachedSSID
-        if let ssid = internetHopSSID { DjiAppleWiFiJoiner.leave(ssid: ssid) }
-        return token
-    }
-
-    func transferInternetHop(_ token: FrameioInternetHop.Token) -> FrameioInternetHop.Token? {
-        internetHop.transfer(token)
-    }
-
-    func endInternetHop(_ token: FrameioInternetHop.Token) {
-        guard internetHop.owns(token) else { return }
-        let returningSession = internetHopSession
-        let returningSessionID = internetHopSessionID
-        internetHopSession = nil
-        internetHopSessionID = nil
-        internetHopSSID = nil
-        internetHopReturnToken = token
-        internetHopReturnSessionID = returningSessionID
-        guard internetHop.end(token), internetHopReturnToken == token, internetHop.token == nil else { return }
-        Task { [weak self, weak returningSession] in
-            guard let self, let returningSession,
-                self.consumeInternetHopReturn(token, session: returningSession) else { return }
-            await returningSession.rejoinSoftAPAfterInternetHop()
-        }
-    }
-
-    /// The queued native return consumes exactly one captured route/source admission.
-    @discardableResult func consumeInternetHopReturn(_ token: FrameioInternetHop.Token, session returningSession: CameraSession) -> Bool {
-        guard internetHop.token == nil, internetHopReturnToken == token,
-            session === returningSession, let expected = internetHopReturnSessionID,
-            returningSession.control.id == expected, internetHopReturnToken == token,
-            internetHop.token == nil, session === returningSession else { return false }
-        internetHopReturnToken = nil
-        internetHopReturnSessionID = nil
-        return true
-    }
-
-    func waitForInternetPath(timeoutSeconds: Double, token: FrameioInternetHop.Token) async -> Bool {
-        let deadline = Date().addingTimeInterval(timeoutSeconds)
-        while Date() < deadline {
-            if Task.isCancelled || !internetHop.owns(token) { return false }
-            if !isOnCameraAccessPoint, await Self.canReachInternet() {
-                return !Task.isCancelled && internetHop.owns(token)
-            }
-            try? await Task.sleep(for: .milliseconds(400))
-        }
-        return false
-    }
-
-    private static func canReachInternet() async -> Bool {
-        guard let url = URL(string: "https://ims-na1.adobelogin.com") else { return false }
-        var request = URLRequest(url: url)
-        request.httpMethod = "HEAD"
-        request.timeoutInterval = 3
-        return (try? await URLSession.shared.data(for: request)) != nil
+    /// Where a hop leaves from: the current session and the camera network it joined.
+    var hopRoute: PocketHopRoute {
+        PocketHopRoute(
+            session: session, sessionID: session.control.id,
+            ssid: session.joinedSSID ?? session.cachedSSID)
     }
 
     var currentDispMode: MonitorDisplayMode { operatorSession.mode }
@@ -1211,6 +1141,8 @@ struct LinkExperience: View {
         }
         .ignoresSafeArea()
         .overlay { MonitorOperatorDeliveryChrome(model: model.delivery.lifetime, scope: .root, remoteDisplayName: "Frame.io") }
+        // The app's one share sheet, above any gallery, player or photo cover (A2-52).
+        .monitorDeliverySharePresenter(model.delivery.lifetime)
         .background(StartupColors.background.ignoresSafeArea())
         .foregroundStyle(StartupColors.ink)
         .onAppear {
