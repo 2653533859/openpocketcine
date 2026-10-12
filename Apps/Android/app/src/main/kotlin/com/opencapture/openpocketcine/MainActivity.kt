@@ -28,12 +28,7 @@ import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -42,17 +37,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.opencapture.openpocketcine.diagnostics.DiagnosticCenter
 import com.opencapture.openpocketcine.multiview.MultiviewQualificationPolicy
-import androidx.activity.compose.BackHandler
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.opencapture.opencine.appkit.AppShell
 import com.opencapture.opencine.appkit.ShellBrand
 import com.opencapture.opencine.appkit.ShellActions
-import com.opencapture.opencine.appkit.ShellModel
 import com.opencapture.opencine.appkit.PairingWizard
 import com.opencapture.opencine.platform.LocalVPNProbe
 import com.opencapture.openpocketcine.diagnostics.ManualProblemReportDialog
@@ -250,35 +242,16 @@ private fun LinkExperience(
     var showReportingPrivacy by remember { mutableStateOf(false) }
     val phase by model.session.phaseFlow.collectAsState()
     val radioOn by model.session.radioOn.collectAsState()
-    // Main's setup chip menu: Forget only, no Rename setup.
-    AppShell(model.shell, ShellBrand("OpenPocketCine", renamesSetups = false),
+    // The DJI integration declares its nearby tap (pair at once) and setup naming (none).
+    AppShell(model.shell, ShellBrand("OpenPocketCine"),
         ShellActions(
             diagnostics = { DiagnosticCenter.shareReport(context, model.session) },
             reportProblem = { showProblemReport = true },
             multiview = if (MultiviewQualificationPolicy.tileCount > 1) model::openMultiview else null,
-            // Pair on a nearby card connects it at once, on the pair page.
-            pair = {
-                model.shell.beginPairing()
-                state.nearby.firstOrNull { it.id == model.cameras.state.value.selection }?.let(model.cameras::connect)
-            }),
+        ),
         monitor = { LiveViewScreen(model) },
         page = { ShellCoverPage(model, it) },
         coverPresentation = com.opencapture.opencine.appkit.ShellCoverPresentation.SHELL,
-        pageFrame = { route, content ->
-            val pair = route == ShellModel.Route.PAIR
-            if (pair) {
-                Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(vertical = 16.dp)) {
-                    Box(Modifier.weight(1f).padding(horizontal = 14.dp)) {
-                        // As the pair page always did: Back stops a connect and leaves the page.
-                        BackHandler(enabled = state.attempts.isNotEmpty() || state.saved.isNotEmpty()) {
-                            model.cameras.cancelAll()
-                            model.shell.endPairing()
-                        }
-                        content()
-                    }
-                }
-            } else content()
-        },
         pairingFlow = pairingWizard(
             label = PairingWizard.phaseLabel(
                 when {
