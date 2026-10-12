@@ -1,14 +1,9 @@
 package com.opencapture.openpocketcine.media
 
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
 import com.opencapture.opencine.appkit.*
 import com.opencapture.opencine.cameracontrols.*
-import com.opencapture.opencine.media.MediaAssetKind
 import com.opencapture.opencine.vocabulary.MediaFile
 import com.opencapture.opencine.vocabulary.MediaClipFormatting
 import com.opencapture.openpocketcine.AppModel
@@ -26,16 +21,10 @@ fun MediaLibraryScreen(model: AppModel, onClose: () -> Unit) {
     val isLive = phase == ConnectionPhase.LIVE
     LaunchedEffect(controller, phase) { controller.visibilityChanged() }
     DisposableEffect(controller) { onDispose { controller.endBrowse() } }
-    var presented by remember(library) { mutableStateOf<MonitorMediaGalleryOpen<MediaFile>?>(null) }
     var deliveryFiles by remember(library) { mutableStateOf<List<MediaFile>?>(null) }
     var deliveryActive by remember(library) { mutableStateOf(false) }
-    LaunchedEffect(state.lifetimeToken) { presented = null; deliveryFiles = null }
+    LaunchedEffect(state.lifetimeToken) { deliveryFiles = null }
     val activity = LocalActivity.current as? com.opencapture.openpocketcine.MainActivity
-    DisposableEffect(activity, presented?.id) {
-        activity?.playbackHidesSystemNavigation = presented != null
-        activity?.updateSystemBars()
-        onDispose { activity?.playbackHidesSystemNavigation = false; activity?.updateSystemBars() }
-    }
     fun dismiss() { controller.endBrowse(); onClose() }
     val operations = MonitorMediaGalleryOperations<MediaFile>(
         download = if (isLive) { { controller.download(it.payload) } } else null,
@@ -48,34 +37,32 @@ fun MediaLibraryScreen(model: AppModel, onClose: () -> Unit) {
         if (label == "\u2014") null else mode.toString() to label
     }
     CompositionLocalProvider(LocalMonitorGlass provides null, LocalMediaBackdropGlass provides false) {
-        Box(Modifier.fillMaxSize()) {
-            MonitorOperatorCatalogScreen(library, model.session.connectedCamera?.name ?: "OpenPocketCine", isLive,
-                operations, colorChoices = colors,
-                facts = { record ->
-                    val file = controller.file(record)
-                    MonitorMediaGalleryFileFacts(listOfNotNull(file.resolution, file.fileExtension.uppercase()).joinToString(" · "),
-                        file.durationSeconds.takeIf { it > 0 }?.let(MediaClipFormatting::durationLabel),
-                        controller.downloadProgress[file.path])
-                }, begin = controller::beginBrowse, refresh = controller::refresh, close = ::dismiss,
-                open = { presented = it }, share = { records, token ->
-                    if (library.isCurrent(token)) deliveryFiles = records.map { record -> controller.file(record) }
-                }, handlesBack = presented == null && deliveryFiles == null,
-                thumbnail = { MediaCatalogPicture(it, controller) })
-            presented?.takeIf { library.isCurrent(it.admission) }?.let { request ->
-                val file = controller.file(request.record)
-                if ((request.record.facts.presentationKind ?: request.record.asset.kind) == MediaAssetKind.PHOTO)
-                    MediaPhotoViewer(model = model, file = file, controller = controller, coverPresented = deliveryFiles != null,
-                        onClose = { if (presented?.id == request.id) presented = null },
-                        onDeliver = { if (presented?.id == request.id && library.isCurrent(request.admission)) deliveryFiles = listOf(it) })
-                else MediaPlayerScreen(files = request.playlist.map(controller::file), startingAt = file, controller = controller,
-                    model = model, coverPresented = deliveryFiles != null || deliveryActive, onClose = { if (presented?.id == request.id) presented = null },
-                    onDeliver = { if (presented?.id == request.id && library.isCurrent(request.admission)) deliveryFiles = listOf(it) })
-            }
-            MediaDeliveryHost(files = deliveryFiles, controller = controller, onDismissPopup = { deliveryFiles = null },
-                onPresentationChange = { deliveryActive = it })
-        }
-    }
-    BackHandler(enabled = deliveryFiles != null || presented != null) {
-        if (deliveryFiles != null) deliveryFiles = null else presented = null
+        MonitorOperatorMediaScreen(library, model.session.connectedCamera?.name ?: "OpenPocketCine", isLive,
+            operations, colorChoices = colors,
+            facts = { record ->
+                val file = controller.file(record)
+                MonitorMediaGalleryFileFacts(listOfNotNull(file.resolution, file.fileExtension.uppercase()).joinToString(" · "),
+                    file.durationSeconds.takeIf { it > 0 }?.let(MediaClipFormatting::durationLabel),
+                    controller.downloadProgress[file.path])
+            }, begin = controller::beginBrowse, refresh = controller::refresh, close = ::dismiss,
+            thumbnail = { MediaCatalogPicture(it, controller) },
+            player = { page ->
+                MediaPlayerScreen(files = page.request.playlist.map(controller::file), startingAt = controller.file(page.request.record),
+                    controller = controller, model = model, coverPresented = page.coverPresented || deliveryActive,
+                    onClose = page::close, onDeliver = { if (page.isCurrent) deliveryFiles = listOf(it) })
+            },
+            photo = { page ->
+                MediaPhotoViewer(model = model, file = controller.file(page.request.record), controller = controller,
+                    coverPresented = page.coverPresented, onClose = page::close,
+                    onDeliver = { if (page.isCurrent) deliveryFiles = listOf(it) })
+            },
+            delivery = MonitorOperatorMediaDelivery(deliveryFiles != null, share = { records, token ->
+                if (library.isCurrent(token)) deliveryFiles = records.map { record -> controller.file(record) }
+            }, dismiss = { deliveryFiles = null }),
+            presentationChanged = { shown -> activity?.playbackHidesSystemNavigation = shown; activity?.updateSystemBars() },
+            overlays = {
+                MediaDeliveryHost(files = deliveryFiles, controller = controller, onDismissPopup = { deliveryFiles = null },
+                    onPresentationChange = { deliveryActive = it })
+            })
     }
 }
