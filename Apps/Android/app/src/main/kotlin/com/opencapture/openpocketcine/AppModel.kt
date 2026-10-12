@@ -103,9 +103,6 @@ class AppModel(
         appContext.getSharedPreferences("openpocketcine.media", Context.MODE_PRIVATE), mediaCacheRoot)
     private val _mediaCacheRevision = kotlinx.coroutines.flow.MutableStateFlow(0L)
     val mediaCacheRevision: kotlinx.coroutines.flow.StateFlow<Long> = _mediaCacheRevision
-    fun clearOperatorMediaCache() {
-        scope.launch { clearOperatorMediaCacheOwned() }
-    }
     /** Bounded cache IO used by the captured common settings action. */
     suspend fun clearOperatorMediaCacheOwned() {
         try { OperatorMediaCache.clearOwned(mediaCacheRoot) { OperatorMediaCache.clear(appContext) } }
