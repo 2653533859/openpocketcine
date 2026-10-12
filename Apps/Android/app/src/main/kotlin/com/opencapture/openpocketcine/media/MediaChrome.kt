@@ -43,7 +43,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.opencapture.opencine.cameracontrols.chromeClickable
-import com.opencapture.openpocketcine.ChromeShape
 import com.opencapture.monitorui.MonitorMaterial
 import com.opencapture.monitorui.monitorMaterial
 import com.opencapture.openpocketcine.GlassTier

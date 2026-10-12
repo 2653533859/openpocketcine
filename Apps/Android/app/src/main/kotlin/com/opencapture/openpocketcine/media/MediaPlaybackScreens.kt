@@ -104,7 +104,6 @@ import com.opencapture.openpocketcine.AppModel
 import com.opencapture.monitorui.MonitorRect
 import com.opencapture.openpocketcine.GlassTier
 import com.opencapture.openpocketcine.LiveDesign
-import com.opencapture.openpocketcine.liveModuleFrame
 import com.opencapture.monitorui.monitorBottomInsetDp
 import com.opencapture.openpocketcine.LiveType
 import com.opencapture.openpocketcine.LocalMonitorGlass
