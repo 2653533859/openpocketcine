@@ -513,6 +513,7 @@ class AppModel(
     internal val operatorCaptureSource by lazy { makeOperatorCaptureSource() }
 
     // CaptureSheetHost (camera-controls): the capture sheets read these values and commit through one typed entry.
+    override val captureRouting = com.opencapture.opencine.cameracontrols.CaptureSheetRouting(commonExposureCompensation = true, commonFocusMode = true)
     override val camera get() = session.connectedCamera?.model
     override val audioService get() = captureAudioService()
     override fun captureField(sheet: LiveSheet, expoMode: Int): MonitorCaptureField? =

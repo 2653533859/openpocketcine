@@ -141,7 +141,7 @@ import OpenCineDJIApple
             status.whiteBalanceKelvin = 5600
             status.focusMode = .continuous
             status.audioChannel = .stereo
-            status.timecode = CameraTimecode(hours: 15, minutes: 39, seconds: 50, frames: 0)
+            status.timecodeValue = CameraTimecode(hours: 15, minutes: 39, seconds: 50, frames: 0)
             status.colorMode = .dLog2
             if let ev = launch?.meteredEV {
                 // The camera meters in thirds of a stop: the nearest one it could report.
