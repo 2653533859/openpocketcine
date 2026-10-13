@@ -118,8 +118,8 @@ final class CameraSession {
     private(set) var isVerticalPicture = false
     /// OpenZCine `NativeAppModel.liveSignalBars` — 0–4 from `LinkSignalBars` + link-health score.
     var liveSignalBars = 0
-    @ObservationIgnored private var frameRate = FrameRateSampler()
-    @ObservationIgnored private var signalBarsFilter = LinkSignalBars()
+    /// The shared chip word, rate and bars (A5-17).
+    @ObservationIgnored private var linkMeter = MonitorLinkMeter()
     @ObservationIgnored private var lastGoodFrameAt: Date?
     @ObservationIgnored private var consecutiveBadLiveFrames = 0
     @ObservationIgnored private var lastDecoderErrorCount = 0
@@ -2369,28 +2369,26 @@ final class CameraSession {
         let previousRes = status.videoResolution
         let previousFps = status.fps
         let previousShutter = status.shutterDenom
-        let angle =
-            ShutterAngle.rematchesFormat(
-                usesAngle: OperatorPrefs.shutterUsesAngle, manual: status.expoMode == .manual,
-                isPhoto: status.isPhoto, previousFps: previousFps, nextFps: format.frameRate.fps,
-                alreadyPending: editorReconciliation.requestedFormatAngle != nil)
-            ? editorReconciliation.requestedFormatAngle ?? OperatorPrefs.shutterAngleDegrees : nil
+        let rematch = ShutterAngle.formatRematch(
+            degrees: editorReconciliation.requestedFormatAngle ?? OperatorPrefs.shutterAngleDegrees,
+            usesAngle: OperatorPrefs.shutterUsesAngle, manual: status.expoMode == .manual,
+            isPhoto: status.isPhoto, previousFps: previousFps, nextFps: format.frameRate.fps,
+            available: status.availableShutterDenoms,
+            alreadyPending: editorReconciliation.requestedFormatAngle != nil)
         editorReconciliation.advanceFormatGeneration()
         let requestGeneration = editorReconciliation.formatGeneration
         let modeGeneration = editorReconciliation.captureGeneration
         let sessionGeneration = controlGeneration
         // The dependent shutter has a bounded confirmation window beyond the
         // normal two-second FORMAT projection; no separate command task owns it.
-        editorReconciliation.holdFormat(format, shutterAngle: angle)
+        editorReconciliation.holdFormat(format, shutterAngle: rematch?.degrees)
         var next = status
         next.videoResolution = format.resolution
         next.videoFormat = format
         next.fps = format.frameRate.fps
-        if let angle {
-            let denom = ShutterAngle.denom(
-                degrees: angle, fps: next.fps, available: next.availableShutterDenoms)
-            editorReconciliation.pinExpo(shutter: denom)
-            next.shutterDenom = denom
+        if let rematch {
+            editorReconciliation.pinExpo(shutter: rematch.denom)
+            next.shutterDenom = rematch.denom
         }
         status = next
         fireCamera(
@@ -3791,14 +3789,13 @@ final class CameraSession {
 
     private func resetLinkHealthMeasurements(ifCurrent: () -> Bool = { true }) {
         guard ifCurrent() else { return }
-        frameRate = FrameRateSampler()
-        signalBarsFilter = LinkSignalBars()
+        linkMeter = MonitorLinkMeter()
         lastGoodFrameAt = nil
         consecutiveBadLiveFrames = 0
         lastDecoderErrorCount = 0
         lastReceiveErrorCount = 0
         recentKeepaliveFailures = 0
-        liveFPS = "\u{2014}"
+        liveFPS = MonitorLinkMeter.idle
         guard ifCurrent() else { return }
         liveSignalBars = 0
         guard ifCurrent() else { return }
@@ -3849,9 +3846,7 @@ final class CameraSession {
                 }
             }
         }
-        let before = frameRate.displayFPS
-        frameRate.recordFrame(at: Date.timeIntervalSinceReferenceDate)
-        if frameRate.displayFPS != before {
+        if linkMeter.notePresented(at: Date.timeIntervalSinceReferenceDate) {
             applyLinkPresentation()
         } else {
             refreshFeedWarmup()
@@ -3859,33 +3854,21 @@ final class CameraSession {
     }
 
     func refreshLinkHealth(at timestamp: TimeInterval = Date.timeIntervalSinceReferenceDate) {
-        frameRate.age(at: timestamp)
+        linkMeter.age(at: timestamp)
         noteTransportFailures()
         applyLinkPresentation()
     }
 
     private func applyLinkPresentation(ifCurrent: () -> Bool = { true }) {
         guard ifCurrent() else { return }
-        if sessionRecovery.isRecovering {
-            if liveFPS != SessionRecoveryCopy.heldFrameBadge {
-                liveFPS = SessionRecoveryCopy.heldFrameBadge
-            }
-            guard ifCurrent() else { return }
-            refreshFeedWarmup()
-            return
-        }
-        let measured = frameRate.displayFPS
-        let label = LiveViewLink.fpsChipLabel(
-            connection: phase,
-            recovering: feedRecovering,
-            formattedFPS: frameRate.formatted,
-            measuredFPS: measured
+        linkMeter.update(
+            connection: phase, feedRecovering: feedRecovering,
+            sessionRecovering: sessionRecovery.isRecovering,
+            linkHealthScore: CameraLinkHealthScorer.score(currentLinkHealthInputs()).linkHealthScore
         )
-        if label != liveFPS { liveFPS = label }
+        if linkMeter.label != liveFPS { liveFPS = linkMeter.label }
         guard ifCurrent() else { return }
-        let snapshot = CameraLinkHealthScorer.score(currentLinkHealthInputs())
-        let bars = signalBarsFilter.update(score: snapshot.linkHealthScore)
-        if bars != liveSignalBars { liveSignalBars = bars }
+        if linkMeter.bars != liveSignalBars { liveSignalBars = linkMeter.bars }
         guard ifCurrent() else { return }
         refreshFeedWarmup()
     }
@@ -3901,8 +3884,8 @@ final class CameraSession {
         if !isFeedWarming, decoder.lastPresentedAt != nil { return }
         let next = LiveFeedWarmup.isWarming(
             hasPresentedPicture: decoder.lastPresentedAt != nil,
-            measuredFPS: frameRate.displayFPS,
-            rollingIntervals: frameRate.intervalCount,
+            measuredFPS: linkMeter.measuredFPS,
+            rollingIntervals: linkMeter.rollingIntervals,
             recovering: feedRecovering || pictureRecovery.isBusy,
             secondsSinceLastPresented: decoder.lastPresentedAt.map {
                 Date().timeIntervalSince($0)
@@ -3912,7 +3895,7 @@ final class CameraSession {
     }
 
     private func currentLinkHealthInputs() -> CameraLinkHealthInputs {
-        let measured = frameRate.displayFPS
+        let measured = linkMeter.measuredFPS
         let linkPhase = LiveViewLink.cameraLinkPhase(
             connection: phase,
             recovering: feedRecovering,
