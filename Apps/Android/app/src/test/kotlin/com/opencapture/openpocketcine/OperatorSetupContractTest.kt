@@ -1,3 +1,4 @@
+@file:Suppress("DEPRECATION")
 package com.opencapture.openpocketcine
 
 import com.opencapture.opencine.cameracontrols.toggledCleanPins
