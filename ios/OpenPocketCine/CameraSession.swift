@@ -3113,7 +3113,8 @@ final class CameraSession {
                     awaitingIrap: decoder.awaitingIDR,
                     hasDecodableReferences: decoder.canReleaseIDRHold,
                     lastIrapAge: decoder.lastIrapAt.map { wall.timeIntervalSince($0) },
-                    lastSuccessfulOutputAge: decode.outputAge),
+                    lastSuccessfulOutputAge: decode.outputAge,
+                    firstError: decoder.firstDecodeError),
                 lifecycle: FeedIncidentLifecycle(
                     foreground: gimbalControlSceneActive, settingsCovered: incidentSettingsCovered,
                     playbackActive: status.inPlayback || isBrowsingMedia,
