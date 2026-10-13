@@ -319,6 +319,7 @@ class MultiviewSession(
             storageFreeMb = settings.storageFreeMb,
             storageTotalMb = settings.storageTotalMb,
             model = camera?.model,
+            charging = if (settings.chargingObservationDeclared) settings.chargingObservation else true.takeIf { settings.charging },
         )
 
         internal fun multicam() = MulticamTile(

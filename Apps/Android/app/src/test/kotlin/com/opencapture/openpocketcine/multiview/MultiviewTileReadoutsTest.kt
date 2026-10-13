@@ -44,6 +44,20 @@ class MultiviewTileReadoutsTest {
         assertEquals("8 GB", readouts.storage)
     }
 
+    @Test fun commonPowerOverridesRetainedLegacyBatteryWithoutInventingUnknown() {
+        val status = CameraStatus(batteryPercent = 99)
+        fun actual(power: com.opencapture.opencine.core.PowerStatus) = multiviewTileReadouts(
+            1, "SIMULATED", "SIMULATED", status, null, false, true,
+            false, false, true, null, power = power)
+        val gauge = com.opencapture.opencine.core.PowerStatus(battery = com.opencapture.opencine.core.ObservedValue(
+            0.25, com.opencapture.opencine.core.ObservationOrigin.CAMERA_REPORTED, null,
+            precision = com.opencapture.opencine.core.ObservationPrecision.Quantized(0.25)))
+        assertEquals("1/4", actual(gauge).battery)
+        assertEquals("\u2014", actual(com.opencapture.opencine.core.PowerStatus.unknown).battery)
+        assertEquals("0%", actual(com.opencapture.opencine.core.PowerStatus(battery = com.opencapture.opencine.core.ObservedValue(
+            0.0, com.opencapture.opencine.core.ObservationOrigin.CAMERA_REPORTED, null))).battery)
+    }
+
     /** [timecode] is the tile's clock as the shared status formats it (`MultiviewSession.Tile.timecodeReadout`). */
     private fun readouts(settings: CameraStatus, observed: Boolean?, available: Boolean, timecode: String? = null) = multiviewTileReadouts(
         1, "Side angle", "Osmo Pocket 4", settings, timecode, observed, available,

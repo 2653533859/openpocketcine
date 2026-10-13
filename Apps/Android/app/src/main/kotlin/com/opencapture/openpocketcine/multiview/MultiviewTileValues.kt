@@ -6,6 +6,12 @@ import com.opencapture.opencine.appkit.MultiviewRecordContext
 import com.opencapture.opencine.appkit.MultiviewTile
 import com.opencapture.opencine.appkit.MultiviewTileStatus
 import com.opencapture.opencine.dji.hasMultiviewPreview
+import com.opencapture.opencine.core.PowerStatus
+import com.opencapture.opencine.core.ObservedValue
+import com.opencapture.opencine.core.ObservationOrigin
+import com.opencapture.opencine.core.ObservationPrecision
+import com.opencapture.opencine.cameracontrols.cameraPowerReading
+import com.opencapture.opencine.cameracontrols.cameraBatteryReadoutLabel
 import com.opencapture.opencine.vocabulary.CameraCommands
 import com.opencapture.opencine.vocabulary.CameraStatus
 import com.opencapture.opencine.vocabulary.VideoResolution
@@ -31,7 +37,11 @@ internal fun multiviewTileReadouts(
     recordingObservation: Boolean?, recordingAvailable: Boolean, recordingBusy: Boolean,
     recovering: Boolean, hasPicture: Boolean, failure: String?, recordingNote: String? = null,
     colorFamily: String = "pocket",
+    power: PowerStatus? = null,
 ): MultiviewTileReadouts {
+    val reportedPower = power ?: PowerStatus(battery = settings.batteryPercent.takeIf { it in 0..100 }?.let {
+        ObservedValue(it / 100.0, ObservationOrigin.CAMERA_REPORTED, null, precision = ObservationPrecision.Quantized(0.01))
+    } ?: ObservedValue.unknown)
     val total = if (settings.sdTotalMb > 0) settings.sdTotalMb else settings.storageTotalMb
     val free = if (settings.sdTotalMb > 0) settings.sdFreeMb else settings.storageFreeMb
     val elapsed = settings.recordElapsedSec.coerceAtLeast(0)
@@ -49,7 +59,7 @@ internal fun multiviewTileReadouts(
     return MultiviewTileReadouts(
         letter = ('A' + index.coerceIn(0, 3)).toString(), name = name, model = model,
         timecode = timecode ?: "\u2014",
-        battery = if (settings.batteryPercent in 0..100) "${settings.batteryPercent}%" else "—",
+        battery = cameraBatteryReadoutLabel(reportedPower.batteryReading) ?: "\u2014",
         batteryPercent = settings.batteryPercent,
         charging = settings.charging,
         storage = if (total > 0 && free >= 0) "${free / 1024} GB" else "—",
@@ -93,18 +103,21 @@ internal object MultiviewTileAction {
 internal fun MultiviewSession.stageTile(index: Int): MultiviewTile? {
     val tile = tiles[index]
     val camera = tile.camera ?: return null
+    val power = tile.control.current.power
+    val battery = cameraPowerReading(power)
     val readouts = multiviewTileReadouts(
         index, camera.name, camera.model.name, tile.settings, tile.timecodeReadout,
         tile.recordingObservation?.first, tile.recordingAvailable,
         tile.recordingBusy, tile.recovering, tile.hasPicture, tile.failureMessage, tile.recordingNote,
-        colorFamily = camera.model.family,
+        colorFamily = camera.model.family, power = power,
     )
     val settled = !busy && !tile.connecting && !tile.recovering
     val experimental = tile.failureMessage != null && !tile.experimentalNetwork && tile.identity == null
     val record = recordPlan(tile)
     return MultiviewTile(
         name = camera.name, model = camera.model.name, format = readouts.format,
-        battery = tile.settings.batteryPercent.takeIf { it in 0..100 }, charging = readouts.charging,
+        battery = battery?.percent, charging = battery?.charging == true,
+        batteryBars = battery?.bars, batteryBarCount = battery?.barCount ?: 5,
         storage = readouts.storage, timecode = tile.timecodeReadout,
         tally = readouts.recording, recording = readouts.isRecording, lut = tile.lutEnabled,
         readouts = multiviewStageReadouts(tile.settings),

@@ -48,6 +48,7 @@ internal data class TileRecordState(
     val storageTotalMb: Int = 0,
     /** The tile's body, so the adapter declares what it reports (timecode). */
     val model: CameraModel? = null,
+    val charging: Boolean? = null,
 )
 
 /**
@@ -85,6 +86,7 @@ internal class MultiviewTileControl(
             batteryPercent = tile.batteryPercent.takeIf { it in 0..100 },
             storageFreeMb = tile.storageFreeMb.takeIf { tile.storageTotalMb > 0 },
             model = tile.model,
+            charging = tile.charging,
         )
     }
 

@@ -1,6 +1,7 @@
 import MonitorPresentation
 import MonitorUI
 import OpenCineAppKit
+import OpenCineCore
 import OpenPocketViewCore
 import SwiftUI
 import XCTest
@@ -28,6 +29,16 @@ import OpenCineDJIApple
         let values = MultiviewTelemetryPresentation(settings: status)
         XCTAssertEqual(values.battery, "0%")
         XCTAssertEqual(values.storage, "0 GB")
+    }
+
+    func testCommonPowerOverridesRetainedLegacyBatteryWithoutInventingUnknown() {
+        var status = CameraStatus()
+        status.batteryPercent = 99
+        let gauge = PowerStatus(battery: .init(0.25, origin: .cameraReported, at: nil, precision: .quantized(step: 0.25)))
+        XCTAssertEqual(MultiviewTelemetryPresentation(settings: status, power: gauge).battery, "1/4")
+        XCTAssertEqual(MultiviewTelemetryPresentation(settings: status, power: .unknown).battery, "\u{2014}")
+        let zero = PowerStatus(battery: .init(0, origin: .cameraReported, at: nil))
+        XCTAssertEqual(MultiviewTelemetryPresentation(settings: status, power: zero).battery, "0%")
     }
 
     func testGroupResultAndRecoveryAreVisibleWithoutInventingConnectedCameras() {
