@@ -35,6 +35,9 @@ internal fun pocketCaptureSessionState(
     awbLockOffered: () -> Boolean,
     formatPinned: () -> Boolean,
     layout: () -> MonitorLayoutCapabilities,
+    nativeISOCapabilities: () -> com.opencapture.opencine.vocabulary.CaptureNativeISOCapabilities = {
+        com.opencapture.opencine.vocabulary.CaptureNativeISOCapabilities()
+    },
 ): CaptureSessionState = object : CaptureSessionState {
     override val aeLocked get() = aeLock() != null
     override val awbLockKelvin get() = awbLockKelvin()
@@ -42,7 +45,7 @@ internal fun pocketCaptureSessionState(
     override val formatPinned get() = formatPinned()
     override val focusModeSupported get() = layout().focus
     override val irisSupported get() = layout().iris
-    override val nativeISO get() = com.opencapture.opencine.vocabulary.CaptureNativeISOCapabilities()
+    override val nativeISO get() = nativeISOCapabilities()
     override val nativeIsoHopSupported get() = nativeISO.hop == true
 }
 
@@ -51,7 +54,7 @@ internal fun AppModel.observedCaptureSessionState(status: CameraStatus): Capture
     val aeLock by session.aeLock.collectAsState()
     val awbLock by session.awbLockKelvin.collectAsState()
     return pocketCaptureSessionState({ aeLock }, { awbLock }, { session.autoWhiteBalanceLock(status) != null },
-        { session.isFormatPinActive }, { monitorLayout() })
+        { session.isFormatPinActive }, { monitorLayout() }, { session.nativeISOCapabilities })
 }
 
 /** ISO, shutter and white balance Kelvin through the captured Core field; EV through Core too. */

@@ -148,7 +148,10 @@ final class CameraDialReconciliationTests: XCTestCase {
 
     func testParameterDialsIgnoreUnrelatedFramesUntilTheirOwnConfirmation() {
         let session = OpenPocketCine.CameraSession(borrowing: HevcDecoder())
-        session.datalink = DjiAppleDatalink(port: 9004, tcpPoke: false, pairingToken: "")
+        let model = CameraModel(name: "SIMULATED ceiling",
+            captureProfile: CameraCaptureProfile(supportsFocusMode: true, nativeISO: .init(ceiling: true)))
+        session.updateMultiview(camera: DjiAppleSighting(id: UUID(), name: model.name, model: model, modelId: nil),
+            driver: DjiAppleDatalink(port: 9004, tcpPoke: false, pairingToken: ""), status: session.status)
         defer { session.disconnect() }
         session.status.isoLimit = .max800
         session.status.audioChannel = .stereo

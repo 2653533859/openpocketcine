@@ -115,7 +115,7 @@ extension AppModel: CaptureSheetHost {
     var captureCapabilities: CaptureSheetCapabilities {
         let layout = OsmoMonitorPresentation.capabilities(session)
         return CaptureSheetCapabilities(
-            focusMode: layout.focus, aperture: layout.iris, nativeISO: .init(),
+            focusMode: layout.focus, aperture: layout.iris, nativeISO: session.nativeISOCapabilities,
             audio: audioService != nil,
             faceMetering: false)
     }

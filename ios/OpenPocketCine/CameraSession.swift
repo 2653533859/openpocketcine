@@ -490,6 +490,9 @@ final class CameraSession {
     /// After a local res+fps / color SET, ignore subscribe snapshots that have not caught up.
     /// FORMAT sheet: skip reseat while `0x02/0x18` is in flight.
     var isFormatPinActive: Bool { editorReconciliation.hasFormat }
+    var nativeISOCapabilities: CaptureNativeISOCapabilities {
+        connectedCamera?.model.captureProfile?.nativeISO ?? .init()
+    }
     /// Requested white balance remains separate from actual camera status.
     var pendingWhiteBalance: WhiteBalance? {
         access(keyPath: \.pendingWhiteBalance)
@@ -1815,6 +1818,7 @@ final class CameraSession {
     }
 
     func setIsoLimit(_ limit: IsoLimit) {
+        guard nativeISOCapabilities.ceiling == true else { return }
         let previous = status.isoLimit
         let pin = editorReconciliation.holdIsoLimit(limit)
         status.isoLimit = limit
@@ -1876,6 +1880,7 @@ final class CameraSession {
     }
 
     func refreshIsoLimit() async {
+        guard nativeISOCapabilities.ceiling == true else { return }
         guard IsoLimit.shouldGet(colorMode: status.colorMode) else { return }
         cameraSettings.refreshIsoLimit()
         await cameraSettings.waitForPending()
@@ -2003,6 +2008,7 @@ final class CameraSession {
     private func hopNativeISO(from: ColorMode?, to: ColorMode) { hopNativeISO(from: from, to: to, suppliedAdmission: nil) }
 
     private func hopNativeISO(from: ColorMode?, to: ColorMode, suppliedAdmission admission: DJICommandAdmission?) {
+        guard nativeISOCapabilities.hop == true else { return }
         guard admission?.admits(commandOwner) ?? true else { return }
         guard
             let next = CamCapIso.nativeISOHop(

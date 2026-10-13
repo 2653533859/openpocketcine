@@ -13,7 +13,8 @@ internal fun AppModel.makeOperatorCaptureSource(): MonitorOperatorCaptureSource 
     host = this, control = control, phaseEvents = session.phaseFlow,
     readStatus = { session.status.value }, readSessionState = {
         pocketCaptureSessionState({ session.aeLock.value }, { session.awbLockKelvin.value },
-        { session.autoWhiteBalanceLock(session.status.value) != null }, { session.isFormatPinActive }, { monitorLayout() })
+        { session.autoWhiteBalanceLock(session.status.value) != null }, { session.isFormatPinActive },
+        { monitorLayout() }, { session.nativeISOCapabilities })
     }, ready = { session.phase == ConnectionPhase.LIVE }, busy = { session.controlBusy.value },
     confirmRecording = { recordConfirmationEnabled }, takePhoto = ::pressShutter,
 )
