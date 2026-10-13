@@ -2,6 +2,7 @@ import OpenCineFrameIO
 import OpenCineAppKit
 import OpenCineAppKitApple
 import OpenCineCameraControls
+import OpenCineCameraVocabulary
 import AVFoundation
 import Foundation
 import OpenPocketViewCore
@@ -201,7 +202,7 @@ enum MediaDelivery {
     static func metadataSummary(for files: [MediaFile]) -> String {
         MonitorDeliveryMetadataSummary.text(files: files.map {
             .init(filename: $0.filename, captureDate: $0.filenameTimestamp, sizeBytes: $0.sizeBytes > 0 ? $0.sizeBytes : nil)
-        }, formatBytes: { ByteCountFormatter.string(fromByteCount: Int64(clamping: $0), countStyle: .file) })
+        }, formatBytes: MediaClipFormatting.byteLabel)
     }
 }
 
