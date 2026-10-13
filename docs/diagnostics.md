@@ -436,3 +436,10 @@ uploads are disabled. The unavailable-build message indicates missing build
 configuration; reinstalling that binary cannot enable the prompt. Configure
 `SENTRY_DSN_IOS` in Xcode Cloud and deliver a new archive. No consent reset is
 needed for installations that have never saved a choice.
+
+Decoder incidents can include the first failing access unit's numeric status,
+ordered NAL types, byte count, reference/format ages and recent input rate. This
+optional context contains no compressed frame bytes or camera identity. Apple
+captures it at the decoder callback boundary; Android codec-level failures leave
+per-access-unit context absent. Source retirement clears the context. The facts
+help compare error episodes without claiming the origin of damaged references.
