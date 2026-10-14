@@ -146,12 +146,16 @@ import com.opencapture.opencine.media.MonitorAudioMeterLevels
 @Composable
 fun MediaPhotoViewer(model: AppModel, file: MediaFile, controller: MediaLibraryController, onClose: () -> Unit,
     coverPresented: Boolean = false, onDeliver: (MediaFile) -> Unit = {},
+    opening: MonitorMediaGalleryOpen<MediaFile>? = null,
 ) {
     val library = controller.library
-    val admission = remember(library, file.id) { library.actionToken }
-    val source = remember(library, file.id) { model.shell.state.value.monitor?.id }
-    val record = controller.record(file)
-    if (record == null || !library.isCurrent(admission)) { Box(Modifier.fillMaxSize().background(Color.Black)); return }
+    // A supplied gallery opening retains its original record and source token.
+    val admission = opening?.admission ?: remember(library, file.id) { library.actionToken }
+    val source = remember(library, opening?.id, file.id) { model.shell.state.value.monitor?.id }
+    val record = opening?.record ?: controller.record(file)
+    if (record == null) {
+        com.opencapture.opencine.cameracontrols.MonitorOperatorMediaUnavailable(close = onClose); return
+    }
     val loaders = com.opencapture.opencine.appkit.MonitorMediaPictureLoaders<MediaFile, Bitmap>(
         cached = { request ->
             if (!request.isCurrent()) null else (controller.localFile(request.record.payload) ?: controller.thumbnailFile(request.record.payload))?.let { location ->
@@ -179,6 +183,7 @@ fun MediaPhotoViewer(model: AppModel, file: MediaFile, controller: MediaLibraryC
 fun MediaPlayerScreen(files: List<MediaFile>, startingAt: MediaFile, controller: MediaLibraryController,
     model: AppModel, onClose: () -> Unit, onDeliver: (MediaFile) -> Unit = {},
     coverPresented: Boolean = false,
+    opening: MonitorMediaGalleryOpen<MediaFile>? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -200,13 +205,15 @@ fun MediaPlayerScreen(files: List<MediaFile>, startingAt: MediaFile, controller:
     val outer by owner.state.collectAsState()
     val state = outer.playback?.state?.collectAsState()?.value
     val active = state?.active?.payload ?: startingAt
-    val initial = remember(owner, startingAt.id) { controller.record(startingAt)?.let { record ->
+    val initial = remember(owner, opening?.id, startingAt.id) { opening ?: controller.record(startingAt)?.let { record ->
         com.opencapture.opencine.appkit.MonitorMediaGalleryOpen(record,
             (if (files.any { it.id == startingAt.id }) files else listOf(startingAt)).mapNotNull(controller::record),
             controller.library.actionToken)
     } }
     DisposableEffect(owner) { onDispose { owner.closePlayback(); composition?.close() } }
-    if (initial == null) { Box(Modifier.fillMaxSize().background(Color.Black)) { Text(MediaOperatorCopy.CLIP_NOT_CACHED) }; return }
+    if (initial == null) {
+        com.opencapture.opencine.cameracontrols.MonitorOperatorMediaUnavailable(close = onClose); return
+    }
     val status by model.session.chromeStatus.collectAsState()
     val color = state?.look?.source?.colorMode ?: -1
     val effects = rememberLiveFeedEffectsPlan(model.assist, model.lutSelection, status,
