@@ -47,12 +47,12 @@ fun MediaLibraryScreen(model: AppModel, onClose: () -> Unit) {
             }, begin = controller::beginBrowse, refresh = controller::refresh, close = ::dismiss,
             thumbnail = { MediaCatalogPicture(it, controller) },
             player = { page ->
-                MediaPlayerScreen(files = page.request.playlist.map(controller::file), startingAt = controller.file(page.request.record),
+                MediaPlayerScreen(opening = page.request, files = page.request.playlist.map(controller::file), startingAt = controller.file(page.request.record),
                     controller = controller, model = model, coverPresented = page.coverPresented || deliveryActive,
                     onClose = page::close, onDeliver = { if (page.isCurrent) deliveryFiles = listOf(it) })
             },
             photo = { page ->
-                MediaPhotoViewer(model = model, file = controller.file(page.request.record), controller = controller,
+                MediaPhotoViewer(opening = page.request, model = model, file = controller.file(page.request.record), controller = controller,
                     coverPresented = page.coverPresented, onClose = page::close,
                     onDeliver = { if (page.isCurrent) deliveryFiles = listOf(it) })
             },
