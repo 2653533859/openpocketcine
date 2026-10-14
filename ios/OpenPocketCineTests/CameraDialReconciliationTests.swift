@@ -24,6 +24,12 @@ final class CameraDialReconciliationTests: XCTestCase {
     }
 
     func testCommonDurationRequiresReportedManualAndDoesNotConfirmItsPin() {
+        // The shutter presentation reads the operator's persisted preference, which a
+        // physical test host inherits from the real app's stored state. Pin the native
+        // camera-value path this fixture asserts and restore the operator's choice.
+        let operatorChoice = OperatorPrefs.shutterUsesAngle
+        OperatorPrefs.shutterUsesAngle = false
+        defer { OperatorPrefs.shutterUsesAngle = operatorChoice }
         let session = commonFixture()
         defer { session.disconnect() }
         let receipt = session.control.request(.set(.shutter(.duration(Rational(1, 100)))))
