@@ -20,6 +20,7 @@ import com.opencapture.opencine.platform.LocalVPNProbe
 import com.opencapture.opencine.dji.DjiCameraNetwork
 import com.opencapture.opencine.vocabulary.PrivacyRedactor
 import com.opencapture.openpocketcine.BuildConfig
+import com.opencapture.openpocketcine.OperatorPrefs
 import com.opencapture.opencine.appkit.DiscoveryPermissions
 import com.opencapture.opencine.dji.DjiCameraSession
 import java.io.File
@@ -65,6 +66,7 @@ object DiagnosticCenter {
         }
         filesDir()?.let { AppDiagnostics.incidents.install(it) }
         DjiLog.sink = ::log
+        AppDiagnostics.reporting.noteFeedUpscaler(OperatorPrefs.feedUpscaler(context).label)
         AppDiagnostics.reporting.install(context.applicationContext, AppDiagnostics.incidents)
         AppDiagnostics.manualReport.install(context.applicationContext)
         log("notice", "diagnostics", "boot", "diagnostics installed")

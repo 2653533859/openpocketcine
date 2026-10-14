@@ -22,7 +22,7 @@ internal object AppDiagnostics {
             releasePackage = "com.opencapture.openpocketcine",
             versionName = BuildConfig.VERSION_NAME,
             versionCode = BuildConfig.VERSION_CODE,
-            debug = BuildConfig.DEBUG,
+            environment = BuildConfig.REPORTING_ENVIRONMENT,
             sourceRevision = BuildConfig.SOURCE_REVISION,
             reportingDsn = BuildConfig.SENTRY_DSN_ANDROID,
             reportingClient = "openpocketcine-android",
