@@ -4678,6 +4678,20 @@ final class CameraSession {
         library.refreshLocalCache()
     }
 
+    /// Settings Clear covers every camera bucket under the shared root (A2-33). The current
+    /// camera's library still gets the same reset, unbind and refresh bookkeeping, and the
+    /// revision bump retires the displayed count so the scope recounts from an empty cache.
+    func clearAllCamerasMediaCache() async throws {
+        let library = mediaLibrary
+        cameraMedia.resetSession()
+        library.bind(nil)
+        let token = library.actionToken
+        try await cameraMedia.clearAllCamerasCache()
+        guard library.isCurrent(token), !Task.isCancelled else { return }
+        mediaIOCacheRevision &+= 1
+        library.refreshLocalCache()
+    }
+
     private func settleLateFromSubscribe() {
         controlExchange.settleFromReport()
     }
