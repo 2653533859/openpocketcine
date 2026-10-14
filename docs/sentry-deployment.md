@@ -104,9 +104,18 @@ SDK `environment` is **not** a user-promoted gate in the app:
 | Build | `environment` |
 | --- | --- |
 | Ordinary Debug | `development` |
-| iOS Release (TestFlight) | `testflight` |
-| Android Release (Play) | `production` |
 | DEBUG explicit probe only | `verification` |
+| iOS Release from Xcode, ad hoc or a simulator; Android release built outside the Play workflow | `local` |
+| iOS TestFlight | `testflight` |
+| Android Play workflow (`OPC_DISTRIBUTION_CHANNEL=internal`, testing tracks) | `internal` |
+| iOS App Store; an Android pipeline that sets `OPC_DISTRIBUTION_CHANNEL=production` | `production` |
+
+iOS decides at runtime (`ReliabilityEnvironment.apple`: debug flag, simulator,
+embedded provisioning profile, receipt name). Android bakes
+`BuildConfig.REPORTING_ENVIRONMENT` at build time (OpenCine's reporting Gradle plugin), so a
+Play build promoted from a testing track keeps `internal`. Alerts that should cover
+store users filter on `production`; `local` and `development` reinstalls are not
+watchdog terminations.
 
 Do not describe current traffic as waiting on a human to “promote” the app
 environment.
