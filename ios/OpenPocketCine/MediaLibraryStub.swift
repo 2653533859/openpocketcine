@@ -144,14 +144,10 @@ struct MediaLibraryView: View {
                     isCurrent: context.isCurrent, onDuration: context.duration)
             })
             .fullScreenCover(item: $presented) { request in
-                if library.isCurrent(request.admission) {
-                    let record = request.record
-                    let file = session.libraryFile(record)
-                    if (record.facts.presentationKind ?? record.asset.kind) == .photo {
-                        MediaPhotoViewer(file: file, admission: request.admission).environment(model)
-                    } else {
-                        MediaPlayerView(files: request.playlist.map { record in session.libraryFile(record) }, startingAt: file).environment(model)
-                    }
+                if (request.record.facts.presentationKind ?? request.record.asset.kind) == .photo {
+                    MediaPhotoViewer(opening: request, library: library, session: session).environment(model)
+                } else {
+                    MediaPlayerView(opening: request).environment(model)
                 }
             }
             .overlay { MonitorOperatorDeliveryChrome(model: model.delivery.lifetime, scope: .surface, remoteDisplayName: "Frame.io") }
@@ -160,7 +156,7 @@ struct MediaLibraryView: View {
                     MediaDeliveryPopupOverlay(files: deliveryFiles) { self.deliveryFiles = nil }
                 }
             }
-            .onChange(of: library.lifetimeToken) { _, _ in presented = nil; deliveryFiles = nil }
+            .onChange(of: library.lifetimeToken) { _, _ in deliveryFiles = nil }
             #if DEBUG && targetEnvironment(simulator)
                 .task(id: library.displayedRecords.first?.asset.id) {
                     // `ReviewLaunch(screen: .playback)`: open the first staged clip as a tap would.
