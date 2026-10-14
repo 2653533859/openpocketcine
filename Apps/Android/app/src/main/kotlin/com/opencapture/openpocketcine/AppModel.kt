@@ -514,6 +514,7 @@ class AppModel(
 
     // CaptureSheetHost (camera-controls): the capture sheets read these values and commit through one typed entry.
     override val captureRouting = com.opencapture.opencine.cameracontrols.CaptureSheetRouting(commonExposureCompensation = true, commonFocusMode = true)
+    override val captureReadoutSelection = com.opencapture.opencine.appkit.MonitorCaptureSelection.REPORTED
     override val camera get() = session.connectedCamera?.model
     override val audioService get() = captureAudioService()
     override fun captureField(sheet: LiveSheet, expoMode: Int): MonitorCaptureField? =
