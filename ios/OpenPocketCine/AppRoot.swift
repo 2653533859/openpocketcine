@@ -838,54 +838,42 @@ final class AppModel {
     private func watchShutter(photo: Bool, watchAdmission: RelayWatchCommandAdmission?)
         -> WatchCommandResult
     {
-        let recording = session.status.isRecording
-        if session.controlBusy || session.isBrowsingMedia {
-            return WatchCommandResult(
-                accepted: false, isRecording: recording, error: WatchRelayCopy.busy)
-        }
-        guard case .live = session.phase else {
-            return WatchCommandResult(
-                accepted: false, isRecording: false, error: WatchRelayCopy.connectFirst)
-        }
-        let isPhoto = session.status.isPhoto
-        if photo, !isPhoto {
-            return WatchCommandResult(
-                accepted: false, isRecording: recording, error: WatchRelayCopy.switchToPhoto)
-        }
-        if !photo, isPhoto {
-            return WatchCommandResult(
-                accepted: false, isRecording: recording, error: WatchRelayCopy.switchToVideo)
-        }
-        // Aimed at what the watch showed: another session or link is refused, not commanded.
-        guard let target = watchTarget else {
-            publishWatchState()
-            return WatchCommandResult(
-                accepted: false, isRecording: recording, error: WatchRelayCopy.cameraChanged)
-        }
-        let receipt: CommandReceipt?
-        if let watchAdmission {
-            guard watchAdmission.isCurrent, let shown = watchCommandSource,
-                shown.admits(session.commandOwner)
-            else {
-                publishWatchState()
-                return WatchCommandResult(
-                    accepted: false, isRecording: recording, error: WatchRelayCopy.cameraChanged)
-            }
-            let admission = DJICommandAdmission(
-                owner: shown.owner, isCurrent: { shown.isCurrent && watchAdmission.isCurrent })
-            receipt = session.control.shutter(aimedAt: target, admission: admission)
-        } else {
-            receipt = session.control.shutter(aimedAt: target)
-        }
-        if let receipt, receipt.didNotAct {
-            // Explicit start/stop; unknown record state is refused.
-            publishWatchState()
-            return WatchCommandResult(
-                accepted: false, isRecording: recording,
-                error: receipt.targetChanged ? WatchRelayCopy.cameraChanged : WatchRelayCopy.busy)
-        }
+        let result = WatchCommandPolicy.answer(
+            photo ? .capture : .toggleRecord,
+            facts: {
+                WatchCommandFacts(
+                    isRecording: session.status.isRecording,
+                    isBusy: session.controlBusy || session.isBrowsingMedia,
+                    isLive: session.phase == .live, isPhotography: session.status.isPhoto)
+            },
+            shutter: {
+                // Keep the target and supplied first-send admission captured by the shown source.
+                guard let target = watchTarget else { return .targetChanged }
+                guard !session.isLocked, session.controlLinkReady else { return .notSent }
+                let receipt: CommandReceipt?
+                if let watchAdmission {
+                    guard watchAdmission.isCurrent, let shown = watchCommandSource,
+                        shown.admits(session.commandOwner)
+                    else { return .targetChanged }
+                    let admission = DJICommandAdmission(
+                        owner: shown.owner,
+                        isCurrent: { shown.isCurrent && watchAdmission.isCurrent })
+                    receipt = session.control.shutter(aimedAt: target, admission: admission)
+                } else {
+                    receipt = session.control.shutter(aimedAt: target)
+                }
+                if let receipt {
+                    if receipt.didNotAct {
+                        return receipt.targetChanged ? .targetChanged : .notSent
+                    }
+                    return .sent
+                }
+                // The legacy photo port returns Void. Its queued operation owns controlBusy;
+                // a refused photo clears it, so nil alone is never evidence of submission.
+                return photo && session.controlBusy ? .sent : .notSent
+            })
         publishWatchState()
-        return WatchCommandResult(accepted: true, isRecording: recording, error: nil)
+        return result
     }
 }
 
