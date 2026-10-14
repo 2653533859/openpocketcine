@@ -216,7 +216,8 @@ struct SettingsRootView: View {
             document: { kind, close in
                 let legal: LegalDocumentView.Kind = switch kind { case .privacy: .privacy; case .licenses: .licenses; case .notice: .notice }
                 return AnyView(LegalDocumentView(kind: legal, onClose: close))
-            }, shareReport: { AnyView(MonitorActivityShareSheet(items: [$0])) })
+            }, shareReport: { AnyView(MonitorActivityShareSheet(items: [$0])) },
+            supportEmail: "support@openpocketcine.app")
     }
     static var appVersionText: String { MonitorSettingsAppInformation.version() }
 }
