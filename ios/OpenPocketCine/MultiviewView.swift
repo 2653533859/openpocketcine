@@ -134,10 +134,9 @@ struct MultiviewView: View {
     }
 
     private func stageContent(viewport: GeometryProxy) -> some View {
-        let safe = LinkExperience.pageSafeArea(
-            viewport.safeAreaInsets, window: windowGeometry.safeArea,
-            portrait: viewport.size.height > viewport.size.width,
-            orientation: orientation.orientation)
+        let safe = OperatorPanelMetrics.pageSafeArea(
+            from: viewport.safeAreaInsets, window: windowGeometry.safeArea,
+            size: viewport.size, orientation: orientation.orientation)
         let layout = session.layout.presentation(
             in: viewport.size,
             safeArea: .init(
