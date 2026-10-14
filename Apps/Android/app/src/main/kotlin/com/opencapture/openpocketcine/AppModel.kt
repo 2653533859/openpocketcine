@@ -91,6 +91,7 @@ class AppModel(
     controlLease: com.opencapture.opencine.dji.MultiviewControlLease? = null,
     discovers: Boolean = false,
     connectPort: (DjiCameraSession) -> DjiConnectPort = { it },
+    val reviewLaunch: com.opencapture.monitorui.ReviewLaunch? = null,
 ) : GamepadHost, GimbalChromeHost, CaptureSheetHost, OperatorSetupModel, AutoCloseable {
     private val appContext = context.applicationContext
     /** One actual cache root/lifetime shared by gallery IO and operator settings. */
@@ -107,7 +108,10 @@ class AppModel(
         val camera = com.opencapture.openpocketcine.media.MediaLibraryController.cameraKey(session, mediaCache)
         mediaOwner?.let { if (it.cameraId == camera) return it; it.release() }
         return com.opencapture.openpocketcine.media.MediaLibraryController(appContext, session, cacheOwner = mediaCache)
-            .also { mediaOwner = it }
+            .also { controller ->
+                mediaOwner = controller
+                reviewLaunch?.let { review -> controller.library.display(layout = review.layout) }
+            }
     }
 
     init {

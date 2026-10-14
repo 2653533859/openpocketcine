@@ -27,6 +27,8 @@ import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.content.Intent
 import android.os.Bundle
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import android.provider.Settings
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -93,7 +95,12 @@ open class MainActivity : ComponentActivity() {
     }
 
     /** The activity's root model; the debug review activity scripts its camera port. */
-    protected open fun createModel(): AppModel = AppModel(applicationContext, discovers = true)
+    protected open fun createModel(): AppModel {
+        val localReview = MonitorReview.decode(intent)
+        return AppModel(applicationContext, discovers = localReview == null, reviewLaunch = localReview).also { model ->
+            if (localReview != null) lifecycleScope.launch { MonitorReview.start(applicationContext, model, localReview) }
+        }
+    }
 
     /** Drawn over the app; empty outside the debug review activity. */
     @Composable
@@ -151,9 +158,9 @@ private fun OpenPocketCineApp(model: AppModel) {
     }
 
     LaunchedEffect(Unit) {
-        if (discovery.granted) {
+        if (model.reviewLaunch == null && discovery.granted) {
             beginDiscovery(model, onBluetoothOff = { requestBluetoothOn() })
-        } else if (!discovery.needsSettings) {
+        } else if (model.reviewLaunch == null && !discovery.needsSettings) {
             discovery.request()
         }
     }
@@ -175,11 +182,12 @@ private fun OpenPocketCineApp(model: AppModel) {
         reports = MonitorReportsOffer(AppDiagnostics.consent, AppDiagnostics.reporting, AppDiagnostics.host.product) {
             model.homePanel = AppPanel.PRIVACY
         },
-        reportsAllowed = !showLive && !model.showsMultiview && model.homePanel != AppPanel.PRIVACY,
+        reportsAllowed = model.reviewLaunch == null && !showLive && !model.showsMultiview && model.homePanel != AppPanel.PRIVACY,
+        splash = com.opencapture.opencine.appkit.rememberMonitorLaunchSplash(enabled = model.reviewLaunch == null),
         // Knowing about screen recording only dims the HDR boost.
         onScreenRecording = { model.screenCaptured = it },
     ) {
-        Box(Modifier.fillMaxSize().startupBackdrop()) {
+        Box(Modifier.fillMaxSize().startupBackdrop().reviewMetadata(model.reviewLaunch)) {
             val stage = model.multiview?.takeIf { !showLive }
             // The stage is a page over the shell, which keeps its own state underneath.
             Box(if (stage != null) Modifier.clearAndSetSemantics { } else Modifier) {
