@@ -97,6 +97,8 @@ open class MainActivity : ComponentActivity() {
     /** The activity's root model; the debug review activity scripts its camera port. */
     protected open fun createModel(): AppModel {
         val localReview = MonitorReview.decode(intent)
+        // The staged review seeds its saved cameras before the model reads the store.
+        if (localReview != null) MonitorReview.prepare(applicationContext, localReview)
         return AppModel(applicationContext, discovers = localReview == null, reviewLaunch = localReview).also { model ->
             if (localReview != null) lifecycleScope.launch { MonitorReview.start(applicationContext, model, localReview) }
         }
