@@ -57,13 +57,13 @@ final class AppModel {
                     AppIntegration(
                         integration,
                         slots: IntegrationSlots(
-                            addRoute: { camera, done in
-                                AnyView(AddSetupView(camera: camera, done: done))
-                            },
                             nearbyCard: { [weak session] camera in
                                 Self.nearbyCard(
                                     camera,
                                     verified: session?.found.first { $0.id.uuidString == camera.id }?.model.verified)
+                            },
+                            addSetup: { camera, done in
+                                PocketAddSetup.flow(camera: camera, done: done)
                             }))
                 ] : [],
             store: Self.camerasStore(defaults))

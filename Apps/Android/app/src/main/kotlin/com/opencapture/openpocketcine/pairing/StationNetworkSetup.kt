@@ -1,6 +1,10 @@
 package com.opencapture.openpocketcine.pairing
 
 import com.opencapture.opencine.appkit.DiscoveryPermissions
+import com.opencapture.opencine.appkit.AddSetupChooser
+import com.opencapture.opencine.appkit.AddSetupChooserView
+import com.opencapture.opencine.appkit.AddSetupOption
+import com.opencapture.opencine.core.RouteKind
 import com.opencapture.opencine.core.SavedCamera
 
 import com.opencapture.opencine.dji.CameraConnectionSetup
@@ -96,6 +100,25 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+/** Host copy and supported station routes; scanning, passwords and joining remain in this app. */
+internal fun stationSetupChooser(camera: SavedCamera?): AddSetupChooser {
+    fun detail(setup: CameraConnectionSetup, body: String, tag: String): String =
+        listOfNotNull(camera?.ssid(setup)?.let { "Added · $it" }, body, tag).joinToString("\n")
+    return AddSetupChooser(
+        title = if (camera == null) "How will your cameras connect?" else "How should this camera connect?",
+        detail = camera?.let { "${it.displayName} · ${it.modelName}" }.orEmpty(),
+        options = listOf(
+            AddSetupOption("wifi", RouteKind.INFRASTRUCTURE_NETWORK, CameraConnectionSetup.WIFI.title,
+                detail(CameraConnectionSetup.WIFI, "A router, venue network or another device’s hotspot. Cameras and this phone join the same Wi-Fi.", "Best for studios and several cameras"), "Choose Wi-Fi"),
+            AddSetupOption("phoneHotspot", RouteKind.PHONE_HOTSPOT, CameraConnectionSetup.PHONE_HOTSPOT.title,
+                detail(CameraConnectionSetup.PHONE_HOTSPOT, "This phone’s hotspot. Works anywhere you have mobile data.", "Best on the move"), "Choose hotspot"),
+        ),
+        footer = if (camera == null) "Choose the shared network before adding cameras. Saved passwords stay on this phone."
+            else "Camera Wi-Fi stays available. Switch setups from the camera’s chips at any time.",
+        identifierPrefix = "stationSetup",
+    )
+}
 
 /** iOS `StationNetworkSetupView.Page`; an empty path is the choose page. */
 private sealed interface SetupPage {
@@ -318,86 +341,14 @@ fun StationNetworkSetup(
     // --- Choose ---
 
     @Composable
-    fun choice(setup: CameraConnectionSetup, icon: MonitorIcon, body: String, tag: String, modifier: Modifier) {
-        val tile: @Composable () -> Unit = {
-            Box(Modifier.size(44.dp).background(MonitorPalette.accent.copy(alpha = .14f), RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center) {
-                MonitorIcon(icon, null, Modifier.size(22.dp), MonitorPalette.accent)
-            }
-        }
-        val text: @Composable (Modifier) -> Unit = { textModifier ->
-            Column(textModifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(setup.title, style = setupFont(17f, FontWeight.SemiBold))
-                    camera?.ssid(setup)?.let {
-                        Text("Added · $it", color = good, style = setupFont(10.5f, FontWeight.SemiBold),
-                            maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-                Text(body, color = MonitorPalette.muted, style = setupFont(12.5f))
-                if (landscape) Spacer(Modifier.weight(1f))
-                Text(tag, color = MonitorPalette.secondary, style = setupFont(10.5f, FontWeight.SemiBold),
-                    modifier = Modifier.padding(top = 4.dp).background(MonitorPalette.tile, RoundedCornerShape(6.dp))
-                        .padding(horizontal = 9.dp, vertical = 5.dp))
-            }
-        }
-        val card = modifier.setupCard().setupClickable(!working) {
-            open(if (setup == CameraConnectionSetup.WIFI) SetupPage.Networks else SetupPage.Hotspot)
-        }.padding(16.dp).testTag("stationSetup.${setup.raw}")
-        if (landscape) {
-            Column(card, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                tile()
-                text(Modifier.weight(1f))
-            }
-        } else {
-            Row(card.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                tile()
-                text(Modifier.weight(1f))
-                MonitorIcon(MonitorIcon.CHEVRON_RIGHT, null, Modifier.align(Alignment.CenterVertically).size(18.dp), MonitorPalette.faint)
-            }
-        }
-    }
-
-    @Composable
     fun choosePage() {
-        val question = if (camera == null) "How will your cameras connect?" else "How should this camera connect?"
-        Column(verticalArrangement = Arrangement.spacedBy(if (landscape) 12.dp else 14.dp)) {
-            if (landscape) {
-                Row {
-                    Text(question, Modifier.weight(1f).alignByBaseline(), style = setupFont(18f, FontWeight.SemiBold))
-                    camera?.let {
-                        Text(it.modelName, Modifier.alignByBaseline(), color = MonitorPalette.muted, style = setupFont(11.5f))
-                    }
-                }
-            } else {
-                camera?.let {
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        MonitorIcon(MonitorIcon.CAMERA, null, Modifier.size(16.dp), MonitorPalette.muted)
-                        Text("${it.displayName} · ${it.modelName}", color = MonitorPalette.muted, style = setupFont(12.5f))
-                    }
-                }
-                Text(question, style = setupFont(22f, FontWeight.SemiBold))
-            }
-            val wifiBody = "A router, venue network or another device’s hotspot. Cameras and this phone join the same Wi-Fi."
-            val hotspotBody = "This phone’s hotspot. Works anywhere you have mobile data."
-            if (landscape) {
-                // Equal-height tiles side by side.
-                Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    choice(CameraConnectionSetup.WIFI, MonitorIcon.WIFI, wifiBody, "Best for studios and several cameras",
-                        Modifier.weight(1f).fillMaxHeight())
-                    choice(CameraConnectionSetup.PHONE_HOTSPOT, MonitorIcon.RADIO, hotspotBody, "Best on the move",
-                        Modifier.weight(1f).fillMaxHeight())
-                }
-            } else {
-                choice(CameraConnectionSetup.WIFI, MonitorIcon.WIFI, wifiBody, "Best for studios and several cameras", Modifier)
-                choice(CameraConnectionSetup.PHONE_HOTSPOT, MonitorIcon.RADIO, hotspotBody, "Best on the move", Modifier)
-            }
-            Text(
-                if (camera == null) "Choose the shared network before adding cameras. Saved passwords stay on this phone."
-                else "Camera Wi-Fi stays available. Switch setups from the camera’s chips at any time.",
-                color = MonitorPalette.muted, style = setupFont(if (landscape) 11.5f else 12f),
-            )
-        }
+        AddSetupChooserView(
+            chooser = stationSetupChooser(camera).let { chooser ->
+                chooser.copy(options = chooser.options.map { it.copy(enabled = !working) })
+            },
+            onSelect = { open(if (it.kind == RouteKind.INFRASTRUCTURE_NETWORK) SetupPage.Networks else SetupPage.Hotspot) },
+            horizontal = landscape,
+        )
     }
 
     // --- Wi-Fi ---

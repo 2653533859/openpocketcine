@@ -9,12 +9,16 @@ incomplete.
 
 Both shells use OpenCine's cameras model and camera/pair pages. Nearby selection
 requires Continue; connection cards and the pair rail show the integration's
-reported progress, approval prompt, failure and recovery actions. The station
-wizard remains an app slot, and Multiview keeps its existing entry. Android
+reported progress, approval prompt, failure and recovery actions. Add setup uses
+the shared typed capability chooser; the station-network scan, password and
+hotspot steps remain app destinations, and Multiview keeps its existing entry. Android
 retains its current appearance; the optional iOS-style switch is unchanged.
 Forgetting a camera now removes its Android Wi-Fi credentials too, matching iOS.
 Saved IDs and media favorites stay unchanged; the new document mirrors legacy
 records and merges edits made by an older build after a downgrade.
+The same chooser also renders the station wizard's choice page. Existing failed Wi-Fi setups
+reopen their password step and failed hotspot setups reopen their hotspot step. Unsupported or
+removed routes cannot preselect a destination; secure credential storage remains app-owned.
 
 Android credential reads, migration, writes and explicit Forget run away from
 Main. One cooperative transaction gate on the session's existing credential cache

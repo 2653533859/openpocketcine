@@ -34,6 +34,8 @@ import androidx.compose.ui.unit.sp
 import com.opencapture.monitorui.MonitorIcon
 import com.opencapture.monitorui.MonitorPalette
 import com.opencapture.monitorui.MonitorTypography
+import com.opencapture.opencine.appkit.AddSetupFlow
+import com.opencapture.opencine.appkit.AddSetupFlowView
 import com.opencapture.opencine.core.ConnectTarget
 import com.opencapture.opencine.core.RouteDraft
 import com.opencapture.opencine.core.RouteKind
@@ -147,28 +149,41 @@ fun PairingCallouts(model: AppModel, discovery: PermissionGate, onEnableBluetoot
  */
 @Composable
 fun AddSetupSlot(model: AppModel, camera: SavedCamera, done: (RouteDraft?) -> Unit) {
+    AddSetupFlowView(addSetupFlow(model, camera, done))
+}
+
+/** Typed shared choice, followed by the app's existing scan/password/hotspot destination. */
+@Composable
+internal fun addSetupFlow(model: AppModel, camera: SavedCamera, done: (RouteDraft?) -> Unit): AddSetupFlow {
     val context = LocalContext.current
     val wifi = remember { SharedWiFi(context) }
     val failed = (model.cameras.state.collectAsState().value.failures[camera.id]?.target as? ConnectTarget.Saved)
         ?.let { target -> camera.routes.firstOrNull { it.id == target.route }?.kind }
-    StationNetworkSetup(
-        savedNetworks = model.savedNetworks(),
-        currentSsid = wifi::currentSsid,
-        hotspotActive = { wifi.address(true) != null },
-        scan = model.networkScan(camera),
-        connect = { network ->
-            done(RouteDraft(if (network.hotspot) RouteKind.PHONE_HOTSPOT else RouteKind.INFRASTRUCTURE_NETWORK, network.ssid, network.password))
-            null
+    return AddSetupFlow(
+        chooser = stationSetupChooser(camera),
+        onSelect = {},
+        destination = { option ->
+            StationNetworkSetup(
+                savedNetworks = model.savedNetworks(),
+                currentSsid = wifi::currentSsid,
+                hotspotActive = { wifi.address(true) != null },
+                scan = model.networkScan(camera),
+                connect = { network ->
+                    done(RouteDraft(if (network.hotspot) RouteKind.PHONE_HOTSPOT else RouteKind.INFRASTRUCTURE_NETWORK, network.ssid, network.password))
+                    null
+                },
+                cancel = { done(null) }, complete = { done(null) }, camera = camera,
+                startPage = if (option.kind == RouteKind.PHONE_HOTSPOT) "hotspot"
+                    else if (failed == RouteKind.INFRASTRUCTURE_NETWORK) "password" else "networks",
+                startNetwork = camera.wifiSSID.orEmpty(),
+            )
         },
-        cancel = { done(null) },
-        complete = { done(null) },
-        camera = camera,
-        startPage = when (failed) {
-            RouteKind.PHONE_HOTSPOT -> "hotspot"
-            RouteKind.INFRASTRUCTURE_NETWORK -> "password"
-            else -> "choose"
+        initialSelection = when (failed) {
+            RouteKind.PHONE_HOTSPOT -> "phoneHotspot"
+            RouteKind.INFRASTRUCTURE_NETWORK -> "wifi"
+            else -> null
         },
-        startNetwork = camera.wifiSSID.orEmpty(),
+        onCancel = { done(null) },
     )
 }
 
