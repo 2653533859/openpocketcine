@@ -223,6 +223,9 @@ class AppModel(
     override var operatorSettingsTab: MonitorSettingsTab
         get() = operatorSession.settingsTab
         set(value) { operatorSession.settingsTab = value }
+    override val operatorSettingsScrollOffsets: Map<MonitorSettingsTab, Int> get() = operatorSession.settingsScrollOffsets
+    override fun noteOperatorSettingsScroll(tab: MonitorSettingsTab, offset: Int): Unit =
+        operatorSession.noteSettingsScroll(tab, offset)
     var chromeEditorMode: MonitorDisplayMode?
         get() = operatorSession.editingMode
         set(value) { operatorSession.editingMode = value }
