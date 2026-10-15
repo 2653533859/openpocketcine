@@ -1,8 +1,7 @@
 package com.opencapture.openpocketcine
 
-import com.opencapture.opencine.core.CameraTimecode
-
 import com.opencapture.opencine.cameracontrols.*
+import com.opencapture.opencine.core.CameraTimecode
 import com.opencapture.opencine.appkit.ShellModel
 import com.opencapture.monitorui.portraitZones
 import com.opencapture.monitorui.portraitOnFeedControls

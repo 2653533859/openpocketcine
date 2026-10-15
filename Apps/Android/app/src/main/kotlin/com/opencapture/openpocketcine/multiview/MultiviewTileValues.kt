@@ -14,6 +14,10 @@ import com.opencapture.opencine.cameracontrols.cameraPowerReading
 import com.opencapture.opencine.cameracontrols.cameraBatteryReadoutLabel
 import com.opencapture.opencine.vocabulary.CameraCommands
 import com.opencapture.opencine.vocabulary.CameraStatus
+import com.opencapture.opencine.vocabulary.StorageReadout
+import com.opencapture.opencine.vocabulary.storageReadout
+import com.opencapture.opencine.media.storageReadout
+import com.opencapture.opencine.core.StorageStatus
 import com.opencapture.opencine.vocabulary.VideoResolution
 
 /** Display values come from the existing throttled tile status; no telemetry polling. */
@@ -38,12 +42,11 @@ internal fun multiviewTileReadouts(
     recovering: Boolean, hasPicture: Boolean, failure: String?, recordingNote: String? = null,
     colorFamily: String = "pocket",
     power: PowerStatus? = null,
+    storage: StorageStatus? = null,
 ): MultiviewTileReadouts {
     val reportedPower = power ?: PowerStatus(battery = settings.batteryPercent.takeIf { it in 0..100 }?.let {
         ObservedValue(it / 100.0, ObservationOrigin.CAMERA_REPORTED, null, precision = ObservationPrecision.Quantized(0.01))
     } ?: ObservedValue.unknown)
-    val total = if (settings.sdTotalMb > 0) settings.sdTotalMb else settings.storageTotalMb
-    val free = if (settings.sdTotalMb > 0) settings.sdFreeMb else settings.storageFreeMb
     val elapsed = settings.recordElapsedSec.coerceAtLeast(0)
     val recording = when {
         recordingBusy -> "WAIT"
@@ -62,7 +65,7 @@ internal fun multiviewTileReadouts(
         battery = cameraBatteryReadoutLabel(reportedPower.batteryReading) ?: "\u2014",
         batteryPercent = settings.batteryPercent,
         charging = settings.charging,
-        storage = if (total > 0 && free >= 0) "${free / 1024} GB" else "—",
+        storage = (if (storage != null) storage.storageReadout else settings.storageReadout)?.free ?: StorageReadout.UNAVAILABLE,
         recording = recording, isRecording = recordingObservation == true,
         format = "$resolution · $fps · $color",
         recovery = when {
@@ -109,7 +112,7 @@ internal fun MultiviewSession.stageTile(index: Int): MultiviewTile? {
         index, camera.name, camera.model.name, tile.settings, tile.timecodeReadout,
         tile.recordingObservation?.first, tile.recordingAvailable,
         tile.recordingBusy, tile.recovering, tile.hasPicture, tile.failureMessage, tile.recordingNote,
-        colorFamily = camera.model.family, power = power,
+        colorFamily = camera.model.family, power = power, storage = tile.control.snapshots.value.storage,
     )
     val settled = !busy && !tile.connecting && !tile.recovering
     val experimental = tile.failureMessage != null && !tile.experimentalNetwork && tile.identity == null

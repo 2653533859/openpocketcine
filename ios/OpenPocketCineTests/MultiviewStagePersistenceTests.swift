@@ -1,11 +1,42 @@
 import Foundation
+import OpenCineAppKit
+import OpenCineDJIApple
 import OpenPocketViewCore
 import XCTest
-import OpenCineDJIApple
 
 @testable import OpenPocketCine
 
 final class MultiviewStagePersistenceTests: XCTestCase {
+    @MainActor func testCommonPresentationSurvivesRelaunchWithoutRestoringNetworkOrCameraSlots()
+        throws
+    {
+        let domain = "SIMULATED-multiview-\(UUID().uuidString)"
+        let storage = try XCTUnwrap(UserDefaults(suiteName: domain))
+        defer { storage.removePersistentDomain(forName: domain) }
+        let store = MultiviewStagePreferencesStore(storage: storage, key: "presentation")
+        let legacy = MultiviewStageStore.Stage(
+            ssid: "Previous network", hotspot: true, layout: MultiviewLayout.grid.rawValue,
+            focusedIndex: 2, cameras: [], pendingReset: [], returnedToCameraWiFi: true, fill: true)
+        let first = MultiviewSession(saveStage: { _ in true })
+        first.presentation.attachPersistence(load: store.load, save: store.save)
+        first.restoreStage(legacy)
+        first.presentation.clean = true
+        first.presentation.toolsExpanded = true
+        first.layout = .centerStage
+        let restored = MultiviewSession(saveStage: { _ in true })
+        restored.presentation.attachPersistence(load: store.load, save: store.save)
+        restored.restoreStage(legacy)
+        XCTAssertEqual(restored.presentation.preferences, first.presentation.preferences)
+        XCTAssertEqual(
+            restored.layout, .centerStage,
+            "The old journal cannot overwrite newer common preferences")
+        XCTAssertEqual(restored.focusedIndex, 2)
+        XCTAssertEqual(restored.feedAspect, .fill)
+        XCTAssertFalse(restored.networkConfigured)
+        XCTAssertTrue(restored.tiles.allSatisfy { $0.camera == nil })
+        XCTAssertEqual(restored.password, "")
+    }
+
     @MainActor func testSavedHotspotStageCannotSkipSessionNetworkChoiceOrRestoreCameraLocks() {
         let camera = MultiviewStageStore.Camera(
             slot: 0, id: UUID(), name: "OsmoPocket3-Test", modelId: 0x20,

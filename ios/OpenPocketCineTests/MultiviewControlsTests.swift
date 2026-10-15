@@ -1,3 +1,4 @@
+import OpenCineCore
 import CoreVideo
 import OpenCineApple
 import OpenPocketViewCore
@@ -168,7 +169,8 @@ import OpenCineDJIApple
         XCTAssertTrue(session.tiles[1].lutEnabled)
         XCTAssertEqual(tile.timecodeReadout, "14:32:08")
         XCTAssertEqual(
-            tile.settings.timecodeValue, CameraTimecode(hours: 14, minutes: 32, seconds: 8, frames: 12),
+            tile.settings.timecodeValue,
+            CameraTimecode(hours: 14, minutes: 32, seconds: 8, frames: 12),
             "Protocol telemetry retains frame data")
     }
 

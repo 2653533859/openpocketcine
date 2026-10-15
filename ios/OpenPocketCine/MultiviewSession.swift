@@ -2,13 +2,13 @@ import Foundation
 import MonitorPresentation
 import Observation
 import OpenCineAppKit
+import OpenCineApple
 import OpenCineCore
+import OpenCineDJIApple
+import OpenCineMedia
 import OpenCineMulticam
 import OpenPocketViewCore
 import UIKit
-import OpenCineDJIApple
-import OpenCineApple
-import OpenCineMedia
 
 @MainActor @Observable
 final class MultiviewSession {
@@ -337,9 +337,19 @@ final class MultiviewSession {
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
     var host = ""
     var error: String?
-    var layout: MultiviewLayout = .centerStage
-    var feedAspect: PortraitFeedAspect = .fit16x9
-    var focusedIndex = 0
+    let presentation = MultiviewStageState(slotCount: MultiviewQualificationPolicy.tileCount)
+    var layout: MultiviewLayout {
+        get { presentation.layout == .grid ? .grid : .centerStage }
+        set { presentation.layout = newValue == .grid ? .grid : .centerStage }
+    }
+    var feedAspect: PortraitFeedAspect {
+        get { presentation.fill ? .fill : .fit16x9 }
+        set { presentation.fill = newValue == .fill }
+    }
+    var focusedIndex: Int {
+        get { presentation.selected }
+        set { presentation.selected = newValue }
+    }
     var closing = false
     var connectingCameras: Bool { tiles.contains { $0.connecting } }
     private var provisioners: [UUID: MultiviewProvisioner] = [:]
@@ -1190,9 +1200,10 @@ final class MultiviewSession {
                 pendingReset, including: stage.cameras)
         }
         cleanupJournalWritten = !pendingReset.isEmpty
-        layout = MultiviewLayout(rawValue: stage.layout) ?? .centerStage
-        feedAspect = stage.fill == true ? .fill : .fit16x9
-        focusedIndex = stage.focusedIndex
+        presentation.importLegacy(
+            .init(
+                layout: MultiviewLayout(rawValue: stage.layout) == .grid ? .grid : .centerStage,
+                selected: stage.focusedIndex, fill: stage.fill == true))
         // Migrate unfinished camera cleanup before a new camera is added.
         // With no cleanup, retain the last preferences even if setup is cancelled.
         if cleanupJournalWritten { persistStage() }

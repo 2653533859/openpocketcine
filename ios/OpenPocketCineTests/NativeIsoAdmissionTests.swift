@@ -21,9 +21,13 @@ final class NativeIsoAdmissionTests: XCTestCase {
         value[7] = ExpoMode.manual.rawValue
         value[16] = 0x20
         value[17] = 0x03
-        session.applyIncomingStatus(Duml.Frame(sender: 0, receiver: 0, seq: 0, flags: 0,
-            cmdSet: 0, cmdId: 0x99, payload: SubscribePush.pack(name: "cam_expo_param", value: value)))
-        XCTAssertEqual(session.status.isoIndex, .iso400,
+        session.applyIncomingStatus(
+            Duml.Frame(
+                sender: 0, receiver: 0, seq: 0, flags: 0,
+                cmdSet: 0, cmdId: 0x99,
+                payload: SubscribePush.pack(name: "cam_expo_param", value: value)))
+        XCTAssertEqual(
+            session.status.isoIndex, .iso400,
             "A declared hop retains its bounded pin until its requested native ISO is reported")
     }
 
@@ -41,9 +45,13 @@ final class NativeIsoAdmissionTests: XCTestCase {
         value[7] = ExpoMode.manual.rawValue
         value[16] = 0x20
         value[17] = 0x03
-        session.applyIncomingStatus(Duml.Frame(sender: 0, receiver: 0, seq: 0, flags: 0,
-            cmdSet: 0, cmdId: 0x99, payload: SubscribePush.pack(name: "cam_expo_param", value: value)))
-        XCTAssertEqual(session.status.isoIndex, .iso800,
+        session.applyIncomingStatus(
+            Duml.Frame(
+                sender: 0, receiver: 0, seq: 0, flags: 0,
+                cmdSet: 0, cmdId: 0x99,
+                payload: SubscribePush.pack(name: "cam_expo_param", value: value)))
+        XCTAssertEqual(
+            session.status.isoIndex, .iso800,
             "The saved preference cannot invent a native ISO request that hides actual telemetry")
         XCTAssertEqual(session.status.iso, 800)
     }
@@ -75,7 +83,9 @@ final class NativeIsoAdmissionTests: XCTestCase {
         XCTAssertNil(session.status.isoLimit)
     }
 
-    private func fixture(nativeISO: CaptureNativeISOCapabilities = .init()) -> OpenPocketCine.CameraSession {
+    private func fixture(nativeISO: CaptureNativeISOCapabilities = .init())
+        -> OpenPocketCine.CameraSession
+    {
         let session = OpenPocketCine.CameraSession(borrowing: HevcDecoder())
         var status = CameraStatus()
         status.shootingMode = 1
@@ -88,8 +98,10 @@ final class NativeIsoAdmissionTests: XCTestCase {
         var profile = body.captureProfile ?? CameraCaptureProfile()
         profile.nativeISO = nativeISO
         body.captureProfile = profile
-        session.updateMultiview(camera: DjiAppleSighting(id: UUID(), name: "SIMULATED",
-            model: body, modelId: 0x22),
+        session.updateMultiview(
+            camera: DjiAppleSighting(
+                id: UUID(), name: "SIMULATED",
+                model: body, modelId: 0x22),
             driver: DjiAppleDatalink(port: 9004, tcpPoke: false, pairingToken: ""), status: status)
         return session
     }

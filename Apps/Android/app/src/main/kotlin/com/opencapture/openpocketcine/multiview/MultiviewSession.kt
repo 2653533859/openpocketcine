@@ -1,5 +1,6 @@
 package com.opencapture.openpocketcine.multiview
 
+import com.opencapture.opencine.multicam.RecordAll
 import com.opencapture.opencine.dji.applyAttitude
 import com.opencapture.opencine.dji.fromJson
 import com.opencapture.opencine.dji.toJson
@@ -26,6 +27,9 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.opencapture.monitorui.MonitorTimecodeFormat
+import com.opencapture.opencine.appkit.MultiviewStageState
+import com.opencapture.opencine.appkit.MultiviewStageLayout
+import com.opencapture.opencine.appkit.MultiviewStagePreferences
 import com.opencapture.monitorui.MultiviewArrangement
 import com.opencapture.opencine.appkit.label
 import com.opencapture.opencine.core.MonitorEntryID
@@ -40,7 +44,9 @@ import com.opencapture.opencine.multicam.ResourceRequest
 import com.opencapture.openpocketcine.AppModel
 import com.opencapture.openpocketcine.diagnostics.DiagnosticCenter
 import com.opencapture.opencine.media.FeedEffectsRenderPlan
-import com.opencapture.openpocketcine.feed.FeedEffectsRenderPlanFactory
+import com.opencapture.opencine.cameracontrols.MonitorFeedEffectsPlans
+import com.opencapture.openpocketcine.bridge.SwiftCore
+import com.opencapture.opencine.dji.DjiCameraLUTProfile
 import com.opencapture.opencine.dji.BleLink
 import com.opencapture.opencine.dji.DatalinkDriver
 import com.opencapture.opencine.dji.DjiCameraSessionAdapter
@@ -69,7 +75,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
-import org.json.JSONObject
 import kotlin.time.Duration.Companion.seconds
 import com.opencapture.opencine.runtime.InspectorPreviewPipeline
 import com.opencapture.opencine.runtime.ScopeSampleBus
@@ -231,6 +236,7 @@ class MultiviewSession(
         var poseViewFlip by mutableStateOf(false)
         var latestSettings = CameraStatus()
         private var settingsPublishedAt = 0L
+        internal val feedEffectsPlans = MonitorFeedEffectsPlans(SwiftCore)
         var lutEnabled by mutableStateOf(true)
         internal var plan by mutableStateOf(FeedEffectsRenderPlan.IDENTITY)
         /** Camera settings' preview owner; the tile's existing present tap feeds it while set. */
@@ -288,8 +294,8 @@ class MultiviewSession(
 
         fun updateLUT() {
             val cam = camera
-            val result = FeedEffectsRenderPlanFactory.multiviewAutoLut(
-                app, lutEnabled, settings.colorMode, cam?.model?.family ?: "pocket", cam?.model?.name,
+            val result = feedEffectsPlans.multiviewAutoLut(
+                app, lutEnabled, settings.colorMode, DjiCameraLUTProfile.make(cam?.model?.family ?: "pocket", cam?.model?.name),
             )
             plan = result.first
             lutCaption = result.second
@@ -413,9 +419,16 @@ class MultiviewSession(
     private var foregroundAt = 0L
     var host by mutableStateOf("")
     var error by mutableStateOf<String?>(null)
-    var layout by mutableStateOf(MultiviewLayout.CENTER_STAGE)
-    var fill by mutableStateOf(false)
-    var focusedIndex by mutableStateOf(0)
+    val presentation = MultiviewStageState(MultiviewQualificationPolicy.tileCount)
+    var layout: MultiviewLayout
+        get() = MultiviewLayout.from(presentation.layout.rawValue)
+        set(value) { presentation.layout = if (value == MultiviewLayout.GRID) MultiviewStageLayout.GRID else MultiviewStageLayout.CENTER_STAGE }
+    var fill: Boolean
+        get() = presentation.fill
+        set(value) { presentation.fill = value }
+    var focusedIndex: Int
+        get() = presentation.selected
+        set(value) { presentation.selected = value }
     var closing by mutableStateOf(false)
     val connectingCameras: Boolean get() = tiles.any { it.connecting }
     val path = SharedWiFi(app)
@@ -580,7 +593,7 @@ class MultiviewSession(
         stop()
         path.release()
         scanner.close()
-        tiles.forEach { it.inspectorPreview.close(); it.recovery.close() }
+        tiles.forEach { it.feedEffectsPlans.close(); it.inspectorPreview.close(); it.recovery.close() }
         scope.cancel()
     }
 
@@ -1196,26 +1209,26 @@ class MultiviewSession(
         val start = plan.direction == RecordDirection.START
         if (together) {
             groupRecordingBusy = true
-            groupRecordingNote = if (start) "Starting cameras…" else "Stopping cameras…"
+            groupRecordingNote = RecordAll.progress(plan.direction)
         }
         try {
             for (tile in recordingTiles) {
-                if (plan.targets.any { tile.entryId in it.entries }) tile.recordingNote = "Waiting for camera confirmation"
+                if (plan.targets.any { tile.entryId in it.entries }) tile.recordingNote = RecordAll.WAITING
             }
             val result = multicam().submit(plan)
             if (result == null) {
                 // Stale: a camera, link or mode changed after the operator approved.
-                if (together) groupRecordingNote = "Cameras changed · try again"
+                if (together) groupRecordingNote = RecordAll.CHANGED
                 return
             }
             val group = multicam().group
             for (tile in tiles) {
                 val outcome = result.outcome(tile.entryId, group) ?: continue
-                recordingNote(outcome, start)?.let { tile.recordingNote = it }
+                RecordAll.note(outcome, plan.direction)?.let { tile.recordingNote = it }
             }
             if (together) {
                 val allMatch = recordingTiles.all { it.recordingAvailable && it.recordingObservation?.first == start }
-                groupRecordingNote = groupRecordingNote(result, allMatch)
+                groupRecordingNote = RecordAll.summary(result, allMatch)
             }
         } finally {
             if (together) groupRecordingBusy = false
@@ -1281,9 +1294,10 @@ class MultiviewSession(
             pendingReset = MultiviewStageStore.cleanupTargets(pendingReset, stage.cameras)
         }
         cleanupJournalWritten = pendingReset.isNotEmpty()
-        layout = MultiviewLayout.from(stage.layout)
-        fill = stage.fill == true
-        focusedIndex = stage.focusedIndex
+        presentation.importLegacy(MultiviewStagePreferences(
+            layout = if (MultiviewLayout.from(stage.layout) == MultiviewLayout.GRID) MultiviewStageLayout.GRID else MultiviewStageLayout.CENTER_STAGE,
+            selected = stage.focusedIndex, fill = stage.fill == true,
+        ))
         // Migrate unfinished camera cleanup before a new camera is added.
         if (cleanupJournalWritten) persistStage()
     }

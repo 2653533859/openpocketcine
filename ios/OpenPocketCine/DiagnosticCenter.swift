@@ -2,6 +2,7 @@ import Foundation
 import MetricKit
 import class OpenCineCore.LocalVPNNotice
 import enum OpenCineCore.LocalVPNProbe
+import OpenCineAppKit
 import OpenPocketViewCore
 import SwiftUI
 import UIKit
@@ -176,8 +177,21 @@ final class DiagnosticCenter: NSObject, MXMetricManagerSubscriber {
             isSafeNetwork: DJICameraNetwork.isAccessPoint)
     }
 
+    /// What writing the diagnostics report did.
+    enum ReportWrite: Equatable {
+        case written(URL)
+        /// The report could not be written; the message reaches the operator.
+        case failed(String)
+    }
+
     @MainActor
     func writeReport(session: CameraSession) -> URL? {
+        if case .written(let url) = writeReportFile(session: session) { return url }
+        return nil
+    }
+
+    @MainActor
+    func writeReportFile(session: CameraSession) -> ReportWrite {
         let env = environment(session: session)
         let journal = ControlLiveLog.recentLines()
         let exceptions = Self.readLines(Self.exceptionsURL)
@@ -185,25 +199,39 @@ final class DiagnosticCenter: NSObject, MXMetricManagerSubscriber {
         let body = DiagnosticReport.fullReport(
             environment: env, journal: journal, exceptions: exceptions, extras: extras,
             isSafeNetwork: DJICameraNetwork.isAccessPoint)
-        guard let dir = Self.diagnosticsDirectory else { return nil }
+        guard let dir = Self.diagnosticsDirectory else {
+            return .failed("No diagnostics storage is available on this iPhone.")
+        }
         let name = "report.txt"
         let url = dir.appendingPathComponent(name)
         do {
             try body.write(to: url, atomically: true, encoding: .utf8)
         } catch {
-            return nil
+            return .failed("The report could not be written: \(error.localizedDescription)")
         }
         event(
             level: .notice, category: .diagnostics, code: "report",
             message: "wrote diagnostic report")
-        return url
+        return .written(url)
     }
 
     /// Compact paste plus `report.txt` for the system share sheet.
     @MainActor
-    func beginShare(session: CameraSession) -> URL? {
+    /// What sharing the diagnostics bundle did (A2-64): the report's item, or why it
+    /// could not be written, which the app shows instead of failing silently.
+    enum ShareOutcome: Equatable {
+        case ready(MonitorDiagnosticsShareItem)
+        case failed(String)
+    }
+
+    /// Compact paste plus `report.txt` for the system share sheet.
+    @MainActor
+    func beginShare(session: CameraSession) -> ShareOutcome {
         copyCompactSummaryForTestFlight(session: session)
-        return writeReport(session: session)
+        switch writeReportFile(session: session) {
+        case .written(let url): return .ready(MonitorDiagnosticsShareItem(url: url))
+        case .failed(let message): return .failed(message)
+        }
     }
 
     @MainActor
@@ -379,21 +407,6 @@ enum AppModelDiagnosticsAnchor {
     @MainActor static var session: CameraSession {
         model?.session ?? CameraSession()
     }
-}
-
-struct DiagnosticSharePayload: Identifiable {
-    let id = UUID()
-    let url: URL
-}
-
-struct DiagnosticActivityShareView: UIViewControllerRepresentable {
-    let items: [Any]
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
 
 private var opcPreviousUncaught: NSUncaughtExceptionHandler?

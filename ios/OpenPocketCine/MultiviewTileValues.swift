@@ -2,6 +2,7 @@ import MonitorUI
 import OpenCineAppKit
 import OpenCineCore
 import OpenCineCameraControls
+import OpenCineMedia
 import OpenCineMulticam
 import OpenPocketViewCore
 import SwiftUI
@@ -11,14 +12,16 @@ import SwiftUI
 struct MultiviewTelemetryPresentation {
     let settings: CameraStatus
     private let power: PowerStatus
+    let storageObservation: StorageStatus?
 
-    init(settings: CameraStatus) {
+    init(settings: CameraStatus, storageObservation: StorageStatus? = nil) {
         self.init(settings: settings, power: PowerStatus(battery: (0...100).contains(settings.batteryPercent)
-            ? .init(Double(settings.batteryPercent) / 100, origin: .cameraReported, at: nil, precision: .quantized(step: 0.01)) : .unknown))
+            ? .init(Double(settings.batteryPercent) / 100, origin: .cameraReported, at: nil, precision: .quantized(step: 0.01)) : .unknown),
+            storageObservation: storageObservation)
     }
 
-    init(settings: CameraStatus, power: PowerStatus) {
-        self.settings = settings; self.power = power
+    init(settings: CameraStatus, power: PowerStatus, storageObservation: StorageStatus? = nil) {
+        self.settings = settings; self.power = power; self.storageObservation = storageObservation
     }
 
     var iso: String { settings.iso > 0 ? "\(settings.iso)" : "—" }
@@ -37,8 +40,8 @@ struct MultiviewTelemetryPresentation {
         MonitorOperatorPowerReading.readoutLabel(power.batteryReading) ?? "\u{2014}"
     }
     var storage: String {
-        guard settings.storageTotalMb > 0, settings.storageFreeMb >= 0 else { return "—" }
-        return String(format: "%.0f GB", Double(settings.storageFreeMb) / 1024)
+        let readout = storageObservation.map { $0.storageReadout } ?? settings.storageReadout
+        return readout?.free ?? StorageReadout.unavailable
     }
     var format: String {
         let resolution = settings.videoResolution?.label ?? "—"
@@ -87,7 +90,8 @@ extension MultiviewSession {
         guard let camera = tile.camera else { return nil }
         let power = tile.control.current.power
         let battery = MonitorOperatorPowerReading.camera(power)
-        let values = MultiviewTelemetryPresentation(settings: tile.settings, power: power)
+        let values = MultiviewTelemetryPresentation(
+            settings: tile.settings, power: power, storageObservation: tile.control.current.storage)
         let preview = camera.hasMultiviewPreview
         let settled = !busy && !tile.connecting && !tile.recovering
         var actions = [

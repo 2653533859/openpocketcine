@@ -130,6 +130,8 @@ android {
     }
 
     sourceSets {
+        getByName("androidTest").kotlin.srcDir(
+            gradle.includedBuild("opencine").projectDir.resolve("appkit-native/src/cacheOwnerProof/kotlin"))
         getByName("main").jniLibs.directories.apply {
             clear()
             add(swiftCoreJniLibsRoot.get().asFile.absolutePath)
@@ -264,17 +266,21 @@ tasks.matching { it.name == "bundleRelease" }.configureEach {
 }
 
 dependencies {
+    debugImplementation("com.opencapture.opencine:platform:0.1.0-SNAPSHOT")
     implementation(libs.opencine.monitor.ui)
     // Cameras and pairing pages, the connection model and the saved-camera store (SHELL-02).
     implementation(libs.opencine.appkit)
     // Capture sheets, live chrome and gimbal views over the camera vocabulary (camera-controls).
     implementation("com.opencapture.opencine:camera-controls:0.1.0-SNAPSHOT")
+    implementation("com.opencapture.opencine:appkit-native:0.1.0-SNAPSHOT")
     implementation("com.opencapture.opencine:core:0.1.0-SNAPSHOT")
     implementation("com.opencapture.opencine:media:0.1.0-SNAPSHOT")
     // Live-view MediaCodec decoder (HevcDecoder), shared with OpenInstaCine.
     implementation("com.opencapture.opencine:decoder:0.1.0-SNAPSHOT")
-    // Native source/publication/inspector and GLES/Vulkan owners; app supplies Media3 adapter.
+    // Native source/publication/inspector and GLES/Vulkan owners.
     implementation("com.opencapture.opencine:native-runtime:0.1.0-SNAPSHOT")
+    // Shared Media3 player recipe, port, audio meter tap and playback owner.
+    implementation("com.opencapture.opencine:media3:0.1.0-SNAPSHOT")
     // DJI BLE link, datalink, wire models, gimbal programs and the CameraSession adapter, with the
     // DjiNative JNI facade this app's Swift library implements.
     implementation("com.opencapture.opencine:dji:0.1.0-SNAPSHOT")
@@ -305,6 +311,7 @@ dependencies {
     androidTestImplementation("androidx.test:core:1.7.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation(libs.kotlin.test.junit)
+    androidTestImplementation("com.opencapture.opencine:app-ui-testing:0.1.0-SNAPSHOT")
     androidTestImplementation(testFixtures("com.opencapture.opencine:core:0.1.0-SNAPSHOT"))
 
     testImplementation(libs.kotlin.test.junit)
