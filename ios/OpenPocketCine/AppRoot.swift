@@ -456,15 +456,15 @@ final class AppModel {
     @ObservationIgnored lazy var internetHop = MonitorInternetHop<PocketHopRoute>(
         port: .init(
             onCameraNetwork: { DjiAppleWiFiJoiner.isCameraPathReady() },
-            leave: { route, _ in
-                if let ssid = route.ssid { DjiAppleWiFiJoiner.leave(ssid: ssid) }
+            leave: { route, current in
+                if let ssid = route.ssid { route.session.leaveCameraNetwork(ssid: ssid, isCurrent: current) }
                 return route
             },
             admitsReturn: { [weak self] route in
                 guard let self else { return false }
                 return self.session === route.session && route.session.control.id == route.sessionID
             },
-            rejoin: { route, _ in await route.session.rejoinSoftAPAfterInternetHop() }))
+            rejoin: { route, current in await route.session.rejoinSoftAPAfterInternetHop(isCurrent: current) }))
 
     var isOnCameraAccessPoint: Bool { internetHop.onCameraNetwork }
 
