@@ -106,7 +106,7 @@ final class OperatorFacingCopyTests: XCTestCase {
             MonitorSettingsCopy.gimbalJoystick,
             MonitorSettingsCopy.gamepad,
             MonitorSettingsCopy.keepScreenAwake,
-            SettingsHelpCopy.hdrDisplay,
+            MonitorSettingsCopy.hdrPanel(cameraMode: "HDR/HLG color mode"),
             CaptureLists.nativeIsoHopTitle,
             CaptureLists.nativeIsoHopHelp,
             NDAssist.helpCopy,

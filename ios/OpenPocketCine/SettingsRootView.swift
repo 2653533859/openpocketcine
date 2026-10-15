@@ -14,8 +14,6 @@ import OpenCineFrameIOApple
 enum SettingsHelpCopy {
     static let currentTransport =
         "Pocket uses Bluetooth to pair, then the camera's own Wi-Fi for HEVC. USB-C, hotspot, and HDMI capture are not in this build."
-    static let hdrDisplay =
-        "Outdoor panel brightness, not a grade. WAVE, HISTO, PARADE, VECTOR, zebras and false color still read the decoded camera signal, so judge exposure there, not from how bright the picture looks. Screen recording and AirPlay drop back to a normal SDR picture so the file is not HDR-boosted. This is not the camera's HDR/HLG color mode. Off by default."
     static let themeHelp =
         "Charcoal field-monitor chrome with Sky Blue accents, tuned for low reflection on set."
 }
@@ -55,7 +53,7 @@ struct SettingsRootView: View {
                 haptics: .init(value: Bindable(model).hapticsEnabled, help: MonitorSettingsCopy.gimbalHaptics),
                 keepAwake: .init(value: Bindable(model).keepScreenAwake, help: MonitorSettingsCopy.keepScreenAwake),
                 motion: motion),
-            display: .init(hdr: .init(value: Bindable(model).hdrDisplay, help: SettingsHelpCopy.hdrDisplay),
+            display: .init(hdr: .init(value: Bindable(model).hdrDisplay, help: MonitorSettingsCopy.hdrPanel(cameraMode: "HDR/HLG color mode")),
                 sections: availableDisplay),
             cache: .init(source: cache,
                 cacheOriginals: .init(value: Bindable(model).cacheFullResolution, help: MonitorSettingsCopy.cacheFullResolution),
