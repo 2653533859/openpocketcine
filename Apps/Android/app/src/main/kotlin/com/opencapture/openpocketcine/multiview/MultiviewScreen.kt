@@ -55,6 +55,9 @@ import com.opencapture.opencine.appkit.MultiviewPickerRow
 import com.opencapture.opencine.appkit.MultiviewStage
 import com.opencapture.opencine.appkit.MultiviewStageSurface
 import com.opencapture.opencine.appkit.MultiviewStageStateProvider
+import com.opencapture.opencine.appkit.MultiviewStageServices
+import com.opencapture.opencine.appkit.MultiviewStageServicesProvider
+import com.opencapture.opencine.appkit.MultiviewToolAvailability
 import com.opencapture.opencine.appkit.MultiviewStageVisibility
 import com.opencapture.opencine.appkit.MultiviewNetworkRestore
 import com.opencapture.opencine.appkit.MultiviewStageActions
@@ -259,7 +262,15 @@ internal fun MultiviewStageContent(
 ) {
     val haptics = LocalOperatorHaptics.current
     val assigned = session.tiles.filter { it.camera != null }
+    // Every assigned tile has both working adapters: the settings panel (which opens that tile's
+    // controls once its link is available and says so otherwise) and its own decoder's Auto LUT plan.
+    val assignedSlots = assigned.map { it.index }.toSet()
+    val services = MultiviewStageServices(
+        MultiviewToolAvailability(cameraSettingsSlots = assignedSlots, pictureLUTSlots = assignedSlots),
+        automaticLUT = true,
+    )
     MultiviewStageStateProvider(session.presentation) {
+    MultiviewStageServicesProvider(services) {
     MultiviewStage(
         tiles = session.tiles.indices.map { session.stageTile(it) },
         layout = layout, arrangement = session.layout.arrangement, selected = session.focusedIndex,
@@ -308,6 +319,7 @@ internal fun MultiviewStageContent(
             identifier = "multiview.network", action = onNetwork,
         ),
     ) { slot -> picture(session.tiles[slot]) }
+    }
     }
 }
 
