@@ -1,5 +1,4 @@
 import Foundation
-import MonitorPresentation
 import Observation
 import OpenCineAppKit
 import OpenCineApple

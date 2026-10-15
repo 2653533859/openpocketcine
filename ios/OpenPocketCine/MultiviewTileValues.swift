@@ -14,12 +14,6 @@ struct MultiviewTelemetryPresentation {
     private let power: PowerStatus
     let storageObservation: StorageStatus?
 
-    init(settings: CameraStatus, storageObservation: StorageStatus? = nil) {
-        self.init(settings: settings, power: PowerStatus(battery: (0...100).contains(settings.batteryPercent)
-            ? .init(Double(settings.batteryPercent) / 100, origin: .cameraReported, at: nil, precision: .quantized(step: 0.01)) : .unknown),
-            storageObservation: storageObservation)
-    }
-
     init(settings: CameraStatus, power: PowerStatus, storageObservation: StorageStatus? = nil) {
         self.settings = settings; self.power = power; self.storageObservation = storageObservation
     }
@@ -89,7 +83,6 @@ extension MultiviewSession {
         let tile = tiles[index]
         guard let camera = tile.camera else { return nil }
         let power = tile.control.current.power
-        let battery = MonitorOperatorPowerReading.camera(power)
         let values = MultiviewTelemetryPresentation(
             settings: tile.settings, power: power, storageObservation: tile.control.current.storage)
         let preview = camera.hasMultiviewPreview
@@ -127,8 +120,7 @@ extension MultiviewSession {
         let showsStatus = !tile.hasPicture || tile.failureMessage != nil || tile.recovering
         return MultiviewTile(
             name: camera.name, model: camera.model.name, format: values.format,
-            battery: battery?.percent, charging: battery?.charging == true,
-            batteryBars: battery?.bars, batteryBarCount: battery?.barCount ?? 5, storage: values.storage,
+            storage: values.storage,
             timecode: tile.timecodeReadout,
             tally: MultiviewTelemetryPresentation.recordingStatus(tile),
             recording: tile.recordingActive == true, lut: tile.lutEnabled, note: note,
@@ -146,7 +138,8 @@ extension MultiviewSession {
             detail: tile.status, failure: tile.failureMessage,
             footnote: tile.networkVerified && !preview
                 ? "Remove this camera to enable group recording for your other cameras." : nil,
-            actions: actions, accessibilityValue: tile.previewAccessibilityValue)
+            actions: actions, accessibilityValue: tile.previewAccessibilityValue
+        ).withPower(power)
     }
 
     /// The record plan for every camera (`nil`) or one slot, with what blocks it now.

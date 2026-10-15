@@ -5,12 +5,9 @@ import com.opencapture.opencine.appkit.MultiviewReadout
 import com.opencapture.opencine.appkit.MultiviewRecordContext
 import com.opencapture.opencine.appkit.MultiviewTile
 import com.opencapture.opencine.appkit.MultiviewTileStatus
+import com.opencapture.opencine.appkit.withPower
 import com.opencapture.opencine.dji.hasMultiviewPreview
 import com.opencapture.opencine.core.PowerStatus
-import com.opencapture.opencine.core.ObservedValue
-import com.opencapture.opencine.core.ObservationOrigin
-import com.opencapture.opencine.core.ObservationPrecision
-import com.opencapture.opencine.cameracontrols.cameraPowerReading
 import com.opencapture.opencine.cameracontrols.cameraBatteryReadoutLabel
 import com.opencapture.opencine.vocabulary.CameraCommands
 import com.opencapture.opencine.vocabulary.CameraStatus
@@ -27,8 +24,6 @@ internal data class MultiviewTileReadouts(
     val model: String,
     val timecode: String,
     val battery: String,
-    val batteryPercent: Int,
-    val charging: Boolean,
     val storage: String,
     val recording: String,
     val isRecording: Boolean,
@@ -40,13 +35,10 @@ internal fun multiviewTileReadouts(
     index: Int, name: String, model: String, settings: CameraStatus, timecode: String?,
     recordingObservation: Boolean?, recordingAvailable: Boolean, recordingBusy: Boolean,
     recovering: Boolean, hasPicture: Boolean, failure: String?, recordingNote: String? = null,
+    power: PowerStatus,
     colorFamily: String = "pocket",
-    power: PowerStatus? = null,
     storage: StorageStatus? = null,
 ): MultiviewTileReadouts {
-    val reportedPower = power ?: PowerStatus(battery = settings.batteryPercent.takeIf { it in 0..100 }?.let {
-        ObservedValue(it / 100.0, ObservationOrigin.CAMERA_REPORTED, null, precision = ObservationPrecision.Quantized(0.01))
-    } ?: ObservedValue.unknown)
     val elapsed = settings.recordElapsedSec.coerceAtLeast(0)
     val recording = when {
         recordingBusy -> "WAIT"
@@ -62,9 +54,7 @@ internal fun multiviewTileReadouts(
     return MultiviewTileReadouts(
         letter = ('A' + index.coerceIn(0, 3)).toString(), name = name, model = model,
         timecode = timecode ?: "\u2014",
-        battery = cameraBatteryReadoutLabel(reportedPower.batteryReading) ?: "\u2014",
-        batteryPercent = settings.batteryPercent,
-        charging = settings.charging,
+        battery = cameraBatteryReadoutLabel(power.batteryReading) ?: "\u2014",
         storage = (if (storage != null) storage.storageReadout else settings.storageReadout)?.free ?: StorageReadout.UNAVAILABLE,
         recording = recording, isRecording = recordingObservation == true,
         format = "$resolution · $fps · $color",
@@ -107,20 +97,17 @@ internal fun MultiviewSession.stageTile(index: Int): MultiviewTile? {
     val tile = tiles[index]
     val camera = tile.camera ?: return null
     val power = tile.control.current.power
-    val battery = cameraPowerReading(power)
     val readouts = multiviewTileReadouts(
         index, camera.name, camera.model.name, tile.settings, tile.timecodeReadout,
         tile.recordingObservation?.first, tile.recordingAvailable,
         tile.recordingBusy, tile.recovering, tile.hasPicture, tile.failureMessage, tile.recordingNote,
-        colorFamily = camera.model.family, power = power, storage = tile.control.snapshots.value.storage,
+        power = power, colorFamily = camera.model.family, storage = tile.control.snapshots.value.storage,
     )
     val settled = !busy && !tile.connecting && !tile.recovering
     val experimental = tile.failureMessage != null && !tile.experimentalNetwork && tile.identity == null
     val record = recordPlan(tile)
     return MultiviewTile(
         name = camera.name, model = camera.model.name, format = readouts.format,
-        battery = battery?.percent, charging = battery?.charging == true,
-        batteryBars = battery?.bars, batteryBarCount = battery?.barCount ?: 5,
         storage = readouts.storage, timecode = tile.timecodeReadout,
         tally = readouts.recording, recording = readouts.isRecording, lut = tile.lutEnabled,
         readouts = multiviewStageReadouts(tile.settings),
@@ -160,7 +147,7 @@ internal fun MultiviewSession.stageTile(index: Int): MultiviewTile? {
                 enabled = !busy && !tile.connecting && !groupRecordingBusy && !tile.recordingBusy && !closing,
             ),
         ),
-    )
+    ).withPower(power)
 }
 
 /** The record plan for every camera (null) or one slot, with what blocks it now. */
