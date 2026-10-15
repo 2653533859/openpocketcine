@@ -1,6 +1,17 @@
 package com.opencapture.openpocketcine
 
+import com.opencapture.opencine.appkit.MonitorCaptureSelection
+import com.opencapture.opencine.appkit.MonitorControlModel
+import com.opencapture.opencine.appkit.captureField
+import com.opencapture.opencine.appkit.captureValue
+import com.opencapture.opencine.appkit.commit
 import com.opencapture.opencine.cameracontrols.LiveSheet
+import com.opencapture.opencine.core.ISOValue
+import com.opencapture.opencine.core.SettingValue
+import com.opencapture.opencine.core.testing.FakeCameraSession
+import com.opencapture.opencine.core.testing.lunaLike
+import kotlinx.coroutines.test.runTest
+import kotlin.test.assertNotNull
 import com.opencapture.opencine.core.MonitorLayoutCapabilities
 import com.opencapture.opencine.core.SettingKey
 import com.opencapture.opencine.vocabulary.CameraCommands
@@ -12,6 +23,23 @@ import kotlin.test.assertTrue
 
 /** Pocket's capture sheet host values, as on main. */
 class CaptureSheetHostTest {
+    /** SIMULATED common report and a contradictory pending edit (iOS `PocketCommonReadoutTests`). */
+    @Test fun theCaptureStripReadsTheReportUntilTheCameraConfirms() = runTest {
+        assertEquals(MonitorCaptureSelection.REPORTED, pocketCaptureReadoutSelection,
+            "Pocket retains report-until-confirmation policy")
+        val camera = FakeCameraSession.lunaLike()
+        camera.cameraReportsStatus()
+        val control = MonitorControlModel(backgroundScope)
+        control.bind(camera)
+        val field = assertNotNull(control.captureField(SettingKey.ISO))
+        val reported = control.captureValue(SettingKey.ISO, pocketCaptureReadoutSelection)
+        val pending = SettingValue.Iso(ISOValue.Manual(800))
+        assertTrue(reported != pending, "The fixture really reports a different value")
+        assertTrue(control.commit(field.choices.first { it.value == pending }, field))
+        assertEquals(pending, control.captureValue(SettingKey.ISO, MonitorCaptureSelection.PENDING))
+        assertEquals(reported, control.captureValue(SettingKey.ISO, pocketCaptureReadoutSelection))
+    }
+
     @Test fun anUnqualifiedNativeIsoPairDoesNotOfferAnAutomaticHop() {
         val unknown = pocketCaptureSessionState({ null }, { null }, { false }, { false }, { MonitorLayoutCapabilities() })
         assertFalse(unknown.nativeIsoHopSupported, "No native ISO pair was declared by this source")
