@@ -246,6 +246,9 @@ final class AppModel {
         }
     }
     var showsLegalPanel: Bool { legalPanel != nil }
+    /// The problem report sheet, owned by the app root (A2-24): the cameras page and Settings
+    /// both open it here, so a draft outlives the camera session and the Settings cover.
+    var isProblemReportPresented = false
     var captureSheet: CaptureSheet?
     var captureDrum: CaptureDrumPresentation?
     var keepScreenAwake: Bool = OperatorPrefs.keepScreenAwake {
@@ -1104,7 +1107,6 @@ struct LinkExperience: View {
     @Environment(\.openURL) private var openURL
     @State private var diagnostics: MonitorDiagnosticsShareItem?
     @State private var diagnosticsFailure: String?
-    @State private var showProblemReport = false
     @State private var showMultiview = false
     @State private var reviewAddSetup: SavedCamera?
 
@@ -1117,7 +1119,7 @@ struct LinkExperience: View {
                     case .ready(let item): diagnostics = item
                     case .failed(let message): diagnosticsFailure = message
                     }
-                }, reportProblem: { showProblemReport = true },
+                }, reportProblem: { model.isProblemReportPresented = true },
                 watchFeed: {
                     if model.cameras.attempts.isEmpty { model.openWatcherBrowse() }
                 },
@@ -1170,7 +1172,9 @@ struct LinkExperience: View {
         } message: {
             Text(diagnosticsFailure ?? "")
         }
-        .sheet(isPresented: $showProblemReport) { ProblemReportView().environment(model) }
+        // The app's one problem report, above every cover: a draft opened from Settings
+        // survives the camera session ending and the cover closing (A2-24).
+        .sheet(isPresented: Bindable(model).isProblemReportPresented) { ProblemReportView().environment(model) }
         // Simulator review only: the add-route slot as the cameras page presents it.
         .sheet(item: $reviewAddSetup) { camera in
             AddSetupView(camera: camera) { _ in reviewAddSetup = nil }
