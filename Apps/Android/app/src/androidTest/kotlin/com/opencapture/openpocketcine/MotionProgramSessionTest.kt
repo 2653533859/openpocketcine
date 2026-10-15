@@ -4,6 +4,7 @@ import android.os.SystemClock
 import android.os.Bundle
 import android.graphics.Rect
 import android.view.MotionEvent
+import android.view.ViewConfiguration
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
@@ -76,8 +77,12 @@ class MotionProgramSessionTest {
                 scrollToEnd()
                 assertTrue(node("motion.loop").isChecked)
                 click("motion.loop")
+                // The second click must land on published state, not the pre-toggle value
+                // the accessibility tree can still hold (as awaitTabSelection waits).
+                node("motion.loop") { !it.isChecked }
                 scenario.onActivity { assertEquals(program.copy(loop = false), model!!.session.gimbalProgram.value) }
                 click("motion.loop")
+                node("motion.loop") { it.isChecked }
 
                 for (state in listOf("countdown", "running", "paused")) {
                     scenario.onActivity {
@@ -244,7 +249,10 @@ class MotionProgramSessionTest {
                     assertEquals(1, taps, "Double tap must keep its separate zoom action")
                     assertEquals(LiveGimbalPanel.EDITOR, model!!.liveGimbalPanel)
                 }
-                pointerPress(chip, 650)
+                // Samsung can raise the accessibility long-press timeout above this press,
+                // so hold at least past whatever the device configures.
+                val hold = maxOf(650L, ViewConfiguration.getLongPressTimeout().toLong() + 150)
+                pointerPress(chip, hold)
                 val disc = zoomDiscNode()
                 scenario.onActivity { assertEquals(LiveGimbalPanel.EDITOR, model!!.liveGimbalPanel) }
                 assertTrue(disc.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS.id,
@@ -334,6 +342,13 @@ class MotionProgramSessionTest {
 
     /** Begin within the visible fade to prove it cannot intercept the settings gesture. */
     private fun swipeSettings(scenario: ActivityScenario<BackdropRenderActivity>, rect: Rect) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        lateinit var decor: android.view.View
+        val location = IntArray(2)
+        scenario.onActivity { activity ->
+            decor = activity.window.decorView
+            decor.getLocationOnScreen(location)
+        }
         val downAt = SystemClock.uptimeMillis()
         val x = rect.left + rect.width() * 0.15f
         val startY = rect.bottom - 8f
@@ -345,10 +360,8 @@ class MotionProgramSessionTest {
                 else -> MotionEvent.ACTION_MOVE
             }
             val y = startY + (endY - startY) * step / 9
-            scenario.onActivity { activity ->
-                val decor = activity.window.decorView
-                val location = IntArray(2)
-                decor.getLocationOnScreen(location)
+            // onActivity waits for idle, which can wait for this gesture's missing UP.
+            instrumentation.runOnMainSync {
                 val event = MotionEvent.obtain(downAt, SystemClock.uptimeMillis(), action,
                     x - location[0], y - location[1], 0)
                 event.source = android.view.InputDevice.SOURCE_TOUCHSCREEN
@@ -377,8 +390,11 @@ class MotionProgramSessionTest {
         val deadline = SystemClock.uptimeMillis() + 5_000
         while (SystemClock.uptimeMillis() < deadline) {
             instrumentation.waitForIdleSync()
-            instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, id) }?.let {
-                if (ready(it)) return it
+            instrumentation.uiAutomation.rootInActiveWindow?.let { root ->
+                if (root.refresh()) find(root, id) else null
+            }?.let {
+                // UIAutomation can retain a pre-scroll/pre-reopen node after native idle.
+                if (it.refresh() && ready(it)) return it
             }
             SystemClock.sleep(80)
         }

@@ -117,6 +117,12 @@ class LiveChromeSemanticsTest {
     /** Collects every description the platform publishes under the host. */
     private fun render(content: @Composable () -> Unit): List<String> {
         var spoken = emptyList<String>()
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        // A second window (a One UI overlay) can hold the fixture on some devices, so
+        // retrieve every interactive window for the search below (MultiviewTileChromeTest).
+        automation.serviceInfo = automation.serviceInfo.apply {
+            flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+        }
         ActivityScenario.launch(BackdropRenderActivity::class.java).use { scenario ->
             val fixture = mountFixture(scenario, content)
             val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -136,8 +142,20 @@ class LiveChromeSemanticsTest {
                 SystemClock.sleep(80)
             }
         }
-        assertTrue(spoken.isNotEmpty(), "No accessibility node was published for the fixture")
+        assertTrue(spoken.isNotEmpty(),
+            "No accessibility node was published for the fixture; windows=${automation.windows.size}; " + treeLabels())
         return spoken
+    }
+
+    /** Every text/description in the tree, for the timeout report (as awaitNode dumps). */
+    private fun treeLabels(): List<String> {
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        fun labels(node: AccessibilityNodeInfo?): List<String> {
+            if (node == null) return emptyList()
+            return listOf("${node.text}/${node.contentDescription}") +
+                (0 until node.childCount).flatMap { labels(node.getChild(it)) }
+        }
+        return labels(automation.rootInActiveWindow) + automation.windows.orEmpty().flatMap { labels(it.root) }
     }
 
     /**
@@ -200,7 +218,12 @@ class LiveChromeSemanticsTest {
             }
             return null
         }
-        return InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow?.let(::find)
+        // The active window first, then any interactive window (a One UI overlay can
+        // hold the fixture on some devices).
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        automation.rootInActiveWindow?.let(::find)?.let { return it }
+        for (window in automation.windows.orEmpty()) window.root?.let(::find)?.let { return it }
+        return null
     }
 
     private fun descriptions(node: AccessibilityNodeInfo): List<String> {
