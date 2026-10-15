@@ -13,11 +13,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -40,7 +38,6 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -56,6 +53,10 @@ import com.opencapture.opencine.appkit.LocalOperatorHaptics
 import com.opencapture.opencine.appkit.MultiviewCameraPicker
 import com.opencapture.opencine.appkit.MultiviewPickerRow
 import com.opencapture.opencine.appkit.MultiviewStage
+import com.opencapture.opencine.appkit.MultiviewStageSurface
+import com.opencapture.opencine.appkit.MultiviewStageStateProvider
+import com.opencapture.opencine.appkit.MultiviewStageVisibility
+import com.opencapture.opencine.appkit.MultiviewNetworkRestore
 import com.opencapture.opencine.appkit.MultiviewStageActions
 import com.opencapture.opencine.appkit.MultiviewStageButton
 import com.opencapture.opencine.appkit.MultiviewTool
@@ -117,12 +118,9 @@ fun MultiviewScreen(model: AppModel, session: MultiviewSession, onClose: () -> U
             borrowed.multiviewExit = { borrowed.shell.close(); liveTile = null }
             onDispose { session.closeLiveView() }
         }
-        BackHandler { liveTile = null }
-        LiveViewScreen(borrowed)
-        return
     }
 
-    BackHandler {
+    BackHandler(enabled = borrowed == null) {
         when {
             session.closing -> Unit
             cameraSettings -> cameraSettings = false
@@ -138,26 +136,14 @@ fun MultiviewScreen(model: AppModel, session: MultiviewSession, onClose: () -> U
         }
     }
 
-    val density = LocalDensity.current
-    val direction = LocalLayoutDirection.current
-    val insets = WindowInsets.safeDrawing
-    val safe = with(density) {
-        MultiviewSafeArea(
-            top = insets.getTop(this).toDp().value,
-            leading = insets.getLeft(this, direction).toDp().value,
-            bottom = insets.getBottom(this).toDp().value,
-            trailing = insets.getRight(this, direction).toDp().value,
-        )
-    }
     val overlayOpen = showNetwork || adding != null || session.closing || cameraSettings
     val haptics = LocalOperatorHaptics.current
 
     // Drawn over the shell: no touch falls through to the camera home underneath.
-    BoxWithConstraints(Modifier.fillMaxSize().background(StageCanvas).pointerInput(Unit) { detectTapGestures {} }) {
-        val layout = MultiviewPresentationLayout.compute(
-            width = maxWidth.value, height = maxHeight.value, safeArea = safe,
-            arrangement = session.layout.arrangement, selected = session.focusedIndex,
-        )
+    MultiviewStageVisibility(borrowed == null) {
+    MultiviewStageSurface(session.layout.arrangement, session.focusedIndex,
+        Modifier.fillMaxSize().background(StageCanvas).pointerInput(Unit) { detectTapGestures {} }) { viewport ->
+        val layout = viewport.layout
         MultiviewStageContent(
             session, layout, confirmsRecord = model.recordConfirmationEnabled, interactive = !overlayOpen,
             onAdd = { empty -> if (session.networkConfigured) adding = empty else showNetwork = true },
@@ -171,7 +157,7 @@ fun MultiviewScreen(model: AppModel, session: MultiviewSession, onClose: () -> U
             scope = scope,
         ) { tile -> if (tile.liveModel == null) TileFeed(session, tile, session.fill) }
         if (cameraSettings) {
-            MultiviewCameraSettings(session, session.focusedIndex, maxWidth.value, maxHeight.value, safe) {
+            MultiviewCameraSettings(session, session.focusedIndex, viewport.width, viewport.height, viewport.safeArea) {
                 cameraSettings = false
             }
         }
@@ -223,6 +209,12 @@ fun MultiviewScreen(model: AppModel, session: MultiviewSession, onClose: () -> U
         }
     }
 
+    }
+    if (borrowed != null) {
+        BackHandler { liveTile = null }
+        LiveViewScreen(borrowed)
+    }
+
     session.error?.let { message ->
         AlertDialog(
             onDismissRequest = { session.error = null },
@@ -237,12 +229,12 @@ fun MultiviewScreen(model: AppModel, session: MultiviewSession, onClose: () -> U
     if (showLeave) {
         AlertDialog(
             onDismissRequest = { showLeave = false },
-            text = { Text("Close Multiview and return cameras to their own Wi-Fi? Recording continues.") },
+            text = { Text(MultiviewNetworkRestore.CAMERA_NETWORKS.closeQuestion) },
             confirmButton = {
                 TextButton(onClick = {
                     showLeave = false
                     closeStage()
-                }) { Text("Close monitoring") }
+                }) { Text(MultiviewNetworkRestore.CLOSE_ACTION) }
             },
             dismissButton = { TextButton(onClick = { showLeave = false }) { Text("Cancel") } },
         )
@@ -267,6 +259,7 @@ internal fun MultiviewStageContent(
 ) {
     val haptics = LocalOperatorHaptics.current
     val assigned = session.tiles.filter { it.camera != null }
+    MultiviewStageStateProvider(session.presentation) {
     MultiviewStage(
         tiles = session.tiles.indices.map { session.stageTile(it) },
         layout = layout, arrangement = session.layout.arrangement, selected = session.focusedIndex,
@@ -315,6 +308,7 @@ internal fun MultiviewStageContent(
             identifier = "multiview.network", action = onNetwork,
         ),
     ) { slot -> picture(session.tiles[slot]) }
+    }
 }
 
 /** HEVC/AVC → OES → optional Auto LUT → TextureView. Fit/Fill sizes the view, never the decoder. */

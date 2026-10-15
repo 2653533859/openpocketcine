@@ -11,7 +11,6 @@ struct MultiviewView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.monitorWindowGeometry) private var windowGeometry
     @State private var session: MultiviewSession
     private let startsSession: Bool
     private let reviewPictures: Bool
@@ -22,7 +21,6 @@ struct MultiviewView: View {
     @State private var liveTile: MultiviewSession.Tile?
     @State private var settingsTile: MultiviewSession.Tile?
     @State private var stageGeometry = MultiviewStageGeometry()
-    @State private var orientation = InterfaceOrientationObserver()
 
     init(session: MultiviewSession? = nil, startsSession: Bool = true, reviewPictures: Bool = false)
     {
@@ -34,14 +32,22 @@ struct MultiviewView: View {
                 return
             }
         #endif
-        _session = State(initialValue: session ?? MultiviewSession())
+        let stage = session ?? MultiviewSession()
+        if session == nil {
+            let store = MultiviewStagePreferencesStore(
+                storage: .standard, key: "multiview.presentation")
+            stage.presentation.attachPersistence(load: store.load, save: store.save)
+        }
+        _session = State(initialValue: stage)
         self.startsSession = startsSession
         self.reviewPictures = reviewPictures
     }
 
     var body: some View {
         NavigationStack {
-            GeometryReader { viewport in
+            MultiviewStageSurface(
+                arrangement: session.presentation.layout.arrangement, selected: session.focusedIndex
+            ) { viewport in
                 stageContent(viewport: viewport)
                     .toolbar(.hidden, for: .navigationBar)
                     .statusBarHidden(true)
@@ -84,10 +90,10 @@ struct MultiviewView: View {
                         Text(session.error ?? "")
                     }
                     .confirmationDialog(
-                        "Close Multiview and return cameras to their own Wi-Fi? Recording continues.",
+                        MultiviewNetworkRestore.cameraNetworks.closeQuestion,
                         isPresented: $showLeave, titleVisibility: .visible
                     ) {
-                        Button("Close monitoring") {
+                        Button(MultiviewNetworkRestore.closeAction) {
                             Task { if await session.closeStage() { dismiss() } }
                         }
                     }
@@ -109,11 +115,9 @@ struct MultiviewView: View {
                     .onChange(of: session.layout) { _, _ in session.persistStage() }
                     .onChange(of: session.focusedIndex) { _, _ in session.persistStage() }
                     .onAppear {
-                        orientation.start()
                         if startsSession { session.start() }
                         showNetwork = !session.networkConfigured
                     }
-                    .onDisappear { orientation.stop() }
             }
             .ignoresSafeArea(.container)
         }
@@ -133,15 +137,9 @@ struct MultiviewView: View {
         }
     }
 
-    private func stageContent(viewport: GeometryProxy) -> some View {
-        let safe = OperatorPanelMetrics.pageSafeArea(
-            from: viewport.safeAreaInsets, window: windowGeometry.safeArea,
-            size: viewport.size, orientation: orientation.orientation)
-        let layout = session.layout.presentation(
-            in: viewport.size,
-            safeArea: .init(
-                top: safe.top, leading: safe.leading, bottom: safe.bottom, trailing: safe.trailing),
-            selected: session.focusedIndex, topControlInset: windowGeometry.topControlInset)
+    private func stageContent(viewport: MultiviewStageViewport) -> some View {
+        let safe = viewport.safeArea
+        let layout = viewport.layout
         let program = session.tiles[min(3, max(0, session.focusedIndex))]
         return MultiviewStage(
             tiles: session.tiles.indices.map(session.stageTile), layout: layout,
@@ -180,6 +178,7 @@ struct MultiviewView: View {
                 session: session, layout: layout, geometry: stageGeometry,
                 enabled: liveTile == nil && !showNetwork && adding == nil && !session.closing)
         )
+        .multiviewStageState(session.presentation)
         .overlay { settingsPanel(viewport: viewport.size, safe: safe) }
     }
 
