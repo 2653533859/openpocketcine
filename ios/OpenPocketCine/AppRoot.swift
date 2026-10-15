@@ -1070,20 +1070,20 @@ struct LinkExperience: View {
     @Environment(\.monitorWindowGeometry) private var windowGeometry
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openURL) private var openURL
-    @State private var orientation = InterfaceOrientationObserver()
-    @State private var diagnostics: DiagnosticSharePayload?
+    @State private var diagnostics: MonitorDiagnosticsShareItem?
+    @State private var diagnosticsFailure: String?
     @State private var showProblemReport = false
     @State private var showMultiview = false
     @State private var reviewAddSetup: SavedCamera?
 
     var body: some View {
         AppShell(
-            // Main's setup chip menu: Forget only, no Rename setup.
-            model: model.shell, brand: ShellBrand(name: "OpenPocketCine", renamesSetups: false),
+            model: model.shell, brand: ShellBrand(name: "OpenPocketCine"),
             actions: ShellActions(
                 diagnostics: {
-                    if let url = DiagnosticCenter.shared.beginShare(session: model.session) {
-                        diagnostics = DiagnosticSharePayload(url: url)
+                    switch DiagnosticCenter.shared.beginShare(session: model.session) {
+                    case .ready(let item): diagnostics = item
+                    case .failed(let message): diagnosticsFailure = message
                     }
                 }, reportProblem: { showProblemReport = true },
                 watchFeed: {
@@ -1102,12 +1102,6 @@ struct LinkExperience: View {
                         model.cameras.connect(sighting)
                     }
                 }),
-            safeArea: { proxy in
-                Self.pageSafeArea(
-                    proxy.safeAreaInsets, window: windowGeometry.safeArea,
-                    portrait: proxy.size.height > proxy.size.width,
-                    orientation: orientation.orientation)
-            },
             pairingFlow: model.pairingWizard().flow(
                 model.cameras, onDone: { model.shell.endPairing() }, rescan: { model.session.startScan() }),
             coverPresentation: .shell
@@ -1126,7 +1120,6 @@ struct LinkExperience: View {
         .background(StartupColors.background.ignoresSafeArea())
         .foregroundStyle(StartupColors.ink)
         .onAppear {
-            orientation.start()
             #if targetEnvironment(simulator)
                 switch MonitorUIReview.state {
                 case "add-setup": reviewAddSetup = model.savedCameras.first
@@ -1135,8 +1128,16 @@ struct LinkExperience: View {
                 }
             #endif
         }
-        .onDisappear { orientation.stop() }
-        .sheet(item: $diagnostics) { payload in DiagnosticActivityShareView(items: [payload.url]) }
+        .sheet(item: $diagnostics) { item in MonitorActivityShareSheet(items: [item.url]) }
+        .alert(
+            "Couldn't write the diagnostics report",
+            isPresented: Binding(
+                get: { diagnosticsFailure != nil }, set: { if !$0 { diagnosticsFailure = nil } })
+        ) {
+            Button("OK", role: .cancel) { diagnosticsFailure = nil }
+        } message: {
+            Text(diagnosticsFailure ?? "")
+        }
         .sheet(isPresented: $showProblemReport) { ProblemReportView().environment(model) }
         // Simulator review only: the add-route slot as the cameras page presents it.
         .sheet(item: $reviewAddSetup) { camera in
@@ -1187,18 +1188,6 @@ struct LinkExperience: View {
         }
     }
 
-    /// The camera pages' safe area: landscape mirrors the larger cutout so the list stays centered.
-    static func pageSafeArea(
-        _ proposed: EdgeInsets, window: EdgeInsets, portrait: Bool,
-        orientation: MonitorDeviceOrientation
-    ) -> EdgeInsets {
-        let raw = LiveMonitorLayout.resolvedSafeArea(proposed, scene: window)
-        guard !portrait else { return raw }
-        return OperatorPanelMetrics.fullScreenPanelSafeArea(
-            from: raw, isPortrait: false,
-            mirrored: LiveMonitorLayout.shouldMirror(
-                leading: raw.leading, trailing: raw.trailing, orientation: orientation))
-    }
 }
 
 extension LiveHDRDisplay {

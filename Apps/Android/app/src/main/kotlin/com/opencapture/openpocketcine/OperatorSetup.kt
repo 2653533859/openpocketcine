@@ -81,9 +81,9 @@ internal fun operatorSetupApp(model: AppModel) = OperatorSetupApp(
     legal = PocketLegalDocuments,
     lutPicker = { onClose -> LUTPicker(model = model, onClose = onClose) },
     cacheSource = {
-        // The current camera's gallery cache, the one rule Insta and iOS follow; a camera change recomposes it.
+        // Every camera bucket, retaining the current gallery's operation fencing and revision.
         val shell by model.shell.state.collectAsState()
-        key(shell.monitor?.id) { com.opencapture.opencine.cameracontrols.monitorSettingsCacheSource(model.mediaController().library) }
+        key(shell.monitor?.id) { com.opencapture.opencine.cameracontrols.monitorSettingsCacheSource(model.mediaController().library, model.mediaCacheRoot) }
     },
 )
 

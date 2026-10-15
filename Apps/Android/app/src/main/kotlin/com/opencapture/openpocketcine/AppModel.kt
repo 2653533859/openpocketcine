@@ -102,7 +102,7 @@ class AppModel(
     private var mediaOwner: com.opencapture.openpocketcine.media.MediaLibraryController? = null
     /**
      * The gallery's library owner for the current camera, created when first asked for. The gallery
-     * and Settings share it, so Settings counts and clears that camera's cache, as Insta and iOS do.
+     * and Settings share it, so an all-camera Settings clear also fences the current gallery's IO.
      */
     fun mediaController(): com.opencapture.openpocketcine.media.MediaLibraryController {
         val camera = com.opencapture.openpocketcine.media.MediaLibraryController.cameraKey(session, mediaCache)

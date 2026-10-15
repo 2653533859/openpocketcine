@@ -255,6 +255,21 @@ final class CameraMedia {
         try await directory.clear(preserving: preservingCatalog ? ["index.json", "color.json"] : [])
     }
 
+    /// The settings cache scope is every camera bucket under the shared root (A2-33), not only
+    /// the last connected one. Clear removes the camera indexes too, so a formatted card cannot
+    /// leave thumbnail-less rows behind; the camera re-enumerates the truth on the next pass.
+    var mediaCacheRootPath: String { cacheOwner.root.path }
+
+    func cacheByteCountAllCameras() async -> UInt64 {
+        var total: UInt64 = 0
+        for directory in cacheOwner.cachedDirectories() { total += await directory.totalByteCount() }
+        return total
+    }
+
+    func clearAllCamerasCache() async throws {
+        for directory in cacheOwner.cachedDirectories() { try await directory.clear(preserving: []) }
+    }
+
     func writeAtomically(_ data: Data, to dest: URL) throws {
         // Retained compatibility/native IO accepts only one of the actual composed cache roots.
         let root = cacheOwner.root.path + "/"

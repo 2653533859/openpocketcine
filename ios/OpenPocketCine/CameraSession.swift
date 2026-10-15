@@ -64,8 +64,6 @@ final class CameraSession {
     var found: [DjiAppleSighting] = [] {
         didSet { onSightings?(found.map(Self.sighting)) }
     }
-    /// A scan has run 20 s without a camera. The pair page then lists what to check.
-    var scanLooksEmpty = false
     /// The shared connection flow's port (`DJIIntegration`, SHELL-02) listens here.
     @ObservationIgnored var onSightings: (([DJISighting]) -> Void)?
     @ObservationIgnored var onStage: ((DJIConnectionStage, String?) -> Void)?
@@ -201,7 +199,6 @@ final class CameraSession {
     @ObservationIgnored private let log = Logger(
         subsystem: "com.opencapture.openpocketcine", category: "session")
     @ObservationIgnored private var scanTask: Task<Void, Never>?
-    @ObservationIgnored private var scanHintTask: Task<Void, Never>?
     @ObservationIgnored private lazy var connectionRun = makeConnectionRun()
     #if DEBUG
         @ObservationIgnored var connectionNativePeers: ConnectionNativePeers?
@@ -670,9 +667,7 @@ final class CameraSession {
         isReconnecting = id != nil
         phase = .scanning
         found = []
-        scanLooksEmpty = false
         scanTask?.cancel()
-        scanHintTask?.cancel()
         scanTask = Task {
             guard await ble.waitUntilPoweredOn(), !Task.isCancelled else {
                 if !Task.isCancelled {
@@ -680,12 +675,6 @@ final class CameraSession {
                     phase = .failed(ble.unavailableReason)
                 }
                 return
-            }
-            scanHintTask = Task {
-                try? await Task.sleep(for: .seconds(20))
-                guard !Task.isCancelled, phase == .scanning, found.isEmpty else { return }
-                ControlLiveLog.line("ble: no camera after 20 s of scanning \(ble.stateSummary)")
-                scanLooksEmpty = true
             }
             for await camera in ble.scan() {
                 if Task.isCancelled { break }
@@ -717,7 +706,6 @@ final class CameraSession {
             return
         }
         scanTask?.cancel()
-        scanHintTask?.cancel()
         ble.stopScan()
         if phase == .scanning { phase = .idle }
     }
@@ -767,7 +755,6 @@ final class CameraSession {
         LocalNetworkAccess.requestEarly()
         guard isCurrent() else { return nil }
         scanTask?.cancel()
-        scanHintTask?.cancel()
         abortInFlightRun(preserveDecoder: preserveMonitor, recoveryAttempt: recoveryAttempt)
         guard isCurrent() else { return nil }
         reconnectTarget = nil
@@ -4686,6 +4673,20 @@ final class CameraSession {
         library.bind(nil)
         let token = library.actionToken
         try await cameraMedia.clearCache(cameraID: mediaCameraID, preservingCatalog: true)
+        guard library.isCurrent(token), !Task.isCancelled else { return }
+        mediaIOCacheRevision &+= 1
+        library.refreshLocalCache()
+    }
+
+    /// Settings Clear covers every camera bucket under the shared root (A2-33). The current
+    /// camera's library still gets the same reset, unbind and refresh bookkeeping, and the
+    /// revision bump retires the displayed count so the scope recounts from an empty cache.
+    func clearAllCamerasMediaCache() async throws {
+        let library = mediaLibrary
+        cameraMedia.resetSession()
+        library.bind(nil)
+        let token = library.actionToken
+        try await cameraMedia.clearAllCamerasCache()
         guard library.isCurrent(token), !Task.isCancelled else { return }
         mediaIOCacheRevision &+= 1
         library.refreshLocalCache()
