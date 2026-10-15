@@ -222,30 +222,6 @@ final class AppModel {
         session.decoder.incomingColorMode = LiveMonitorColorScience.colorMode(
             isPhoto: photo, colorMode: raw)
     }
-    /// Legal documents are app-owned. Settings and media have one shared cover state.
-    private var legalPanel: AppPanel?
-    var homePanel: AppPanel? {
-        get {
-            if let legalPanel { return legalPanel }
-            guard shell.monitor == nil else { return nil }
-            return shell.cover.map { $0 == .settings ? .settings : .media }
-        }
-        set {
-            switch newValue {
-            case .settings:
-                legalPanel = nil
-                shell.open(.settings)
-            case .media:
-                legalPanel = nil
-                shell.open(.media)
-            case nil:
-                legalPanel = nil
-                shell.dismissCover()
-            default: legalPanel = newValue
-            }
-        }
-    }
-    var showsLegalPanel: Bool { legalPanel != nil }
     /// The problem report sheet, owned by the app root (A2-24): the cameras page and Settings
     /// both open it here, so a draft outlives the camera session and the Settings cover.
     var isProblemReportPresented = false
@@ -428,7 +404,7 @@ final class AppModel {
         if status == .live, showsWatcherBrowse {
             isWatchingFeed = true
             showsWatcherBrowse = false
-            homePanel = nil
+            shell.dismissCover()
         }
     }
 
@@ -749,7 +725,6 @@ final class AppModel {
     }
 
     func noteBecameLive() {
-        legalPanel = nil
         operatorSession.synchronize(source: shell.monitor?.id)
         captureSheet = nil
         if shareThisFeed { startRelayHost() }
@@ -940,13 +915,6 @@ struct AppRoot: View {
                 LaunchSplashOverlay(isVisible: Bindable(model).showsLaunchSplash)
                     .transition(.opacity)
                     .zIndex(100)
-            }
-
-            if model.showsLegalPanel, !model.isWatchingFeed {
-                AppPanelHost()
-                    .environment(model)
-                    .transition(.opacity)
-                    .zIndex(80)
             }
 
             if model.showsWatcherBrowse, !model.isLive {

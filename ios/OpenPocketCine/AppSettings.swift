@@ -7,11 +7,6 @@ import SwiftUI
 import UIKit
 
 
-enum AppPanel: String, Identifiable {
-    case settings, media, privacy, terms, licenses, notice
-    var id: String { rawValue }
-}
-
 enum OpenPocketCineLinks {
     static let source = URL(string: "https://github.com/erik-sutton95/OpenPocketCine")
     static let support = URL(
@@ -25,7 +20,7 @@ enum OpenPocketCineLinks {
     static let terms = URL(string: "https://openpocketcine.app/terms/")
 }
 
-/// Live chrome and home both present this. `onClose` lets a cover dismiss without `homePanel`.
+/// Live chrome and home both present this. `onClose` dismisses the cover that hosts it.
 struct AppSettingsView: View {
     /// OpenZCine `OperatorSettingsPanel.safeArea` \u{2014} processed landscape insets from the host.
     var safeArea: EdgeInsets = EdgeInsets()
