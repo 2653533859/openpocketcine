@@ -39,7 +39,9 @@ import com.opencapture.opencine.multicam.ResourceRequest
 import com.opencapture.openpocketcine.AppModel
 import com.opencapture.openpocketcine.diagnostics.DiagnosticCenter
 import com.opencapture.opencine.media.FeedEffectsRenderPlan
-import com.opencapture.openpocketcine.feed.FeedEffectsRenderPlanFactory
+import com.opencapture.opencine.cameracontrols.MonitorFeedEffectsPlans
+import com.opencapture.openpocketcine.bridge.SwiftCore
+import com.opencapture.opencine.dji.DjiCameraLUTProfile
 import com.opencapture.opencine.dji.BleLink
 import com.opencapture.opencine.dji.DatalinkDriver
 import com.opencapture.opencine.dji.DjiCameraSessionAdapter
@@ -229,6 +231,7 @@ class MultiviewSession(
         var poseViewFlip by mutableStateOf(false)
         var latestSettings = CameraStatus()
         private var settingsPublishedAt = 0L
+        internal val feedEffectsPlans = MonitorFeedEffectsPlans(SwiftCore)
         var lutEnabled by mutableStateOf(true)
         internal var plan by mutableStateOf(FeedEffectsRenderPlan.IDENTITY)
         /** Camera settings' preview owner; the tile's existing present tap feeds it while set. */
@@ -285,8 +288,8 @@ class MultiviewSession(
 
         fun updateLUT() {
             val cam = camera
-            val result = FeedEffectsRenderPlanFactory.multiviewAutoLut(
-                app, lutEnabled, settings.colorMode, cam?.model?.family ?: "pocket", cam?.model?.name,
+            val result = feedEffectsPlans.multiviewAutoLut(
+                app, lutEnabled, settings.colorMode, DjiCameraLUTProfile.make(cam?.model?.family ?: "pocket", cam?.model?.name),
             )
             plan = result.first
             lutCaption = result.second
@@ -576,7 +579,7 @@ class MultiviewSession(
         stop()
         path.release()
         scanner.close()
-        tiles.forEach { it.inspectorPreview.close(); it.recovery.close() }
+        tiles.forEach { it.feedEffectsPlans.close(); it.inspectorPreview.close(); it.recovery.close() }
         scope.cancel()
     }
 
