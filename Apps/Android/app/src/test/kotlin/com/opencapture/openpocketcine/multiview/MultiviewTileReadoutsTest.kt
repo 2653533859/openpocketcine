@@ -1,12 +1,18 @@
 package com.opencapture.openpocketcine.multiview
 
+import com.opencapture.opencine.core.CameraTimecode
+import com.opencapture.opencine.core.PowerStatus
+import com.opencapture.opencine.dji.DjiCameraSessionAdapter
+import com.opencapture.opencine.vocabulary.CameraModel
 import com.opencapture.opencine.vocabulary.CameraStatus
 import com.opencapture.opencine.core.ObservedValue
 import com.opencapture.opencine.core.ObservationOrigin
 import com.opencapture.opencine.core.StorageStatus
 import com.opencapture.opencine.core.StorageVolume
 import com.opencapture.opencine.media.StorageReadout
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
+import kotlin.test.assertNull
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -23,7 +29,7 @@ class MultiviewTileReadoutsTest {
     }
 
     @Test fun reportedZeroBatteryAndFullCardRemainKnownValues() {
-        val readouts = readouts(CameraStatus(batteryPercent = 0, sdTotalMb = 1024, sdFreeMb = 0), false, true)
+        val readouts = readouts(CameraStatus(sdTotalMb = 1024, sdFreeMb = 0), false, true, power = percent(0.0))
         assertEquals("0%", readouts.battery)
         assertEquals("0 B", readouts.storage)
         assertEquals("STBY", readouts.recording)
@@ -59,7 +65,7 @@ class MultiviewTileReadoutsTest {
     }
 
     @Test fun compactReadoutsRetainIdentityAndUnknownFields() {
-        val readouts = readouts(CameraStatus(batteryPercent = 73, storageTotalMb = 16384, storageFreeMb = 8192), false, true)
+        val readouts = readouts(CameraStatus(storageTotalMb = 16384, storageFreeMb = 8192), false, true, power = percent(0.73))
         assertEquals("B", readouts.letter)
         assertEquals("Side angle", readouts.name)
         assertEquals("Osmo Pocket 4", readouts.model)
@@ -81,10 +87,27 @@ class MultiviewTileReadoutsTest {
             0.0, com.opencapture.opencine.core.ObservationOrigin.CAMERA_REPORTED, null))).battery)
     }
 
+    /** iOS `MultiviewStageTests.testTimecodeRequiresCameraReportAndIsHiddenOnNano`, on the tile's adapter. */
+    @Test fun tileTimecodeRequiresACameraReportAndIsHiddenOnNano() = runTest {
+        for (model in listOf(CameraModel(name = "Osmo Pocket 3", verified = true),
+            CameraModel(name = "Osmo Pocket 4", verified = true),
+            CameraModel(name = "Osmo Nano", family = "nano", verified = true))) {
+            var state = TileRecordState(model = model)
+            val control = DjiCameraSessionAdapter(MultiviewTileControl(
+                state = { state }, send = { true }, reply = { null }, setBusy = {},
+                scope = backgroundScope, clock = { 0L }), backgroundScope)
+            assertNull(control.tileTimecodeReadout())
+            state = state.copy(timecode = CameraTimecode(1, 2, 3, 4))
+            assertEquals(if (model.family == "nano") null else "01:02:03", control.tileTimecodeReadout(), model.name)
+        }
+    }
+
+    private fun percent(value: Double) = PowerStatus(battery = ObservedValue(value, ObservationOrigin.CAMERA_REPORTED, null))
+
     /** [timecode] is the tile's clock as the shared status formats it (`MultiviewSession.Tile.timecodeReadout`). */
     private fun readouts(settings: CameraStatus, observed: Boolean?, available: Boolean, storage: StorageStatus? = null,
-        timecode: String? = null) = multiviewTileReadouts(
+        timecode: String? = null, power: PowerStatus = PowerStatus.unknown) = multiviewTileReadouts(
         1, "Side angle", "Osmo Pocket 4", settings, timecode, observed, available,
-        recordingBusy = false, recovering = false, hasPicture = true, failure = null, storage = storage,
+        recordingBusy = false, recovering = false, hasPicture = true, failure = null, power = power, storage = storage,
     )
 }

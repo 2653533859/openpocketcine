@@ -1,5 +1,7 @@
 package com.opencapture.openpocketcine.multiview
 
+import com.opencapture.monitorui.MonitorTimecodeFormat
+import com.opencapture.opencine.appkit.label
 import com.opencapture.opencine.multicam.RecordAll
 import com.opencapture.opencine.core.CameraSession
 import com.opencapture.opencine.core.CameraSessionID
@@ -18,6 +20,7 @@ import com.opencapture.opencine.dji.ControlWireEvent
 import com.opencapture.opencine.dji.DjiCameraSessionAdapter
 import com.opencapture.opencine.dji.PocketControlPort
 import com.opencapture.opencine.dji.PocketControlState
+import com.opencapture.opencine.core.CameraTimecode
 import com.opencapture.opencine.vocabulary.CameraModel
 import com.opencapture.opencine.vocabulary.ConnectionPhase
 import kotlinx.coroutines.CoroutineScope
@@ -45,7 +48,13 @@ internal data class TileRecordState(
     /** The tile's body, so the adapter declares what it reports (timecode). */
     val model: CameraModel? = null,
     val charging: Boolean? = null,
+    /** The tile's decoded `timecode_info`, so the shared status formats it at the declared precision. */
+    val timecode: CameraTimecode? = null,
 )
+
+/** A tile's clock at the body's declared precision; `null` where the body declares none (Nano). */
+internal fun DjiCameraSessionAdapter.tileTimecodeReadout(): String? =
+    if (!layout().timecode) null else MonitorTimecodeFormat.label(current)
 
 /**
  * A Multiview tile's record path as [DjiCameraSessionAdapter] drives it, so the multicam engine
@@ -83,6 +92,7 @@ internal class MultiviewTileControl(
             storageFreeMb = tile.storageFreeMb.takeIf { tile.storageTotalMb > 0 },
             model = tile.model,
             charging = tile.charging,
+            timecode = tile.timecode,
         )
     }
 
