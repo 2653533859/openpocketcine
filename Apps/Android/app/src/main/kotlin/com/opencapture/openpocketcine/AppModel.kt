@@ -641,7 +641,13 @@ class AppModel(
         if (session.phaseFlow.value.isBusy() || session.isReconnecting.value) return
         disconnect()
         session.ble.stopScan()
-        if (multiview == null) multiview = com.opencapture.openpocketcine.multiview.MultiviewSession(appContext).also { it.start() }
+        if (multiview == null) multiview = com.opencapture.openpocketcine.multiview.MultiviewSession(appContext).also {
+            val store = com.opencapture.opencine.appkit.MultiviewStagePreferencesStore(
+                appContext.getSharedPreferences("multiview-presentation", android.content.Context.MODE_PRIVATE), "stage",
+            )
+            it.presentation.attachPersistence(store::load, store::save)
+            it.start()
+        }
     }
 
     fun closeMultiview() {
