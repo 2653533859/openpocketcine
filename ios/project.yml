@@ -156,6 +156,7 @@ targets:
     platform: iOS
     sources:
       - OpenPocketCineTests
+      - ../../OpenCine/Tests/MonitorUITests/MonitorPortraitHeaderClearanceTests.swift
     dependencies:
       # OpenCineAppKit comes from the host app: linking it here too would make it a framework
       # with a second MonitorUI (a second theme accent) inside.
