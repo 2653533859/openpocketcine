@@ -433,7 +433,6 @@ final class MultiviewSession {
         ssid = ""
         password = ""
         usePhoneHotspot = false
-        UIApplication.shared.isIdleTimerDisabled = true
         restoreStage()
         scan()
         monitor = Task { [weak self] in
@@ -1141,7 +1140,6 @@ final class MultiviewSession {
             tile.driver = nil
             tile.decoder.reset()
         }
-        UIApplication.shared.isIdleTimerDisabled = false
     }
     private func savedCameras() -> [MultiviewStageStore.Camera] {
         tiles.enumerated().compactMap { index, tile in
