@@ -16,7 +16,7 @@ struct WatchRelaySnapshotTests {
         status.batteryPercent = 41
         status.shootingMode = Int(ShootingMode.video.rawValue)
         let state = WatchRelayState.snapshot(
-            status: status, timecode: "01:02:03", phase: .live, cameraName: "Pocket 4 Pro", feedLive: true)
+            status: status, timecode: "01:02:03", phase: .live, cameraName: "Pocket 4 Pro", feedLive: true, power: .unknown)
         #expect(state.connection == .connected)
         #expect(state.feedLive)
         #expect(state.isRecording)
@@ -37,23 +37,23 @@ struct WatchRelaySnapshotTests {
                 freeBytes: ObservedValue(bytes, origin: .cameraReported, at: nil),
                 totalBytes: ObservedValue(UInt64(2000), origin: .cameraReported, at: nil))
             return .snapshot(
-                status: status, phase: .live, cameraName: "SIMULATED", feedLive: true,
-                storage: ObservedValue([volume], origin: .cameraReported, at: nil))
+                status: status, timecode: "01:02:03", phase: .live, cameraName: "SIMULATED",
+                feedLive: true, power: .unknown, storage: ObservedValue([volume], origin: .cameraReported, at: nil))
         }
         #expect(state(1001).media == "1 KB · 50%")
         #expect(state(0).media == "0 B · 0%")
         let unknown: StorageStatus = .unknown
         #expect(
             WatchRelayState.snapshot(
-                status: status, phase: .live, cameraName: "SIMULATED", feedLive: true,
-                storage: unknown
+                status: status, timecode: "01:02:03", phase: .live, cameraName: "SIMULATED",
+                feedLive: true, power: .unknown, storage: unknown
             ).media == StorageReadout.unavailable)
     }
 
     @Test("Snapshot is noCamera when the phone is not live")
     func snapshotNoCameraWhenIdle() {
         let state = WatchRelayState.snapshot(
-            status: CameraStatus(), timecode: "--:--:--", phase: .idle, cameraName: "", feedLive: false)
+            status: CameraStatus(), timecode: "--:--:--", phase: .idle, cameraName: "", feedLive: false, power: .unknown)
         #expect(state.connection == .noCamera)
         #expect(!state.feedLive)
         #expect(state.timecode == "--:--:--")
@@ -64,17 +64,17 @@ struct WatchRelaySnapshotTests {
         var status = CameraStatus()
         status.shootingMode = Int(ShootingMode.photo.rawValue)
         let state = WatchRelayState.snapshot(
-            status: status, timecode: "01:02:03", phase: .live, cameraName: "Pocket", feedLive: true)
+            status: status, timecode: "01:02:03", phase: .live, cameraName: "Pocket", feedLive: true, power: .unknown)
         #expect(state.isPhotography)
 
         status.shootingMode = Int(ShootingMode.photoRawPocket3AndNano)
         let pocket3 = WatchRelayState.snapshot(
-            status: status, timecode: "01:02:03", phase: .live, cameraName: "Pocket 3", feedLive: true)
+            status: status, timecode: "01:02:03", phase: .live, cameraName: "Pocket 3", feedLive: true, power: .unknown)
         #expect(pocket3.isPhotography)
 
         status.shootingMode = Int(ShootingMode.superNight.rawValue)
         let lowLight = WatchRelayState.snapshot(
-            status: status, timecode: "01:02:03", phase: .live, cameraName: "Pocket 3", feedLive: true)
+            status: status, timecode: "01:02:03", phase: .live, cameraName: "Pocket 3", feedLive: true, power: .unknown)
         #expect(!lowLight.isPhotography)
     }
     @Test func typedPowerReachesTheWristWithoutLegacyScalarFallback() {

@@ -10,22 +10,16 @@ extension WatchRelayCopy {
 }
 
 extension WatchRelayState {
-    /// Typed power reaches the wrist without reinterpreting a camera scalar.
-    public static func snapshot(status: CameraStatus, timecode: String, phase: ConnectionPhase,
-        cameraName: String, feedLive: Bool, power: PowerStatus,
-        storage: StorageStatus? = nil) -> WatchRelayState {
-        snapshot(status: status, timecode: timecode, phase: phase, cameraName: cameraName,
-            feedLive: feedLive, storage: storage).replacing(power: power)
-    }
-
     /// Snapshot from live telemetry. `feedLive` is whether a picture has presented. `timecode` is
-    /// the clock as the shared status shows it (`MonitorStatusPresentation.clock`).
+    /// the clock as the shared status shows it (`MonitorStatusPresentation.clock`). Typed power
+    /// reaches the wrist without reinterpreting a camera scalar.
     public static func snapshot(
         status: CameraStatus,
         timecode: String,
         phase: ConnectionPhase,
         cameraName: String,
         feedLive: Bool,
+        power: PowerStatus,
         storage: StorageStatus? = nil
     ) -> WatchRelayState {
         let live = {
@@ -42,6 +36,7 @@ extension WatchRelayState {
             connection: live ? .connected : .noCamera,
             feedLive: live && feedLive,
             isPhotography: photography,
-            feedAspectRatio: 16.0 / 9.0)
+            feedAspectRatio: 16.0 / 9.0
+        ).replacing(power: power)
     }
 }
