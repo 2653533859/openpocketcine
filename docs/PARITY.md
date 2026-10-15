@@ -1983,3 +1983,13 @@ incoming-status confirmation hook are wired to the owner. All existing numeric a
 goldens are retained unchanged.23 new manual-gate shared scenarios and4 actual nil-transport
 native scenarios are proposed, uncompiled/unexecuted. Android preserves its existing
 integration behavior. Physical format/zoom/color/ISO behavior remains untested.
+
+## All-camera Storage cache scope
+
+Settings on iOS and Android count and clear every camera bucket through the shared
+cache owners. Valid interrupted Clear roots remain counted and prepared deletions
+can be retried. Live child symlinks do not redirect cache ownership. Clear removes
+cached clips, thumbnails and camera indexes; the current gallery retains its
+operation fencing and cache revision, and reloads from the camera when connected.
+Favorites, preference keys and existing on-disk namespace spellings stay unchanged.
+Physical verification of this adoption remains untested.
