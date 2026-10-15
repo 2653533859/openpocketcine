@@ -256,7 +256,6 @@ private fun LinkExperience(
     val state by model.cameras.state.collectAsState()
     // No saved camera opens the pair page, as at first launch.
     val pairing = state.saved.isEmpty() || model.pairing
-    var showProblemReport by remember { mutableStateOf(false) }
     var showReportingPrivacy by remember { mutableStateOf(false) }
     val phase by model.session.phaseFlow.collectAsState()
     val radioOn by model.session.radioOn.collectAsState()
@@ -264,7 +263,7 @@ private fun LinkExperience(
     AppShell(model.shell, ShellBrand("OpenPocketCine"),
         ShellActions(
             diagnostics = { DiagnosticCenter.shareReport(context, model.session) },
-            reportProblem = { showProblemReport = true },
+            reportProblem = { model.problemReportOpen = true },
             multiview = if (MultiviewQualificationPolicy.tileCount > 1) model::openMultiview else null,
         ),
         monitor = { LiveViewScreen(model) },
@@ -285,8 +284,8 @@ private fun LinkExperience(
             onBlocker = { if (!discovery.granted) discovery.request() else onEnableBluetooth() },
             content = { PairingCallouts(model, discovery, onEnableBluetooth) },
         ))
-    if (showProblemReport) {
-        ManualProblemReportDialog(model = model, onClose = { showProblemReport = false }, onPrivacy = { showReportingPrivacy = true })
+    if (model.problemReportOpen) {
+        ManualProblemReportDialog(model = model, onClose = { model.problemReportOpen = false }, onPrivacy = { showReportingPrivacy = true })
     }
     if (showReportingPrivacy) {
         Dialog(onDismissRequest = { showReportingPrivacy = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
