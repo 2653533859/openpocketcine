@@ -90,7 +90,7 @@ final class OperatorFacingCopyTests: XCTestCase {
             CrosshairAssist.helpCopy,
             MirrorAssist.explanation,
             SettingsHelpCopy.currentTransport,
-            MonitorSettingsCopy.frameIOAccount,
+            MonitorSettingsCopy.accountHelp(service: "Frame.io"),
             MonitorSettingsCopy.shareThisFeed,
             MonitorSettingsCopy.broadcastPriority,
             MonitorSettingsCopy.watcherPasscode,
