@@ -78,6 +78,11 @@ class MultiviewTileIdentityTest {
                     stage = MultiviewSession(activity, saveStage = { true })
                     activity.setContent {
                         BoxWithConstraints(Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }) {
+                            // Read the generation here, in the scope whose SideEffect records it: a
+                            // change that only the inner scopes read (the stage visibility) would
+                            // otherwise never re-run that SideEffect, and the wait below could never
+                            // see the composed generation.
+                            val composedGeneration = generation
                             val (width, height) = viewport
                             val scale = constraints.maxWidth / width
                             val layout = MultiviewPresentationLayout.compute(width, height, safe, arrangement, selected)
@@ -117,7 +122,7 @@ class MultiviewTileIdentityTest {
                             }
                             }
                             SideEffect {
-                                shownGeneration = generation
+                                shownGeneration = composedGeneration
                                 shownLayout = layout
                                 shownScale = scale
                                 expectedSizes = layout.tiles.mapIndexed { index, frame ->
