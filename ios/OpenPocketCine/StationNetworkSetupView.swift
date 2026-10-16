@@ -1,6 +1,8 @@
 import MonitorUI
 import NetworkExtension
+import OpenCineAppKit
 import OpenPocketViewCore
+import enum OpenCineCore.RouteKind
 import struct OpenCineCore.SavedCamera
 import SwiftUI
 import OpenCineDJIApple
@@ -338,110 +340,44 @@ struct StationNetworkSetupView: View {
     // MARK: Choose
 
     private func choosePage(_ landscape: Bool) -> some View {
-        VStack(alignment: .leading, spacing: landscape ? 12 : 14) {
-            if landscape {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(
-                        context.camera == nil
-                            ? "How will your cameras connect?" : "How should this camera connect?"
-                    )
-                    .font(MonitorTheme.font(18, weight: .semibold))
-                    Spacer()
-                    if let camera = context.camera {
-                        Text(camera.modelName).font(MonitorTheme.font(11.5))
-                            .foregroundStyle(MonitorTheme.muted)
-                    }
-                }
-            } else {
-                if let camera = context.camera {
-                    HStack(spacing: 10) {
-                        MonitorIcon.camera.frame(width: 16, height: 16)
-                        Text("\(camera.displayName) · \(camera.modelName)")
-                            .font(MonitorTheme.font(12.5))
-                    }
-                    .foregroundStyle(MonitorTheme.muted)
-                }
-                Text(
-                    context.camera == nil
-                        ? "How will your cameras connect?" : "How should this camera connect?"
-                )
-                .font(MonitorTheme.font(22, weight: .semibold))
-            }
-            let layout =
-                landscape
-                ? AnyLayout(HStackLayout(alignment: .top, spacing: 12))
-                : AnyLayout(VStackLayout(spacing: 14))
-            layout {
-                choice(
-                    .wifi, icon: .wifi,
-                    body:
-                        "A router, venue network or another device’s hotspot. Cameras and this iPhone join the same Wi-Fi.",
-                    tag: "Best for studios and several cameras", landscape: landscape)
-                choice(
-                    .phoneHotspot, icon: .radio,
-                    body: "This iPhone’s Personal Hotspot. Works anywhere you have cellular.",
-                    tag: "Best on the move", landscape: landscape)
-            }
-            // Equal-height tiles side by side.
-            .fixedSize(horizontal: false, vertical: landscape)
-            Text(
-                context.camera == nil
-                    ? "Choose the shared network before adding cameras. Saved passwords stay on this iPhone."
-                    : "Camera Wi-Fi stays available. Switch setups from the camera’s chips at any time."
-            )
-            .font(MonitorTheme.font(landscape ? 11.5 : 12)).foregroundStyle(MonitorTheme.muted)
-        }
+        AddSetupChooserView(
+            chooser: Self.setupChooser(context: context),
+            onSelect: { open($0.kind == .infrastructureNetwork ? .networks : .hotspot) },
+            horizontal: landscape)
     }
 
-    private func choice(
-        _ setup: CameraConnectionSetup, icon: MonitorIcon, body: String, tag: String,
-        landscape: Bool
-    ) -> some View {
-        Button {
-            open(setup == .wifi ? .networks : .hotspot)
-        } label: {
-            let layout =
-                landscape
-                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
-                : AnyLayout(HStackLayout(alignment: .top, spacing: 14))
-            layout {
-                icon.frame(width: 22, height: 22).foregroundStyle(MonitorTheme.accent)
-                    .frame(width: 44, height: 44)
-                    .background(
-                        MonitorTheme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Text(setup.title).font(MonitorTheme.font(17, weight: .semibold))
-                        if let ssid = context.camera?.ssid(for: setup) {
-                            Text("Added · \(ssid)").font(MonitorTheme.font(10.5, weight: .semibold))
-                                .foregroundStyle(good).lineLimit(1)
-                        }
-                    }
-                    Text(body).font(MonitorTheme.font(12.5)).foregroundStyle(MonitorTheme.muted)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if landscape { Spacer(minLength: 0) }
-                    Text(tag).font(MonitorTheme.font(10.5, weight: .semibold))
-                        .foregroundStyle(MonitorTheme.secondary)
-                        .padding(.horizontal, 9).padding(.vertical, 5)
-                        .background(MonitorTheme.raised, in: RoundedRectangle(cornerRadius: 6))
-                        .padding(.top, 4)
-                }
-                .frame(maxHeight: landscape ? .infinity : nil, alignment: .top)
-                if !landscape {
-                    Spacer(minLength: 0)
-                    MonitorIcon.chevronRight.frame(width: 18, height: 18)
-                        .foregroundStyle(MonitorTheme.faint).frame(maxHeight: .infinity)
-                }
-            }
-            .padding(16)
-            .frame(
-                maxWidth: .infinity, maxHeight: landscape ? .infinity : nil, alignment: .topLeading
-            )
-            .background(card).contentShape(Rectangle())
+    /// Host copy and supported station routes; the app keeps network and credential steps.
+    static func setupChooser(context: Context) -> AddSetupChooser {
+        func detail(_ setup: CameraConnectionSetup, _ body: String, _ tag: String) -> String {
+            [context.camera?.ssid(for: setup).map { "Added · \($0)" }, body, tag]
+                .compactMap { $0 }.joined(separator: "\n")
         }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("\(context.prefix).\(setup.rawValue)")
+        return AddSetupChooser(
+            title: context.camera == nil
+                ? "How will your cameras connect?" : "How should this camera connect?",
+            detail: context.camera.map { "\($0.displayName) · \($0.modelName)" } ?? "",
+            options: [
+                AddSetupOption(
+                    id: "wifi", kind: .infrastructureNetwork,
+                    title: CameraConnectionSetup.wifi.title,
+                    detail: detail(
+                        .wifi,
+                        "A router, venue network or another device’s hotspot. Cameras and this iPhone join the same Wi-Fi.",
+                        "Best for studios and several cameras"),
+                    actionTitle: "Choose Wi-Fi"),
+                AddSetupOption(
+                    id: "phoneHotspot", kind: .phoneHotspot,
+                    title: CameraConnectionSetup.phoneHotspot.title,
+                    detail: detail(
+                        .phoneHotspot,
+                        "This iPhone’s Personal Hotspot. Works anywhere you have cellular.",
+                        "Best on the move"),
+                    actionTitle: "Choose hotspot"),
+            ],
+            footer: context.camera == nil
+                ? "Choose the shared network before adding cameras. Saved passwords stay on this iPhone."
+                : "Camera Wi-Fi stays available. Switch setups from the camera’s chips at any time.",
+            identifierPrefix: context.prefix)
     }
 
     // MARK: Wi-Fi
