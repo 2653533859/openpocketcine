@@ -91,7 +91,7 @@ final class DJICameraSessionAdapterTests: XCTestCase {
         let unknown = OpenPocketCine.CameraSession(borrowing: HevcDecoder())
         XCTAssertFalse(OsmoMonitorPresentation.capabilities(unknown).focus, "no body, no claim")
         XCTAssertFalse(OsmoMonitorPresentation.capabilities(unknown).timecode, "no body, no counter claim")
-        XCTAssertTrue(OsmoMonitorPresentation.capabilities(unknown).audio)
+        XCTAssertFalse(OsmoMonitorPresentation.capabilities(unknown).audio, "no body, no camera-dependent control")
     }
 
     func testUndeclaredSettingStaysUnknownInsteadOfPretending() {

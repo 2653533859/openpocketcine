@@ -15,6 +15,7 @@ import kotlin.test.assertNotNull
 import com.opencapture.opencine.core.MonitorLayoutCapabilities
 import com.opencapture.opencine.core.SettingKey
 import com.opencapture.opencine.vocabulary.CameraCommands
+import com.opencapture.opencine.vocabulary.controls
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -91,5 +92,23 @@ class CaptureSheetHostTest {
         assertFalse(both.nativeIsoHopSupported)
         assertNull(both.nativeISO.hop)
         assertNull(both.nativeISO.ceiling)
+    }
+
+    /** Once a body is known the DJI control model decides; before that the layout does. */
+    @Test fun theBodysControlModelDecidesOnceKnown() {
+        var known: com.opencapture.opencine.vocabulary.ControlCapabilities? = null
+        val state = pocketCaptureSessionState({ null }, { null }, { false }, { false },
+            { MonitorLayoutCapabilities(audio = true) }, controls = { known })
+        assertTrue(state.controls(MonitorLayoutCapabilities(audio = true)).audio.isOffered, "a legacy host: its layout")
+        known = com.opencapture.opencine.vocabulary.ControlCapabilities.beforeConnection(null)
+        assertFalse(state.controls(MonitorLayoutCapabilities(audio = true)).audio.isOffered, "no body: nothing camera-dependent")
+        val pocket = com.opencapture.opencine.vocabulary.CameraCaptureProfile(
+            supportsFocusMode = true, supportsTapFocus = true, supportsAperture = false, hasGimbal = true, supportsZoom = true)
+        known = com.opencapture.opencine.vocabulary.ControlCapabilities.derive(
+            com.opencapture.opencine.core.CapabilitySnapshot(), pocket)
+        val controls = state.controls(MonitorLayoutCapabilities(audio = true))
+        assertTrue(controls.focus.isOffered)
+        assertFalse(controls.iris.isOffered)
+        assertNull(controls.nativeISO.hop)
     }
 }

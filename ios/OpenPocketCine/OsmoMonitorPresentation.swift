@@ -1,5 +1,6 @@
 import Foundation
 import MonitorPresentation
+import OpenCineCameraVocabulary
 import OpenCineCore
 import OpenPocketViewCore
 
@@ -21,17 +22,26 @@ enum OsmoMonitorPresentation {
         MonitorZoomCaption.label(factor: session.zoomReadout, opticalStops: session.zoomStops)
     }
 
-    /// What the monitor lays out: the DJI integration's projection of the connected body
-    /// (`DJICameraSessionAdapter.layout`). Only clip delete, clip star and the internet hop are
-    /// the app's, until media and connection routes carry them (SHELL-02). Audio stays on before
-    /// the body is known, as main offered the AUDIO tile and Clean view pin on every body.
+    /// The one control model of the connected body, as the DJI integration provides it
+    /// (`DJICameraSessionAdapter.controlCapabilities`): what the shared capture UI offers.
+    static func controls(_ session: CameraSession, codecColor: CaptureCodecColorChoices? = nil)
+        -> ControlCapabilities
+    {
+        // The adapter knows the identified body; before identification its model has no profile,
+        // so nothing camera-dependent is offered (the shared pre-connection rule).
+        session.control.controlCapabilities(codecColor: codecColor)
+    }
+
+    /// What the monitor lays out: a view of the control model over the app's base. Only clip
+    /// delete, clip star and the internet hop are the app's, until media and connection routes
+    /// carry them (SHELL-02). Before the body is known nothing camera-dependent (audio included)
+    /// is laid out: the shared pre-connection rule.
     static func capabilities(_ session: CameraSession) -> MonitorLayoutCapabilities {
-        session.control.layout(base: appBase)
+        MonitorLayoutCapabilities(controls: controls(session), base: appBase)
     }
 
     private static let appBase: MonitorLayoutCapabilities = {
         var base = MonitorLayoutCapabilities()
-        base.audio = true
         base.clipDelete = true
         base.clipStar = true
         base.requiresInternetHop = true

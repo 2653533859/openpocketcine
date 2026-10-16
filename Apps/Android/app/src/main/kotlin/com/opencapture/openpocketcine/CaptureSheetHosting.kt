@@ -32,7 +32,8 @@ internal val pocketCaptureReadoutSelection = com.opencapture.opencine.appkit.Mon
 
 /**
  * Pocket's capture session state: the DJI session's AE/AWB locks and format pin, and the DJI
- * integration's layout for focus and iris. Native ISO support stays unknown without a source declaration.
+ * integration's control model once a body is known ([controls]); before that, its layout for focus
+ * and iris. Native ISO support stays unknown without a source declaration.
  * Values are read when the sheet reads them (the format pin expires on time).
  */
 internal fun pocketCaptureSessionState(
@@ -44,6 +45,7 @@ internal fun pocketCaptureSessionState(
     nativeISOCapabilities: () -> com.opencapture.opencine.vocabulary.CaptureNativeISOCapabilities = {
         com.opencapture.opencine.vocabulary.CaptureNativeISOCapabilities()
     },
+    controls: () -> com.opencapture.opencine.vocabulary.ControlCapabilities? = { null },
 ): CaptureSessionState = object : CaptureSessionState {
     override val aeLocked get() = aeLock() != null
     override val awbLockKelvin get() = awbLockKelvin()
@@ -53,6 +55,7 @@ internal fun pocketCaptureSessionState(
     override val irisSupported get() = layout().iris
     override val nativeISO get() = nativeISOCapabilities()
     override val nativeIsoHopSupported get() = nativeISO.hop == true
+    override val controlCapabilities get() = controls()
 }
 
 @Composable
@@ -60,7 +63,7 @@ internal fun AppModel.observedCaptureSessionState(status: CameraStatus): Capture
     val aeLock by session.aeLock.collectAsState()
     val awbLock by session.awbLockKelvin.collectAsState()
     return pocketCaptureSessionState({ aeLock }, { awbLock }, { session.autoWhiteBalanceLock(status) != null },
-        { session.isFormatPinActive }, { monitorLayout() }, { session.nativeISOCapabilities })
+        { session.isFormatPinActive }, { monitorLayout() }, { session.nativeISOCapabilities }, { controlCapabilities() })
 }
 
 /** ISO, shutter and white balance Kelvin through the captured Core field; EV through Core too. */
