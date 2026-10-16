@@ -1,5 +1,6 @@
 #if DEBUG && targetEnvironment(simulator)
     import OpenCineAppKit
+    import OpenCineCameraControls
     import OpenCineCore
     import OpenPocketViewCore
 
@@ -82,6 +83,25 @@
                 return
             }
             report("SIMULATED zoom", onStage: onStage) { $0.zoomLens = CamFov.pinchLens(for: ratio) }
+        }
+
+        /// The audio settings a connected body offers, answered by this fixture's own reports.
+        var audioService: CaptureAudioService {
+            let snapshot = control.current
+            let sourceID = CaptureAudioSourceID(session: snapshot.session, epoch: snapshot.epoch)
+            return CaptureAudioService(sourceID: sourceID, fields: AppModel.audioFields(status),
+                commit: { [weak self] value in
+                    guard let self else { return .unavailable }
+                    self.report("SIMULATED audio", onStage: nil) { status in
+                        switch value {
+                        case .channel(let channel): status.audioChannel = channel
+                        case .wind(let wind): status.windNR = wind
+                        case .direction(let direction): status.directionalAudio = direction
+                        case .vocal(let vocal): status.vocalBoost = vocal
+                        }
+                    }
+                    return .submitted
+                }, refresh: {})
         }
     }
 

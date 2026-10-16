@@ -144,6 +144,8 @@ import OpenCineDJIApple
             status.whiteBalanceKelvin = live.whiteBalanceKelvin
             status.focusMode = .continuous
             status.audioChannel = .stereo
+            // A connected body reports its meters; a quiet room reads as silence.
+            status.audioMeters = .silent
             status.timecodeValue = CameraTimecode(
                 hours: live.timecodeHours, minutes: live.timecodeMinutes, seconds: live.timecodeSeconds, frames: 0)
             status.colorMode = .dLog2
