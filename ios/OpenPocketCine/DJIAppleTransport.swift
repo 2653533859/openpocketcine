@@ -10,9 +10,8 @@ extension DjiAppleTransportHost {
     static var pocket: Self {
         var host = Self(logSubsystem: "com.opencapture.openpocketcine", journal: { ControlLiveLog.line($0) },
             bluetoothGattJournal: persistPocketBluetoothGatt,
-            localNetworkEvidence: { evidence, source in
-                LocalNetworkAccess.note(evidence == .allowed ? .allowed : .denied, source: source)
-            }, bluetoothDenied: StartupConnectionCopy.bluetoothDenied,
+            localNetworkEvidence: { evidence, source in LocalNetworkAccess.note(evidence, source: source) },
+            bluetoothDenied: StartupConnectionCopy.bluetoothDenied,
             bluetoothOff: StartupConnectionCopy.bluetoothOff,
             bluetoothNotReady: StartupConnectionCopy.bluetoothNotReady)
         #if DEBUG
