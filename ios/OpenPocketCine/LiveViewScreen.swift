@@ -118,7 +118,7 @@ struct LiveViewScreen: View {
                 headTracking: capability.headTracking, watching: model.isWatchingFeed),
             capture: MonitorOperatorLiveCaptureSource(confirmRecording: model.recordConfirmationEnabled,
                 busy: { model.session.controlBusy }, takePhoto: { model.session.control.shutter() }),
-            zoom: zoomSource, focus: focusSource, assists: assistSource,
+            zoom: zoomSource, focus: focusSource, assists: model.liveAssistSource,
             portraitAspect: Bindable(model).portraitFeedAspect, orientation: orientationObserver.orientation,
             controlNote: Bindable(model.session).controlNote,
             headTracking: MonitorOperatorHeadTrackingSource(enabled: model.headTrackingEnabled,
@@ -193,13 +193,6 @@ struct LiveViewScreen: View {
         }, cancelTracking: { model.session.cancelSubjectTracking() })
     }
 
-    private var assistSource: MonitorOperatorLiveAssistSource {
-        MonitorOperatorLiveAssistSource(stores: .app, looks: .app, haptics: .app,
-            readBundle: { model.monitorSamples.displayBundle },
-            readTransfer: { model.monitorTransfer ?? model.monitorColorMode.map(MonitorTransfer.init) ?? .rec709 },
-            readClipByte: { model.monitorSamples.exposureCeiling.clipByte(transfer: $0) },
-            configureDisplay: scopeDisplay)
-    }
 
 
 }
