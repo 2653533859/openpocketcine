@@ -197,9 +197,6 @@ targets:
         product: OpenCineDJIApple
       - package: OpenCine
         product: OpenCineMulticam
-      # The one hosted accessibility walk for in-process view tests.
-      - package: OpenCine
-        product: OpenCineHostedAccessibility
     settings:
       base:
         SWIFT_VERSION: "5.0"
