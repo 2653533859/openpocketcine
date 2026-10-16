@@ -1,5 +1,7 @@
 package com.opencapture.openpocketcine
 
+import com.opencapture.opencine.appkit.MonitorRemoteShutter
+import com.opencapture.opencine.cameracontrols.LocalMonitorRemoteShutter
 import com.opencapture.opencine.cameracontrols.LocalMonitorDeliveryCoordinator
 import com.opencapture.opencine.cameracontrols.MonitorOperatorDeliveryChrome
 import com.opencapture.opencine.cameracontrols.rememberMonitorDeliveryCoordinator
@@ -67,6 +69,8 @@ open class MainActivity : ComponentActivity() {
     private val launch = MonitorActivityLaunch()
     internal lateinit var model: AppModel
         private set
+    /** The media-button remote shutter (A2-32); the shared live surface arms it while the monitor is in front. */
+    private lateinit var remoteShutter: MonitorRemoteShutter
     var hideSystemNavigation = false
     var playbackHidesSystemNavigation = false
 
@@ -80,12 +84,14 @@ open class MainActivity : ComponentActivity() {
         // One model per task: a recreated activity keeps the session; finishing closes it.
         model = retainedMonitorRoot { createModel().also(AppModel::prepareStartup) }
         model.gimbalGamepad.ensureListening(this, model)
+        remoteShutter = MonitorRemoteShutter(applicationContext, "OpenPocketCineRemoteShutter")
         launch.setContent(this) {
             OpenPocketCineTheme {
                 val haptics = rememberOperatorHaptics { model.hapticsEnabled }
                 // One app-scoped delivery owner: a run outlives the media screen that began it.
                 val delivery = rememberMonitorDeliveryCoordinator()
-                CompositionLocalProvider(LocalOperatorHaptics provides haptics, LocalMonitorDeliveryCoordinator provides delivery) {
+                CompositionLocalProvider(LocalOperatorHaptics provides haptics, LocalMonitorDeliveryCoordinator provides delivery,
+                    LocalMonitorRemoteShutter provides remoteShutter) {
                     OpenPocketCineApp(model)
                     Overlay(model)
                     MonitorOperatorDeliveryChrome(delivery, PocketMediaShare, { MediaHTTP.playbackMIMEType(it.name) })
@@ -115,6 +121,7 @@ open class MainActivity : ComponentActivity() {
     }
 
     override fun onPause() {
+        if (::remoteShutter.isInitialized) remoteShutter.disarm()
         if (::model.isInitialized) model.shell.setSceneActive(false)
         AppDiagnostics.manualReport.setForeground(false)
         super.onPause()
@@ -137,7 +144,14 @@ open class MainActivity : ComponentActivity() {
     @SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (::model.isInitialized && model.gimbalGamepad.onKey(event, model)) return true
+        // Only an armed shutter (live view in front, opted in) consumes volume and media keys.
+        if (::remoteShutter.isInitialized && remoteShutter.dispatchKeyEvent(event)) return true
         return super.dispatchKeyEvent(event)
+    }
+
+    override fun onDestroy() {
+        if (::remoteShutter.isInitialized) remoteShutter.close()
+        super.onDestroy()
     }
 }
 
