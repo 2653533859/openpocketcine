@@ -12,7 +12,9 @@ import com.opencapture.monitorui.monitorPlaybackUnitPoint as unitPoint
 
 import com.opencapture.monitorui.LocalMonitorBackdrops
 import com.opencapture.monitorui.monitorBackdropSource
-import com.opencapture.openpocketcine.feed.rememberMonitorBackdropFeed
+import com.opencapture.opencine.appkitnative.MonitorPlaybackFeedView
+import com.opencapture.openpocketcine.feed.LiveFeed
+import com.opencapture.opencine.appkitnative.rememberMonitorBackdropFeed
 import com.opencapture.monitorui.MonitorMaterial
 import com.opencapture.monitorui.monitorMaterial
 import android.graphics.Bitmap
@@ -258,7 +260,7 @@ fun MediaPlayerScreen(files: List<MediaFile>, startingAt: MediaFile, controller:
             if (native != null) {
                 val current by player.state.collectAsState()
                 val mirror = model.assist.isPlaybackVisible(com.opencapture.monitorui.MonitorAssistTool.MIRROR)
-                PlaybackFeedView(native, model.scopeBus, model.inspectorPreview, backdrop, plan,
+                MonitorPlaybackFeedView(native, LiveFeed, model.scopeBus, model.inspectorPreview, backdrop, plan,
                     mirrored = mirror && model.assist.mirrorHorizontal, flippedVertically = mirror && model.assist.mirrorVertical,
                     zoom = geometry.zoom, sourceWidth = native.player.videoSize.width.takeIf { it > 1 } ?: 1280,
                     sourceHeight = native.player.videoSize.height.takeIf { it > 1 } ?: 720,
