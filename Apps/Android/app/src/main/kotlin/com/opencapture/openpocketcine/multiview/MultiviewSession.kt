@@ -647,7 +647,7 @@ class MultiviewSession(
         configuringNetwork = true
         networkSetupError = null
         try {
-            if (!com.opencapture.openpocketcine.pairing.validStationCredentials(ssid, password, usePhoneHotspot)) {
+            if (!com.opencapture.opencine.appkit.validStationCredentials(ssid, password, usePhoneHotspot)) {
                 throw MultiviewFailure.Message("Check the network name and password.")
             }
             joinSharedNetwork()

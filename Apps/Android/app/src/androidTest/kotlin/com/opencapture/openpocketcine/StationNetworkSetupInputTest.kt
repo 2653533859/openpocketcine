@@ -10,8 +10,10 @@ import androidx.activity.compose.setContent
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.opencapture.opencine.dji.MultiviewNetworkStore
-import com.opencapture.openpocketcine.pairing.StationNetworkSetup
+import com.opencapture.opencine.appkit.StationNetwork
+import com.opencapture.opencine.appkit.StationNetworkSetup
+import com.opencapture.openpocketcine.pairing.POCKET_STATION_BRAND
+import com.opencapture.openpocketcine.pairing.rememberWifiNameAccess
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
@@ -32,7 +34,7 @@ class StationNetworkSetupInputTest {
         try {
             ActivityScenario.launch(BackdropRenderActivity::class.java).use { scenario ->
                 val scanComplete = CompletableDeferred<Unit>()
-                var submitted: MultiviewNetworkStore.Network? = null
+                var submitted: StationNetwork? = null
                 var density = 1f
                 scenario.onActivity { activity ->
                     assertEquals(Configuration.ORIENTATION_LANDSCAPE, activity.resources.configuration.orientation)
@@ -40,7 +42,8 @@ class StationNetworkSetupInputTest {
                     activity.setContent {
                         OpenPocketCineTheme {
                             StationNetworkSetup(
-                                savedNetworks = listOf(MultiviewNetworkStore.Network("Test network", "test-passphrase", false)),
+                                brand = POCKET_STATION_BRAND, wifiNameAccess = rememberWifiNameAccess(),
+                                savedNetworks = listOf(StationNetwork("Test network", "test-passphrase", false)),
                                 currentSsid = { "Test network" }, hotspotActive = { false },
                                 scan = { found ->
                                     repeat(24) { found("Nearby test network $it") }
@@ -102,7 +105,8 @@ class StationNetworkSetupInputTest {
                 activity.setContent {
                     OpenPocketCineTheme {
                         StationNetworkSetup(
-                            savedNetworks = listOf(MultiviewNetworkStore.Network("Test network", "test-passphrase", false)),
+                            brand = POCKET_STATION_BRAND, wifiNameAccess = rememberWifiNameAccess(),
+                            savedNetworks = listOf(StationNetwork("Test network", "test-passphrase", false)),
                             currentSsid = { "Test network" }, hotspotActive = { false },
                             scan = { found ->
                                 found("Nearby test network")

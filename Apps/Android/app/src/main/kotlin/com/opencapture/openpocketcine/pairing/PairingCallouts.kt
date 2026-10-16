@@ -8,6 +8,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import com.opencapture.opencine.appkit.AddSetupFlow
 import com.opencapture.opencine.appkit.AddSetupFlowView
+import com.opencapture.opencine.appkit.DiscoveryPermissions
+import com.opencapture.opencine.appkit.StationNetwork
+import com.opencapture.opencine.appkit.StationNetworkBrand
+import com.opencapture.opencine.appkit.StationNetworkSetup
+import com.opencapture.opencine.appkit.StationSetupPage
+import com.opencapture.opencine.appkit.stationSetupChooser
+import com.opencapture.opencine.dji.MultiviewNetworkStore
 import com.opencapture.opencine.core.ConnectTarget
 import com.opencapture.opencine.core.RouteDraft
 import com.opencapture.opencine.core.RouteKind
@@ -25,6 +32,18 @@ val SavedCamera.modelName: String get() = model
 val SavedCamera.lastSSID: String? get() = routes.firstOrNull { it.kind == RouteKind.CAMERA_ACCESS_POINT }?.network
 val SavedCamera.wifiSSID: String? get() = routes.firstOrNull { it.kind == RouteKind.INFRASTRUCTURE_NETWORK }?.network
 val SavedCamera.hotspotSSID: String? get() = routes.firstOrNull { it.kind == RouteKind.PHONE_HOTSPOT }?.network
+
+/** This app's words and camera access-point naming for OpenCine's station-network wizard. */
+val POCKET_STATION_BRAND = StationNetworkBrand(appName = "OpenPocketCine", cameraFamily = "Osmo", cameraNetworkPrefix = "osmo")
+
+/** The saved shared networks as the station wizard reads them. */
+fun List<MultiviewNetworkStore.Network>.asStationNetworks(): List<StationNetwork> =
+    map { StationNetwork(it.ssid, it.password, it.hotspot) }
+
+/** Location for this phone's Wi-Fi name, asked where the name is shown, not at first run. */
+@Composable
+fun rememberWifiNameAccess(): PermissionGate =
+    rememberPermissionGate("wifi-name", DiscoveryPermissions.wifiName, DiscoveryPermissions.wifiNameRequest)
 
 fun SavedCamera.ssid(setup: CameraConnectionSetup): String? = when (setup) {
     CameraConnectionSetup.CAMERA_WIFI -> lastSSID
@@ -78,7 +97,9 @@ internal fun addSetupFlow(model: AppModel, camera: SavedCamera, done: (RouteDraf
         onSelect = {},
         destination = { option ->
             StationNetworkSetup(
-                savedNetworks = model.savedNetworks(),
+                brand = POCKET_STATION_BRAND,
+                wifiNameAccess = rememberWifiNameAccess(),
+                savedNetworks = model.savedNetworks().asStationNetworks(),
                 currentSsid = wifi::currentSsid,
                 hotspotActive = { wifi.address(true) != null },
                 scan = model.networkScan(camera),
@@ -87,9 +108,9 @@ internal fun addSetupFlow(model: AppModel, camera: SavedCamera, done: (RouteDraf
                     null
                 },
                 cancel = { done(null) }, complete = { done(null) }, camera = camera,
-                startPage = if (option.kind == RouteKind.PHONE_HOTSPOT) "hotspot"
-                    else if (failed == RouteKind.INFRASTRUCTURE_NETWORK) "password" else "networks",
-                startNetwork = camera.wifiSSID.orEmpty(),
+                startPage = if (option.kind == RouteKind.PHONE_HOTSPOT) StationSetupPage.Hotspot
+                    else if (failed == RouteKind.INFRASTRUCTURE_NETWORK) StationSetupPage.Password(camera.wifiSSID.orEmpty())
+                    else StationSetupPage.Networks,
             )
         },
         initialSelection = when (failed) {
