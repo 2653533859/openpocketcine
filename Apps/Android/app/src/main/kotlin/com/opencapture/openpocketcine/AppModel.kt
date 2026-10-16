@@ -527,6 +527,7 @@ class AppModel(
 
     // CaptureSheetHost (camera-controls): the capture sheets read these values and commit through one typed entry.
     override val captureRouting = com.opencapture.opencine.cameracontrols.CaptureSheetRouting(commonExposureCompensation = true, commonFocusMode = true)
+    override val captureReadoutSelection = pocketCaptureReadoutSelection
     override val camera get() = session.connectedCamera?.model
     override val audioService get() = captureAudioService()
     override fun captureField(sheet: LiveSheet, expoMode: Int): MonitorCaptureField? =
@@ -641,7 +642,13 @@ class AppModel(
         if (session.phaseFlow.value.isBusy() || session.isReconnecting.value) return
         disconnect()
         session.ble.stopScan()
-        if (multiview == null) multiview = com.opencapture.openpocketcine.multiview.MultiviewSession(appContext).also { it.start() }
+        if (multiview == null) multiview = com.opencapture.openpocketcine.multiview.MultiviewSession(appContext).also {
+            val store = com.opencapture.opencine.appkit.MultiviewStagePreferencesStore(
+                appContext.getSharedPreferences("multiview-presentation", android.content.Context.MODE_PRIVATE), "stage",
+            )
+            it.presentation.attachPersistence(store::load, store::save)
+            it.start()
+        }
     }
 
     fun closeMultiview() {

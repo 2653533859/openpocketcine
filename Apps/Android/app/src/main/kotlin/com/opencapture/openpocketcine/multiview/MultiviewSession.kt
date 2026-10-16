@@ -26,6 +26,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.opencapture.opencine.appkit.MultiviewStageState
+import com.opencapture.opencine.appkit.MultiviewStageLayout
+import com.opencapture.opencine.appkit.MultiviewStagePreferences
 import com.opencapture.monitorui.MultiviewArrangement
 import com.opencapture.opencine.core.MonitorEntryID
 import com.opencapture.opencine.core.PictureHealth
@@ -254,11 +257,8 @@ class MultiviewSession(
         var surfaceMounted = false
         private var inputOwner = 0L
 
-        val timecodeReadout: String?
-            get() {
-                if (camera == null || !control.layout().timecode) return null
-                return settings.timecodeClock
-            }
+        /** The body's clock at its declared precision, only where it declares one (Nano has none). */
+        val timecodeReadout: String? get() = if (camera == null) null else control.tileTimecodeReadout()
 
         fun updateSettings(frame: DumlFrame) {
             val cam = camera ?: return
@@ -319,6 +319,8 @@ class MultiviewSession(
             storageFreeMb = settings.storageFreeMb,
             storageTotalMb = settings.storageTotalMb,
             model = camera?.model,
+            charging = settings.chargingReading,
+            timecode = settings.timecodeValue,
         )
 
         internal fun multicam() = MulticamTile(
@@ -412,9 +414,16 @@ class MultiviewSession(
     private var foregroundAt = 0L
     var host by mutableStateOf("")
     var error by mutableStateOf<String?>(null)
-    var layout by mutableStateOf(MultiviewLayout.CENTER_STAGE)
-    var fill by mutableStateOf(false)
-    var focusedIndex by mutableStateOf(0)
+    val presentation = MultiviewStageState(MultiviewQualificationPolicy.tileCount)
+    var layout: MultiviewLayout
+        get() = MultiviewLayout.from(presentation.layout.rawValue)
+        set(value) { presentation.layout = if (value == MultiviewLayout.GRID) MultiviewStageLayout.GRID else MultiviewStageLayout.CENTER_STAGE }
+    var fill: Boolean
+        get() = presentation.fill
+        set(value) { presentation.fill = value }
+    var focusedIndex: Int
+        get() = presentation.selected
+        set(value) { presentation.selected = value }
     var closing by mutableStateOf(false)
     val connectingCameras: Boolean get() = tiles.any { it.connecting }
     val path = SharedWiFi(app)
@@ -1280,9 +1289,10 @@ class MultiviewSession(
             pendingReset = MultiviewStageStore.cleanupTargets(pendingReset, stage.cameras)
         }
         cleanupJournalWritten = pendingReset.isNotEmpty()
-        layout = MultiviewLayout.from(stage.layout)
-        fill = stage.fill == true
-        focusedIndex = stage.focusedIndex
+        presentation.importLegacy(MultiviewStagePreferences(
+            layout = if (MultiviewLayout.from(stage.layout) == MultiviewLayout.GRID) MultiviewStageLayout.GRID else MultiviewStageLayout.CENTER_STAGE,
+            selected = stage.focusedIndex, fill = stage.fill == true,
+        ))
         // Migrate unfinished camera cleanup before a new camera is added.
         if (cleanupJournalWritten) persistStage()
     }

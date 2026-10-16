@@ -75,12 +75,14 @@ class MonitorCaptureInputTest {
                 }
             }
             settle()
-            val target = nativeControlRect(scenario, "Take photo")
-            fun hold() {
+            fun hold(requireAcceptance: Boolean = true) {
+                // Resolve the control immediately before each dispatch: one cached
+                // accessibility rect can go stale while the window settles.
+                val target = nativeControlRect(scenario, "Take photo")
                 val down = SystemClock.uptimeMillis()
-                event(scenario, MotionEvent.ACTION_DOWN, target.center.x, target.center.y, down)
+                event(scenario, MotionEvent.ACTION_DOWN, target.center.x, target.center.y, down, requireAcceptance)
                 SystemClock.sleep(750)
-                event(scenario, MotionEvent.ACTION_UP, target.center.x, target.center.y, down)
+                event(scenario, MotionEvent.ACTION_UP, target.center.x, target.center.y, down, requireAcceptance)
                 settle()
             }
             hold()
@@ -88,13 +90,15 @@ class MonitorCaptureInputTest {
                 assertEquals(1, shutters, "Release uses only the shutter action; no mode shortcut")
             }
             settle()
-            tap(scenario, target)
+            tap(scenario, nativeControlRect(scenario, "Take photo"))
             scenario.onActivity {
                 assertEquals(2, shutters, "Tap still operates shutter")
                 enabled = false
             }
             settle()
-            hold()
+            // Locked: the control retires its pointer-input node entirely, so the host may
+            // drop the events; the outcome is the invariant, not the dispatch acceptance.
+            hold(requireAcceptance = false)
             scenario.onActivity {
                 assertEquals(2, shutters, "Locked or busy control cannot operate shutter")
             }
@@ -132,7 +136,7 @@ class MonitorCaptureInputTest {
                         // Disabling a mounted control retires its hole without requiring relayout.
                         scenario.onActivity { probe.navigationEnabled = false }
                         settle()
-                        tap(scenario, target)
+                        tap(scenario, nativeControlRect(scenario, label))
                         scenario.onActivity {
                             assertNull(model?.shellState?.cover, "Disabled navigation cannot bypass the backdrop")
                             assertNull(probe.sheet, "The disabled target becomes an outside-dismiss region")
@@ -243,6 +247,8 @@ class MonitorCaptureInputTest {
 
     private fun nativeControlRect(scenario: ActivityScenario<BackdropRenderActivity>, label: String): Rect {
         fun find(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+            // Scope to this app's tree so another window's node cannot satisfy the lookup.
+            if (node.packageName?.toString() != TEST_PACKAGE) return null
             if (node.contentDescription?.toString() == label) return node
             for (index in 0 until node.childCount) {
                 node.getChild(index)?.let { find(it)?.let { found -> return found } }
@@ -286,14 +292,14 @@ class MonitorCaptureInputTest {
     }
 
     private fun event(scenario: ActivityScenario<BackdropRenderActivity>, action: Int,
-        x: Float, y: Float, down: Long) {
+        x: Float, y: Float, down: Long, requireAcceptance: Boolean = true) {
         scenario.onActivity { activity ->
-            dispatchOnHost(activity, action, x, y, down, SystemClock.uptimeMillis())
+            dispatchOnHost(activity, action, x, y, down, SystemClock.uptimeMillis(), requireAcceptance)
         }
     }
 
     private fun dispatchOnHost(activity: BackdropRenderActivity, action: Int, x: Float, y: Float,
-        down: Long, eventTime: Long) {
+        down: Long, eventTime: Long, requireAcceptance: Boolean = true) {
         assertTrue(activity.hasWindowFocus(), "Window must have focus")
         val host = composeHost(activity)
         val windowOrigin = IntArray(2)
@@ -307,8 +313,9 @@ class MonitorCaptureInputTest {
         val event = obtainTouch(down, eventTime, action, screenOrigin[0] + localX, screenOrigin[1] + localY)
         event.offsetLocation(-screenOrigin[0].toFloat(), -screenOrigin[1].toFloat())
         try {
-            assertTrue(host.dispatchTouchEvent(event),
+            if (requireAcceptance) assertTrue(host.dispatchTouchEvent(event),
                 "Compose host must accept $action at $localX,$localY")
+            else host.dispatchTouchEvent(event)
         } finally { event.recycle() }
     }
 
@@ -368,6 +375,14 @@ class MonitorCaptureInputTest {
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
         Thread.sleep(180)
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+    }
+
+    private companion object {
+        // The app under test, read rather than spelled out: the debug build carries an
+        // applicationIdSuffix, so a literal would stop matching every node.
+        val TEST_PACKAGE: String by lazy {
+            InstrumentationRegistry.getInstrumentation().targetContext.packageName
+        }
     }
 }
 
