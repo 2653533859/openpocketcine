@@ -317,4 +317,5 @@ dependencies {
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.json)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(testFixtures("com.opencapture.opencine:core:0.1.0-SNAPSHOT"))
 }

@@ -14,10 +14,7 @@ internal val appLayoutBase =
     MonitorLayoutCapabilities(audio = true, clipDelete = true, clipStar = true, requiresInternetHop = true)
 
 /** What the monitor lays out: the DJI integration's projection of the connected body (iOS `OsmoMonitorPresentation.capabilities`). */
-internal fun AppModel.monitorLayout(): MonitorLayoutCapabilities = singleViewLayout(session.control.layout(appLayoutBase))
-
-/** Single view shows the timecode on every body, Nano included, as main did; Multi View reads the body's declaration. */
-internal fun singleViewLayout(declared: MonitorLayoutCapabilities): MonitorLayoutCapabilities = declared.copy(timecode = true)
+internal fun AppModel.monitorLayout(): MonitorLayoutCapabilities = session.control.layout(appLayoutBase)
 
 /** AUDIO tile, assist, live meter and drum: a body that reports audio levels, in a video mode. */
 internal fun AppModel.showsAudio(status: CameraStatus): Boolean =

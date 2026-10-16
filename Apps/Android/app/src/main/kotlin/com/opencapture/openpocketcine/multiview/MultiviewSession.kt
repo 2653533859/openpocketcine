@@ -257,11 +257,8 @@ class MultiviewSession(
         var surfaceMounted = false
         private var inputOwner = 0L
 
-        val timecodeReadout: String?
-            get() {
-                if (camera == null || !control.layout().timecode) return null
-                return settings.timecodeClock
-            }
+        /** The body's clock at its declared precision, only where it declares one (Nano has none). */
+        val timecodeReadout: String? get() = if (camera == null) null else control.tileTimecodeReadout()
 
         fun updateSettings(frame: DumlFrame) {
             val cam = camera ?: return
@@ -322,6 +319,8 @@ class MultiviewSession(
             storageFreeMb = settings.storageFreeMb,
             storageTotalMb = settings.storageTotalMb,
             model = camera?.model,
+            charging = settings.chargingReading,
+            timecode = settings.timecodeValue,
         )
 
         internal fun multicam() = MulticamTile(
