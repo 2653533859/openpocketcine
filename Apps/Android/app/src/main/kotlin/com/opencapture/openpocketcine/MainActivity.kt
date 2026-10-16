@@ -178,7 +178,7 @@ private fun OpenPocketCineApp(model: AppModel) {
 
     MonitorAppRoot(
         brand = MonitorLaunchBrand(R.drawable.opc_app_logo, "OpenPocketCine", Color(0xFF0E0E0E), BrandColors.ink, OpcFonts.sora),
-        keepScreenAwake = model.keepScreenAwake || model.showsMultiview,
+        keepScreenAwake = model.keepScreenAwake,
         reports = MonitorReportsOffer(AppDiagnostics.consent, AppDiagnostics.reporting, AppDiagnostics.host.product) {
             model.homePanel = AppPanel.PRIVACY
         },

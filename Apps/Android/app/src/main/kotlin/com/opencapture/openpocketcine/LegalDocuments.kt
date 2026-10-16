@@ -2,6 +2,7 @@ package com.opencapture.openpocketcine
 
 import com.opencapture.opencine.cameracontrols.MonitorLegalDocument
 import com.opencapture.opencine.cameracontrols.MonitorLegalDocuments
+import com.opencapture.opencine.cameracontrols.MonitorPlatformLegalNotices
 
 private val PRIVACY_BODY =
     """
@@ -36,47 +37,19 @@ Android may ask for location so the app can join the camera Wi-Fi or scan BLE. O
 The full privacy policy is https://openpocketcine.app/privacy/
     """.trimIndent()
 
-private val LICENSES_BODY =
-    """
-OpenPocketCine
-Copyright 2026 Erik Sutton and OpenPocketCine contributors
-
-Licensed under the Apache License, Version 2.0. You may obtain a copy of the License at:
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-The portable .cube parser (CubeLUT) is adapted from OpenZCine, also Apache 2.0.
-
-HUD icons are Lucide (ISC; some glyphs also MIT from Feather). See THIRD-PARTY-NOTICES.
-
-I learned the BLE pairing and camera Wi-Fi connection path with the help of Osmosis by Konrad Iturbe, and I'm grateful. OpenPocketCine is its own implementation. The field-monitor architecture follows OpenZCine.
-
-No DJI SDK is included or required.
-
-Full license text: LICENSE in the repository. Attribution: NOTICE.
-    """.trimIndent()
-
-private val NOTICE_BODY =
-    """
-OpenPocketCine
-Copyright 2026 Erik Sutton and OpenPocketCine contributors
-
-This product is licensed under the Apache License, Version 2.0 (see LICENSE).
-The portable .cube parser (`CubeLUT`) is adapted from OpenZCine (Apache 2.0).
-HUD icons are Lucide (ISC; Feather-derived glyphs also MIT).
-
-This project is not affiliated with or endorsed by SZ DJI Technology Co., Ltd.
-"DJI", "Osmo", "Osmo Pocket", and "Mimo" are trademarks of SZ DJI Technology Co., Ltd.,
-used for identification only.
-No DJI SDK or proprietary DJI documentation is included in, distributed with, or required
-by this project.
-    """.trimIndent()
-
-/** Pocket's legal set: privacy, licenses and NOTICE ship with the app; the terms are the web page. */
+/**
+ * Pocket's legal set: privacy ships with the app and the terms are the web page. Licenses and
+ * NOTICE are the repository's LICENSE, THIRD-PARTY-NOTICES.md and NOTICE, staged as resources at
+ * build time, with the platform notices; a build missing one shows the unavailable page.
+ */
 internal val PocketLegalDocuments = MonitorLegalDocuments(
     wordmark = "OPENPOCKETCINE",
     privacy = MonitorLegalDocument.Text(PRIVACY_BODY),
     terms = MonitorLegalDocument.Link(OpenPocketCineLinks.TERMS),
-    licenses = MonitorLegalDocument.Text(LICENSES_BODY),
-    notice = MonitorLegalDocument.Text(NOTICE_BODY),
+    licenses = MonitorLegalDocument.bundledText(listOf(
+        MonitorLegalDocument.resource("openpocketcine/legal/LICENSE"),
+        MonitorLegalDocument.resource("openpocketcine/legal/THIRD-PARTY-NOTICES.md"),
+        MonitorPlatformLegalNotices.text,
+    )),
+    notice = MonitorLegalDocument.bundledText(listOf(MonitorLegalDocument.resource("openpocketcine/legal/NOTICE"))),
 )

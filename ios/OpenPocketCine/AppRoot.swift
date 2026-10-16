@@ -394,6 +394,12 @@ final class AppModel {
     /// The app-scoped delivery owner: runs survive leaving the gallery or the player.
     let delivery = MonitorDeliveryCoordinator()
     let frameio = FrameioAccountModel(namespace: .openPocketCine)
+    /// The Settings account operation, owned here so a settings rehost keeps an accepted sign-in.
+    @ObservationIgnored let settingsAccount = MonitorSettingsAccountModel()
+    /// The Settings support operations (reports and browser links), kept across a settings rehost.
+    @ObservationIgnored let settingsSupport = MonitorSettingsSupportModel()
+    /// Settings browser links through the one internet hop; the root reports background and return.
+    @ObservationIgnored lazy var browserHandoff = MonitorBrowserInternetHandoff(hop: internetHop)
     var relayHost = WatcherRelayHost(
         versionMismatchReason: WatcherRelayJoin.versionMismatchReason,
         logSubsystem: "com.opencapture.openpocketcine", journal: { ControlLiveLog.line($0) })
@@ -467,6 +473,34 @@ final class AppModel {
             rejoin: { route, _ in await route.session.rejoinSoftAPAfterInternetHop() }))
 
     var isOnCameraAccessPoint: Bool { internetHop.onCameraNetwork }
+
+    /// Settings reports and browser links (A2-22): the report is this app's diagnostic file, and a
+    /// page opened on the camera's Wi-Fi asks, then leaves through the one internet hop.
+    var settingsSupportActions: MonitorSettingsSupportActions {
+        .init(
+            identity: ObjectIdentifier(self), isCurrent: { [weak self] in self != nil },
+            requiresInternetConsent: isOnCameraAccessPoint,
+            makeReport: { [weak self] in
+                guard let self, let url = DiagnosticCenter.shared.writeReport(session: self.session) else {
+                    throw MonitorSettingsReportUnavailable(supportEmail: "support@openpocketcine.app")
+                }
+                return url
+            },
+            prepareBrowser: { [weak self] admission in
+                guard let self else { return nil }
+                return await self.browserHandoff.prepare(route: self.hopRoute, admission: admission)
+            },
+            open: { await UIApplication.shared.open($0) },
+            internetFailure: MonitorSettingsCopy.browserInternetFailure(app: "OpenPocketCine"))
+    }
+
+    /// Frame.io sign-in from Settings: on the camera's Wi-Fi it asks, then leaves through the one
+    /// internet hop and comes back (A2-23).
+    var settingsAccountActions: MonitorSettingsAccountActions {
+        frameio.settingsActions(
+            hop: internetHop, route: { [weak self] in self?.hopRoute },
+            internetFailure: MonitorSettingsCopy.accountInternetFailure)
+    }
 
     /// Where a hop leaves from: the current session and the camera network it joined.
     var hopRoute: PocketHopRoute {
@@ -969,14 +1003,11 @@ struct AppRoot: View {
             model.prepareStartup()
             model.activateWatchRelay()
             model.screenCaptured = UIScreen.main.isCaptured
-            UIApplication.shared.isIdleTimerDisabled = model.keepScreenAwake
         }
         .onChange(of: model.relayClient.status) { _, status in
             model.noteWatcherStatusChanged(status)
         }
-        .onChange(of: model.keepScreenAwake) { _, awake in
-            UIApplication.shared.isIdleTimerDisabled = awake
-        }
+        .monitorScreenWake(enabled: model.keepScreenAwake)
         .onChange(of: model.gimbalAnalogHeld) { _, held in
             if held { model.relayHost.reclaimControl() }
         }
@@ -1001,6 +1032,7 @@ struct AppRoot: View {
         }
         .onAppear { model.assist.inspectorSceneActive = scenePhase == .active }
         .monitorShellSceneActivity(model.shell)
+        .monitorBrowserHandoffReturn(model.browserHandoff)
     }
 }
 
