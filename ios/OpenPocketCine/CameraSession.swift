@@ -162,6 +162,8 @@ final class CameraSession {
         gimbal.lastThrowAt.map { Date().timeIntervalSince($0) }
     }
     @ObservationIgnored private var feedWatchdog = FeedWatchdog()
+    /// Gating inputs of the last watchdog pass, for incidents (PI-2E slow -12903 recovery).
+    @ObservationIgnored private var watchdogGate: FeedIncidentWatchdogGate?
     @ObservationIgnored private var lastFeedFreezeLogAt: Date?
     @ObservationIgnored lazy var pictureRecovery = makePictureRecovery()
     @ObservationIgnored private var liveViewSource: DjiAppleLiveViewScope?
@@ -3108,7 +3110,8 @@ final class CameraSession {
                     outputObservable: decoder.videoToolboxActive,
                     presentationExpected: !incidentSettingsCovered),
                 watchdogAction: feedWatchdog.stage.rawValue,
-                ingress: datalink?.incidentIngress))
+                ingress: datalink?.incidentIngress,
+                watchdogGate: watchdogGate))
     }
 
     private func publishPipelineStats() {
@@ -3543,8 +3546,21 @@ final class CameraSession {
     }
 
     private func applyFeedWatchdog() {
-        if needsForegroundRecover { return }
-        if datalink?.isRebuilding == true || pictureRecovery.isBusy { return }
+        let pathReady = cameraPathReady()
+        let repairReady =
+            decoder.isDisplayReady && !isBrowsingMedia && !status.inPlayback
+            && !liveViewHistory.gateInFlight
+        let shellHold: String? =
+            if needsForegroundRecover { "foregroundRecover" }
+            else if datalink?.isRebuilding == true { "endpointRebuild" }
+            else if pictureRecovery.isBusy { "repairInFlight" }
+            else { nil }
+        if let shellHold {
+            watchdogGate = FeedIncidentWatchdogGate(
+                pathReady: pathReady, repairReady: repairReady,
+                outputExpected: decoder.nativeOutputExpected, hold: shellHold)
+            return
+        }
         #if DEBUG
         let now = liveViewDonorDate()
         #else
@@ -3560,7 +3576,7 @@ final class CameraSession {
             lastAccessUnitAge: datalink?.lastAccessUnitAt.map { now.timeIntervalSince($0) },
             lastStatusAge: datalink?.lastStatusAt.map { now.timeIntervalSince($0) },
             flowHealthy: datalink?.isFlowHealthy ?? false,
-            pathReady: cameraPathReady(),
+            pathReady: pathReady,
             hasFormat: decoder.hasFormat,
             decoderFailed: decoder.isDecoderWedged || decoder.displayLayer.status == .failed,
             live: live,
@@ -3583,11 +3599,13 @@ final class CameraSession {
             decoderOutputExpected: decoder.nativeOutputExpected,
             referenceRecoveryNeeded: decoder.referenceRecoveryNeeded,
             secondsSinceLastIrap: decoder.lastIrapAt.map { now.timeIntervalSince($0) },
-            repairReady: decoder.isDisplayReady && !isBrowsingMedia && !status.inPlayback
-                && !liveViewHistory.gateInFlight
+            repairReady: repairReady
         )
         let watchdogBeforeTick = feedWatchdog
         let action = feedWatchdog.tick(snap)
+        watchdogGate = FeedIncidentWatchdogGate(
+            pathReady: pathReady, repairReady: repairReady,
+            outputExpected: snap.decoderOutputExpected, hold: feedWatchdog.lastHold?.rawValue)
         let recovering = feedWatchdog.isRecovering || pictureRecovery.isBusy
         if recovering != feedRecovering { feedRecovering = recovering }
         switch action {
