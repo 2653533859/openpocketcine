@@ -27,9 +27,9 @@ enum OsmoMonitorPresentation {
     static func controls(_ session: CameraSession, codecColor: CaptureCodecColorChoices? = nil)
         -> ControlCapabilities
     {
-        // The shared pre-connection rule: no DJI body identified yet, no camera-dependent control.
-        guard session.connectedCamera != nil else { return ControlCapabilities(beforeConnection: nil) }
-        return session.control.controlCapabilities(codecColor: codecColor)
+        // The adapter knows the identified body; before identification its model has no profile,
+        // so nothing camera-dependent is offered (the shared pre-connection rule).
+        session.control.controlCapabilities(codecColor: codecColor)
     }
 
     /// What the monitor lays out: a view of the control model over the app's base. Only clip

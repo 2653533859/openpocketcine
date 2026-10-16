@@ -17,12 +17,11 @@ internal fun AppModel.monitorLayout(): MonitorLayoutCapabilities = session.contr
 
 /**
  * The DJI integration's one control model of the connected body (iOS
- * `OsmoMonitorPresentation.controls`); before a body is identified, the shared pre-connection rule
- * offers no camera-dependent control.
+ * `OsmoMonitorPresentation.controls`). The adapter knows the identified body; before identification
+ * its model has no profile, so nothing camera-dependent is offered (the shared pre-connection rule).
  */
 internal fun AppModel.controlCapabilities(): com.opencapture.opencine.vocabulary.ControlCapabilities =
-    session.connectedCamera?.let { session.control.controlCapabilities() }
-        ?: com.opencapture.opencine.vocabulary.ControlCapabilities.beforeConnection(null)
+    session.control.controlCapabilities()
 
 /** AUDIO tile, assist, live meter and drum: a body that reports audio levels, in a video mode. */
 internal fun AppModel.showsAudio(status: CameraStatus): Boolean =
