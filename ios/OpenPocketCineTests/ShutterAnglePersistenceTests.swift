@@ -4,12 +4,16 @@ import Network
 import SwiftUI
 import XCTest
 import OpenCineDJIApple
+import OpenCineCoreTestSupport
 import OpenCineHostedTestSupport
 
 @testable import OpenPocketCine
 
 @MainActor
 final class ShutterAnglePersistenceTests: XCTestCase {
+    /// The wire fixture's editor pin clock: the 2 s hold is crossed by an advance, not a wait.
+    private let clock = ManualHostClock()
+
     func testOpeningAnglePickerCannotOverwriteIntentDuringFormatTransition() async throws {
         let usesAngle = OperatorPrefs.shutterUsesAngle
         let degrees = OperatorPrefs.shutterAngleDegrees
@@ -88,7 +92,7 @@ final class ShutterAnglePersistenceTests: XCTestCase {
             try await waitFor { peer.frames.contains { $0.cmdId == 0x18 } }
             let sent = try XCTUnwrap(peer.frames.first { $0.cmdId == 0x18 })
             session.receiveMultiview(reply(sent, payload: [0]))
-            try await Task.sleep(for: .milliseconds(2150))
+            clock.advance(by: .milliseconds(2150))  // past the 2 s editor pin
             session.setShutterAngle(90)
             XCTAssertFalse(peer.frames.contains { $0.cmdId == 0x28 })
             session.receiveMultiview(subscribe("cam_video_param_v2", [0x10, 0x06]))
@@ -134,6 +138,7 @@ final class ShutterAnglePersistenceTests: XCTestCase {
         let peer = try ShutterAnglePeer()
         let driver = DjiAppleDatalink.loopbackForTesting(port: try await peer.start())
         let session = fixture(controlsOnly: true)
+        session.clock = clock.clock
         session.datalink = driver
         defer {
             session.disconnect()
