@@ -1,3 +1,4 @@
+import OpenCineHostedTestSupport
 import SwiftUI
 import XCTest
 
@@ -14,7 +15,7 @@ final class MonitorReadoutRenderingTests: XCTestCase {
         session.status.storageTotalMb = 131_072
         model.control.bind(session.control)
         defer { model.control.unbind() }
-        for _ in 0..<100 where model.control.snapshot?.storage.value == nil { await Task.yield() }
+        _ = await HostedCondition.wait { model.control.snapshot?.storage.value != nil }
         let snapshot = try XCTUnwrap(model.control.snapshot)
         XCTAssertEqual(
             snapshot.storage.value?.first?.freeBytes.value, 107_374_182_400,
