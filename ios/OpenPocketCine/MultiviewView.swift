@@ -156,7 +156,8 @@ struct MultiviewView: View {
                 }),
             tools: [.layout, .camera, .fit, .lut],
             readouts: program.camera == nil
-                ? nil : MultiviewTelemetryPresentation(settings: program.settings).readouts,
+                ? nil : MultiviewTelemetryPresentation(
+                    settings: program.settings, power: program.control.current.power).readouts,
             lut: session.tiles.contains { $0.camera != nil && $0.lutEnabled },
             recording: session.anyRecording, busy: session.busy,
             groupBusy: session.groupRecordingBusy,
