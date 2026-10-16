@@ -35,13 +35,14 @@ import com.opencapture.opencine.vocabulary.MediaHTTP
 import com.opencapture.opencine.vocabulary.MediaFile
 import com.opencapture.opencine.vocabulary.MediaCacheGrade
 import com.opencapture.opencine.cameracontrols.MediaOperatorCopy
+import com.opencapture.opencine.cameracontrols.MonitorMediaThumbnailSource
 
 class MediaLibraryController(
     context: Context,
     private val session: DjiCameraSession,
     private val mediaService: (() -> CameraMediaService?) = { session.services.get<CameraMediaService>() },
     cacheOwner: MediaCache? = null,
-) {
+) : MonitorMediaThumbnailSource {
     private val appContext = context.applicationContext
     private val cache = cacheOwner ?: MediaCache(
             filesDir = appContext.noBackupFilesDir,
@@ -129,11 +130,11 @@ class MediaLibraryController(
         actionNote = null; library.refresh()
     }
 
-    fun isDownloaded(file: MediaFile): Boolean = cache.isDownloaded(file, cameraId)
+    override fun isDownloaded(file: MediaFile): Boolean = cache.isDownloaded(file, cameraId)
 
     fun isAvailableOffline(file: MediaFile): Boolean = cache.isAvailableOffline(file, cameraId)
 
-    fun localFile(file: MediaFile): File? = cache.existingFile(cache.fileCache(cameraId, file))
+    override fun localFile(file: MediaFile): File? = cache.existingFile(cache.fileCache(cameraId, file))
 
     fun cacheGrade(file: MediaFile): MediaCacheGrade = cache.cacheGrade(file, cameraId)
 
@@ -178,7 +179,7 @@ class MediaLibraryController(
         } catch (_: Exception) { -1 }
     }
 
-    fun thumbnailFile(file: MediaFile): File? = cache.existingFile(cache.thumbnailFile(cameraId, file))
+    override fun thumbnailFile(file: MediaFile): File? = cache.existingFile(cache.thumbnailFile(cameraId, file))
 
     fun localPlaybackFile(file: MediaFile): File? = cache.localPlaybackFile(file, cameraId)
 
@@ -233,7 +234,7 @@ class MediaLibraryController(
         catch (_: MediaServiceException) { note = MediaOperatorCopy.NOT_CONNECTED; null }
     }
 
-    suspend fun ensureThumbnail(file: MediaFile) = withContext(Dispatchers.Main.immediate) {
+    override suspend fun ensureThumbnail(file: MediaFile): Unit = withContext(Dispatchers.Main.immediate) {
         if (!isLive || thumbnailFile(file) != null) return@withContext
         val operation = operation(file) ?: return@withContext
         val path = MediaHTTP.thumbnailPath(file)
@@ -246,6 +247,9 @@ class MediaLibraryController(
             if (operation.isCurrent() && note == null) note = MediaOperatorCopy.THUMB_FAILED
         }
     }
+
+    /** The gallery's camera thumbnail fallback while the camera is live. */
+    override suspend fun cameraThumbnailBytes(file: MediaFile): ByteArray? = if (isLive) thumbnailBytes(file) else null
 
     /** A retained native thumbnail fallback has the same captured content/source admission. */
     suspend fun thumbnailBytes(file: MediaFile): ByteArray? = withContext(Dispatchers.Main.immediate) {
