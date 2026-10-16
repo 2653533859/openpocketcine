@@ -58,7 +58,7 @@ import com.opencapture.opencine.dji.DjiConnectPort
 import com.opencapture.opencine.dji.DjiIntegration
 import com.opencapture.opencine.dji.FoundCameraIdentity
 import com.opencapture.opencine.vocabulary.FoundCamera
-import com.opencapture.openpocketcine.pairing.AddSetupSlot
+import com.opencapture.openpocketcine.pairing.addSetupFlow
 import com.opencapture.openpocketcine.pairing.isBusy
 import com.opencapture.openpocketcine.assists.createLiveAssistState
 import com.opencapture.openpocketcine.diagnostics.DiagnosticCenter
@@ -143,7 +143,7 @@ class AppModel(
                 AppIntegration(
                     integration,
                     IntegrationSlots(
-                        addRoute = { camera, done -> AddSetupSlot(this, camera, done) },
+                        addSetup = { camera, done -> addSetupFlow(this, camera, done) },
                         nearbyCard = { camera -> nearbyCard(camera, port.found.value.firstOrNull { it.id == camera.id }) },
                     ),
                 ),

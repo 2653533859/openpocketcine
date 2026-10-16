@@ -26,6 +26,11 @@ The iOS app also needs the shared OpenCine package (`MonitorUI`, `MonitorPresent
 OpenCineCore and its products, OpenCineDJI, OpenCineMulticam) checked out next to this repository,
 at `../OpenCine` (`scripts/checkout-opencine.sh`); `ios/project.yml` references it by path.
 
+Saved-camera Add setup uses OpenCine's typed chooser on both platforms. Choose Wi-Fi to open the
+existing network scan and password steps, or Choose hotspot for the existing hotspot setup.
+The app still owns joining, credential storage and saving the selected route. Editing a failed
+saved setup opens its corresponding network or hotspot step directly.
+
 The Simulator has no Bluetooth or camera Wi-Fi. Select a physical iPhone, set
 your Team under Signing, and enable **Hotspot Configuration** on the App ID.
 Native gate: `just native-check`.
