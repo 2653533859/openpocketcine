@@ -136,11 +136,10 @@ final class MultiviewSession {
             if next.needsGPUFeed { decoder.unlockHardwareDecoder() }
         }
 
+        /// The body's clock at its declared precision, only where it declares one (Nano has none).
         var timecodeReadout: String? {
-            guard camera != nil, control.layout().timecode,
-                let timecode = settings.timecode, !timecode.isEmpty
-            else { return nil }
-            return settings.timecodeClock
+            guard camera != nil, control.layout().timecode else { return nil }
+            return MonitorTimecodeFormat.label(control.current)
         }
 
         var hasPicture = false

@@ -73,14 +73,13 @@ extension View {
     }
 }
 
-/// The shared live chrome on this app's session: the clock shows only while recording, and the
-/// timecode only on bodies that report one.
+/// The shared live chrome on this app's session: the clock shows only while recording; the
+/// timecode slot follows the shared DISP rule at the body's declared precision.
 extension AppModel: LiveChromeHost {
     var liveStatus: MonitorStatusPresentation {
         control.statusPresentation(
             elapsedSeconds: control.isRecording == nil ? nil : session.status.recordElapsedSec)
     }
-    var timecodeAvailable: Bool { OsmoMonitorPresentation.capabilities(session).timecode }
     var liveSignalBars: Int { session.liveSignalBars }
     var liveFPS: String { session.liveFPS }
     var gimbalPanelOpen: Bool { liveGimbalPanel != .none }
