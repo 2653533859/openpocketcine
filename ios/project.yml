@@ -161,6 +161,9 @@ targets:
       # OpenCineAppKit comes from the host app: linking it here too would make it a framework
       # with a second MonitorUI (a second theme accent) inside.
       - target: OpenPocketCine
+      # Test support only: the shared hosted accessibility walk, which depends on nothing here.
+      - package: OpenCine
+        product: OpenCineHostedAccessibility
       - package: OpenPocketViewCore
         product: OpenPocketViewCore
       - package: OpenCine
