@@ -41,7 +41,10 @@ private func establishAdmittedLiveView(_ session: CameraSession, driver: DjiAppl
     let camera = DjiAppleSighting(id: UUID(), name: "SIMULATED admitted live-view",
         model: .resolve(modelId: modelID, name: "SIMULATED admitted live-view"), modelId: modelID)
     session.connect(camera)
-    _ = await HostedCondition.wait { session.phase == .live }
+    // Yield, not sleep: the caller's next step must run right after registration, before a
+    // network-driven enable can land (a sleeping poll let one in). The deadline is a hang guard.
+    let registered = ContinuousClock.now.advanced(by: HostedCondition.hangLimit)
+    while session.phase != .live, ContinuousClock.now < registered { await Task.yield() }
     XCTAssertEqual(session.phase, .live, "Actual public connection must reach registered before measured recipe")
     XCTAssertTrue(policy.current === driver)
     XCTAssertNotNil(session.connectedCamera)
@@ -486,7 +489,9 @@ final class LiveEnableDonorTests: XCTestCase {
         XCTAssertFalse(session.liveViewDonorHistory.gateInFlight)
         XCTAssertTrue(recipe(oldPeer.snapshot.commands).isEmpty)
         XCTAssertTrue(recipe(newPeer.snapshot.commands).isEmpty)
-        _ = await HostedCondition.wait { session.phase == .live }
+        // Yield, not sleep, so B's admission is observed before network-driven work; hang guard only.
+        let registered = ContinuousClock.now.advanced(by: HostedCondition.hangLimit)
+        while session.phase != .live, ContinuousClock.now < registered { await Task.yield() }
         XCTAssertEqual(session.phase, .live, "B must finish the same real public admission spine")
         XCTAssertTrue(policy.current === newDriver)
         XCTAssertTrue(session.startCapturedLiveView(reason: "SIMULATED admitted B"))

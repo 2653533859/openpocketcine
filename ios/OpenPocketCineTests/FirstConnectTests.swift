@@ -796,13 +796,15 @@ final class ConnectionRunDonorTraceTests: XCTestCase {
     }
 
     private func finish(_ session: CameraSession, expectsFailure: Bool = false) async {
-        let settled = await HostedCondition.wait {
-            if case .failed = session.phase { return true }
-            return session.phase == .live
+        // Yield, not sleep, so the caller acts right after registration; the deadline replaces a
+        // 1000-yield budget and is only a hang guard.
+        let deadline = ContinuousClock.now.advanced(by: HostedCondition.hangLimit)
+        while ContinuousClock.now < deadline {
+            if session.phase == .live { await Task.yield(); return }
+            if case .failed(let reason) = session.phase { if !expectsFailure { XCTFail(reason) }; return }
+            await Task.yield()
         }
-        if case .failed(let reason) = session.phase { if !expectsFailure { XCTFail(reason) }; return }
-        guard settled else { return XCTFail("SIMULATED donor did not reach the registered boundary") }
-        await Task.yield()
+        XCTFail("SIMULATED donor did not reach the registered boundary")
     }
 }
 /// SIMULATED scanner, native peers and source facts exercise the actual shared recovery owner,
@@ -1516,7 +1518,11 @@ final class ConnectionDonorPeer {
         configureConnection(session)
         registeredAttempt = nil
         session.connect(target ?? camera)
-        _ = await HostedCondition.wait { session.phase == .live && registeredAttempt?.isCurrent == true }
+        // Yield, not sleep: callers act right after registration, before network-driven work can
+        // land. The deadline is only a hang guard.
+        let deadline = ContinuousClock.now.advanced(by: HostedCondition.hangLimit)
+        while session.phase != .live || registeredAttempt?.isCurrent != true,
+            ContinuousClock.now < deadline { await Task.yield() }
         guard session.phase == .live, registeredAttempt?.isCurrent == true else {
             XCTFail("SIMULATED fixture requires a current real public connection run")
             session.disconnect()
