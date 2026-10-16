@@ -6,7 +6,7 @@ import OpenCineRelay
 /// This app's side of the shared watch relay (OpenCineRelay): the wrist copy that names the
 /// app, and the snapshot from this app's camera status.
 extension WatchRelayCopy {
-    public static let openOnIPhone = "Open OpenPocketCine on iPhone"
+    public static let openOnIPhone = WatchRelayCopy.openOnIPhone(appName: "OpenPocketCine")
 }
 
 extension WatchRelayState {
