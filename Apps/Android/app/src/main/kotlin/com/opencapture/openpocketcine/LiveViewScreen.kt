@@ -12,7 +12,7 @@ import com.opencapture.openpocketcine.feed.LiveFeed
 
 import com.opencapture.opencine.cameracontrols.*
 
-import com.opencapture.opencine.appkit.ShellModel
+import com.opencapture.opencine.appkit.FollowCameraGallery
 import com.opencapture.opencine.appkit.MonitorInputBlock
 
 import com.opencapture.opencine.appkit.LocalOperatorHaptics
@@ -23,9 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.opencapture.opencine.vocabulary.CameraCommands
 import com.opencapture.openpocketcine.feed.rememberLiveFeedEffectsPlan
@@ -68,16 +66,7 @@ fun LiveViewScreen(model: AppModel) {
     val status by model.session.chromeStatus.collectAsState()
     val capabilities = model.monitorLayout()
     val cameraGalleryOpen by model.session.cameraGalleryOpen.collectAsState()
-    var followedGallery by remember { mutableStateOf(cameraGalleryOpen) }
-    LaunchedEffect(cameraGalleryOpen) {
-        if (cameraGalleryOpen == followedGallery) return@LaunchedEffect
-        followedGallery = cameraGalleryOpen
-        if (cameraGalleryOpen && model.shellState.cover == null) {
-            model.shell.open(ShellModel.Cover.MEDIA)
-        } else if (!cameraGalleryOpen && model.shellState.cover == ShellModel.Cover.MEDIA) {
-            model.shell.dismissCover()
-        }
-    }
+    FollowCameraGallery(cameraGalleryOpen, model.shell)
     val controlNote by model.session.controlNote.collectAsState()
     val controlBusy by model.session.controlBusy.collectAsState()
     val focusPoint by model.session.focusPoint.collectAsState()
