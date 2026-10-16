@@ -1,6 +1,7 @@
 import MonitorPresentation
 import MonitorUI
 import OpenCineAppKit
+import Observation
 import OpenPocketViewCore
 import SwiftUI
 import XCTest
@@ -191,6 +192,59 @@ import OpenCineDJIApple
             XCTAssertEqual(try owners(), original)
             XCTAssertEqual(displayHosts(in: controller.view).count, 4)
             XCTAssertEqual(strip.contentOffset.y, 0, accuracy: 0.01)
+        }
+    }
+
+    /// SIMULATED cameras, actual session constructors and retained UIKit video owners.
+    func testRepeatedViewConstructionCreatesOneActualSessionAndKeepsNativeHosts() async throws {
+        let revision = ConstructorRevision()
+        let recorder = ConstructorRecorder()
+        let model = AppModel()
+        let controller = UIHostingController(rootView:
+            ConstructorHost(revision: revision, recorder: recorder).environment(model))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        func settle(_ predicate: @escaping @MainActor () -> Bool) async {
+            let expected = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                MainActor.assumeIsolated {
+                    controller.view.layoutIfNeeded()
+                    return predicate()
+                }
+            }, object: nil)
+            let result = await XCTWaiter.fulfillment(of: [expected], timeout: 5)
+            XCTAssertEqual(result, .completed)
+        }
+        await settle { recorder.rendered == 0 && displayHosts(in: controller.view).count == 4 }
+        let hosts = Set(displayHosts(in: controller.view).map(ObjectIdentifier.init))
+        XCTAssertEqual(recorder.constructions, 1)
+        for next in 1...3 {
+            revision.value = next
+            await settle { recorder.rendered == next }
+            XCTAssertEqual(recorder.constructions, 1, "Transient View initializers cannot allocate discarded camera owners")
+            XCTAssertEqual(Set(displayHosts(in: controller.view).map(ObjectIdentifier.init)), hosts)
+        }
+    }
+
+    @Observable final class ConstructorRevision { var value = 0 }
+    private final class ConstructorRecorder {
+        var constructions = 0
+        var rendered = -1
+    }
+    private struct ConstructorHost: View {
+        let revision: ConstructorRevision
+        let recorder: ConstructorRecorder
+        var body: some View {
+            MultiviewView(startsSession: false, reviewPictures: true, makeSession: {
+                recorder.constructions += 1
+                return MultiviewUIReview.makeSession(count: 4)
+            })
+            .onAppear { recorder.rendered = revision.value }
+            .onChange(of: revision.value) { _, value in recorder.rendered = value }
         }
     }
 

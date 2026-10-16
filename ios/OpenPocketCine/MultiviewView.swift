@@ -7,11 +7,28 @@ import OpenPocketViewCore
 import SwiftUI
 import OpenCineDJIApple
 
+/// SwiftUI may construct discarded view values; only the retained owner opens camera resources.
+@MainActor
+private final class MultiviewSessionOwner {
+    private var retained: MultiviewSession?
+    private var make: (() -> MultiviewSession)?
+    init(make: @escaping () -> MultiviewSession) { self.make = make }
+    var session: MultiviewSession {
+        if let retained { return retained }
+        guard let make else { preconditionFailure("Missing retained Multiview constructor") }
+        let created = make()
+        retained = created
+        self.make = nil
+        return created
+    }
+}
+
 struct MultiviewView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
-    @State private var session: MultiviewSession
+    @State private var owner: MultiviewSessionOwner
+    private var session: MultiviewSession { owner.session }
     private let startsSession: Bool
     private let reviewPictures: Bool
     @State private var adding: MultiviewSession.Tile?
@@ -22,25 +39,29 @@ struct MultiviewView: View {
     @State private var settingsTile: MultiviewSession.Tile?
     @State private var stageGeometry = MultiviewStageGeometry()
 
-    init(session: MultiviewSession? = nil, startsSession: Bool = true, reviewPictures: Bool = false)
+    init(session: MultiviewSession? = nil, startsSession: Bool = true, reviewPictures: Bool = false,
+        makeSession: @escaping @MainActor () -> MultiviewSession = { MultiviewSession() })
     {
         #if DEBUG
-            if session == nil, let fixture = MultiviewUIReview.sessionFromEnvironment() {
-                _session = State(initialValue: fixture)
-                self.startsSession = false
-                self.reviewPictures = true
-                return
-            }
+            let usesReviewFixture = session == nil && MultiviewUIReview.isActive
+        #else
+            let usesReviewFixture = false
         #endif
-        let stage = session ?? MultiviewSession()
-        if session == nil {
+        _owner = State(initialValue: MultiviewSessionOwner {
+            if let session { return session }
+            #if DEBUG
+                if usesReviewFixture, let fixture = MultiviewUIReview.sessionFromEnvironment() {
+                    return fixture
+                }
+            #endif
+            let stage = makeSession()
             let store = MultiviewStagePreferencesStore(
                 storage: .standard, key: "multiview.presentation")
             stage.presentation.attachPersistence(load: store.load, save: store.save)
-        }
-        _session = State(initialValue: stage)
-        self.startsSession = startsSession
-        self.reviewPictures = reviewPictures
+            return stage
+        })
+        self.startsSession = usesReviewFixture ? false : startsSession
+        self.reviewPictures = usesReviewFixture ? true : reviewPictures
     }
 
     var body: some View {
@@ -147,7 +168,7 @@ struct MultiviewView: View {
             arrangement: Binding(
                 get: { session.layout == .grid ? .grid : .centerStage },
                 set: { session.layout = $0 == .grid ? .grid : .centerStage }),
-            selected: $session.focusedIndex,
+            selected: Binding(get: { session.focusedIndex }, set: { session.focusedIndex = $0 }),
             fill: Binding(
                 get: { session.feedAspect == .fill },
                 set: {
@@ -179,7 +200,20 @@ struct MultiviewView: View {
                 enabled: liveTile == nil && !showNetwork && adding == nil && !session.closing)
         )
         .multiviewStageState(session.presentation)
+        .multiviewStageServices(toolServices)
+        .multiviewStageVisible(liveTile == nil)
         .overlay { settingsPanel(viewport: viewport.size, safe: safe) }
+    }
+
+    /// Every assigned tile has both working adapters: the per-tile settings panel (which opens
+    /// that tile's controls once its link is available and says so otherwise) and its own
+    /// decoder's Auto LUT render plan.
+    private var toolServices: MultiviewStageServices {
+        let assigned = Set(session.tiles.indices.filter { session.tiles[$0].camera != nil })
+        return MultiviewStageServices(
+            availability: MultiviewToolAvailability(
+                cameraSettingsSlots: assigned, pictureLUTSlots: assigned),
+            automaticLUT: true)
     }
 
     private func closePopups() {
