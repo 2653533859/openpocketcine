@@ -40,7 +40,6 @@ class MonitorShellLifetimeTest {
                 val monitor = model.shell.state.value.monitor?.id
                 model.shell.open(ShellModel.Cover.SETTINGS)
                 assertEquals(ShellModel.Cover.SETTINGS, model.shell.state.value.cover)
-                assertNull(model.homePanel)
                 model.shell.open(ShellModel.Cover.MEDIA)
                 assertEquals(ShellModel.Cover.MEDIA, model.shellState.cover)
                 assertEquals(monitor, model.shell.state.value.monitor?.id)

@@ -1,5 +1,6 @@
 package com.opencapture.openpocketcine
 
+import com.opencapture.opencine.appkit.ShellModel
 import android.content.Context
 import android.content.Intent
 import androidx.compose.ui.Modifier
@@ -31,7 +32,7 @@ internal object MonitorReview {
             cache.persistCatalog(clips.map(::file), namespace)
             cache.rememberCameraId(namespace)
         }
-        model.homePanel = AppPanel.MEDIA
+        model.shell.open(ShellModel.Cover.MEDIA)
     }
 
     private fun file(clip: ReviewMediaSeed.Clip): MediaFile = MediaFile(

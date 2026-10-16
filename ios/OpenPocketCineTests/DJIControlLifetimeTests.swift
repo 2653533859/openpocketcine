@@ -98,7 +98,6 @@ final class DJIControlLifetimeTests: XCTestCase {
         let monitor = model.shell.monitor?.id
         model.shell.open(.settings)
         XCTAssertEqual(model.shell.cover, .settings)
-        XCTAssertNil(model.homePanel)
         model.shell.open(.media)
         XCTAssertEqual(model.shell.cover, .media)
         XCTAssertEqual(model.shell.monitor?.id, monitor)

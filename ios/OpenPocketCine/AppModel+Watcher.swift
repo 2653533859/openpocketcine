@@ -12,5 +12,5 @@ extension AppModel: WatcherBrowseHost, WatcherRelayViewer {
     var relayKeychain: WatcherRelayKeychain { .app }
     var watcherDeviceName: String { UIDevice.current.name }
 
-    func dismissCoversForWatching() { homePanel = nil }
+    func dismissCoversForWatching() { shell.dismissCover() }
 }

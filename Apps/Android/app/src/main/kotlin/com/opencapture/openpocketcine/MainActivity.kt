@@ -180,9 +180,9 @@ private fun OpenPocketCineApp(model: AppModel) {
         brand = MonitorLaunchBrand(R.drawable.opc_app_logo, "OpenPocketCine", Color(0xFF0E0E0E), BrandColors.ink, OpcFonts.sora),
         keepScreenAwake = model.keepScreenAwake,
         reports = MonitorReportsOffer(AppDiagnostics.consent, AppDiagnostics.reporting, AppDiagnostics.host.product) {
-            model.homePanel = AppPanel.PRIVACY
+            model.privacyOpen = true
         },
-        reportsAllowed = model.reviewLaunch == null && !showLive && !model.showsMultiview && model.homePanel != AppPanel.PRIVACY,
+        reportsAllowed = model.reviewLaunch == null && !showLive && !model.showsMultiview && !model.privacyOpen,
         splash = com.opencapture.opencine.appkit.rememberMonitorLaunchSplash(enabled = model.reviewLaunch == null),
         // Knowing about screen recording only dims the HDR boost.
         onScreenRecording = { model.screenCaptured = it },
@@ -198,8 +198,8 @@ private fun OpenPocketCineApp(model: AppModel) {
                 )
             }
             stage?.let { com.opencapture.openpocketcine.multiview.MultiviewScreen(model, it, onClose = model::closeMultiview) }
-            if (model.showsLegalPanel && !model.showsMultiview) {
-                AppPanelHost(model)
+            if (model.privacyOpen && !model.showsMultiview) {
+                MonitorLegalDocumentScreen(PocketLegalDocuments, MonitorLegalPage.PRIVACY) { model.privacyOpen = false }
             }
         }
     }
@@ -256,7 +256,6 @@ private fun LinkExperience(
     val state by model.cameras.state.collectAsState()
     // No saved camera opens the pair page, as at first launch.
     val pairing = state.saved.isEmpty() || model.pairing
-    var showProblemReport by remember { mutableStateOf(false) }
     var showReportingPrivacy by remember { mutableStateOf(false) }
     val phase by model.session.phaseFlow.collectAsState()
     val radioOn by model.session.radioOn.collectAsState()
@@ -264,7 +263,7 @@ private fun LinkExperience(
     AppShell(model.shell, ShellBrand("OpenPocketCine"),
         ShellActions(
             diagnostics = { DiagnosticCenter.shareReport(context, model.session) },
-            reportProblem = { showProblemReport = true },
+            reportProblem = { model.problemReportOpen = true },
             multiview = if (MultiviewQualificationPolicy.tileCount > 1) model::openMultiview else null,
         ),
         monitor = { LiveViewScreen(model) },
@@ -285,8 +284,8 @@ private fun LinkExperience(
             onBlocker = { if (!discovery.granted) discovery.request() else onEnableBluetooth() },
             content = { PairingCallouts(model, discovery, onEnableBluetooth) },
         ))
-    if (showProblemReport) {
-        ManualProblemReportDialog(model = model, onClose = { showProblemReport = false }, onPrivacy = { showReportingPrivacy = true })
+    if (model.problemReportOpen) {
+        ManualProblemReportDialog(model = model, onClose = { model.problemReportOpen = false }, onPrivacy = { showReportingPrivacy = true })
     }
     if (showReportingPrivacy) {
         Dialog(onDismissRequest = { showReportingPrivacy = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {

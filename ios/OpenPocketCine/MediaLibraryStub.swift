@@ -167,7 +167,7 @@ struct MediaLibraryView: View {
             #endif
     }
     private func dismiss() {
-        if let onClose { onClose() } else { model.homePanel = nil }
+        if let onClose { onClose() } else { model.shell.dismissCover() }
     }
 }
 
@@ -277,18 +277,3 @@ private struct MediaCatalogThumbnail: View {
     }
 }
 
-/// Legal documents over home, shown only while one is open. Settings and media are the
-/// shell's own covers.
-struct AppPanelHost: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        switch model.homePanel {
-        case .privacy: LegalDocumentView(kind: .privacy)
-        case .terms: LegalDocumentView(kind: .terms)
-        case .licenses: LegalDocumentView(kind: .licenses)
-        case .notice: LegalDocumentView(kind: .notice)
-        case .settings, .media, nil: EmptyView()
-        }
-    }
-}

@@ -67,19 +67,10 @@ extension MonitorLegalDocuments {
 /// One legal page in the shared legal screen.
 struct LegalDocumentView: View {
     typealias Kind = MonitorLegalPage
-    @Environment(AppModel.self) private var model
     let kind: Kind
-    var onClose: (() -> Void)? = nil
+    let onClose: () -> Void
 
     var body: some View {
-        MonitorLegalDocumentScreen(documents: .app, page: kind, onClose: dismiss)
-    }
-
-    private func dismiss() {
-        if let onClose {
-            onClose()
-        } else {
-            model.homePanel = nil
-        }
+        MonitorLegalDocumentScreen(documents: .app, page: kind, onClose: onClose)
     }
 }

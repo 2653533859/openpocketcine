@@ -1,4 +1,6 @@
 import MonitorPresentation
+import OpenCineCore
+import OpenPocketViewCore
 import MonitorUI
 import OpenCineHostedAccessibility
 import SwiftUI
@@ -103,6 +105,31 @@ import XCTest
         XCTAssertTrue(rows[.display]?.contains("HDR display") == true, "\(rows[.display] ?? [])")
         XCTAssertTrue(rows[.storage]?.contains("Full Resolution Caching") == true, "\(rows[.storage] ?? [])")
         XCTAssertTrue(rows[.system]?.contains("Automatic error reports") == true, "\(rows[.system] ?? [])")
+        // A2-78: the one Processing card, before Your cameras, with the shared Feed Upscaler.
+        let link = rows[.link] ?? []
+        let processing = try XCTUnwrap(link.firstIndex(of: "Processing"), "\(link)")
+        XCTAssertLessThan(processing, try XCTUnwrap(link.firstIndex(of: "Your cameras"), "\(link)"))
+        XCTAssertEqual(link.firstIndex(of: "Feed Upscaler"), processing + 1, "\(link)")
+    }
+
+    /// A2-24: Report a problem in Settings opens the app root's report, so a draft outlives the
+    /// camera session ending, which closes the Settings cover. Settings presents no sheet itself.
+    func testSettingsReportOpensTheRootReportThatOutlivesTheSession() async throws {
+        let model = AppModel()
+        model.operatorSession.settingsTab = .system
+        model.shell.present(ConnectedCamera(saved: OpenCineCore.SavedCamera(
+            id: "simulated-report", integration: DJICameraSessionAdapter.integration,
+            advertisedName: "SIMULATED report", model: "SIMULATED"), session: model.session.control))
+        model.shell.open(.settings)
+        let fixture = try Fixture(SettingsRootView(onClose: {}).environment(model))
+        defer { fixture.close() }
+        let open = try await fixture.element("support.report.open")
+        XCTAssertTrue(open.accessibilityActivate())
+        XCTAssertTrue(model.isProblemReportPresented)
+        XCTAssertNil(fixture.host.presentedViewController, "Settings presents no report sheet of its own")
+        model.shell.close()
+        XCTAssertNil(model.shell.cover, "Ending the session closes the Settings cover")
+        XCTAssertTrue(model.isProblemReportPresented, "The root report survives the session ending")
     }
 
     func testAMissingBundledPageSaysSoInsteadOfShowingAnEmptyPage() async throws {
