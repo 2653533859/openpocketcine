@@ -51,7 +51,8 @@ enum OperatorPrefs {
     static let common = MonitorOperatorPreferences(storage: .standard,
         keys: .init(keepScreenAwake: "OpenPocketCine.KeepScreenAwake", hdrDisplay: "OpenPocketCine.HDRDisplay",
             recordConfirmation: "OpenPocketCine.RecordConfirmation", haptics: "OpenPocketCine.HapticsEnabled",
-            cacheOriginals: "OpenPocketCine.CacheFullResolution"))
+            cacheOriginals: "OpenPocketCine.CacheFullResolution",
+            remoteShutter: "OpenPocketCine.RemoteShutter"))
     static let motion = MonitorMotionPreferences.camera(storage: .standard, prefix: "OpenPocketCine")
     static let sharing = MonitorSharingPreferences.camera(storage: .standard, prefix: "OpenPocketCine")
     private static let toolUsage = MonitorToolUsagePreferences(
@@ -98,6 +99,12 @@ enum OperatorPrefs {
     static var recordConfirmationEnabled: Bool {
         get { common.recordConfirmation }
         set { common.recordConfirmation = newValue }
+    }
+
+    /// Volume and media presses toggle recording while the live view is in front (A2-32); on by default.
+    static var remoteShutterEnabled: Bool {
+        get { common.remoteShutter }
+        set { common.remoteShutter = newValue }
     }
 
     static var hapticsEnabled: Bool {
