@@ -15,21 +15,25 @@
         let admitsMultiviewControl = true
         let isBusy = false
         let link = DJILinkState.ready
-        var controlNote: String?
+        /// The fixture's notes reach the operator as the session's own notes do.
+        var controlNote: String? { didSet { showNote(controlNote) } }
         var captureControlState: DJICaptureControlState? {
             .init(reported: status, model: connectedModel)
         }
         private(set) var writes: [String] = []
         private let render: @MainActor (CameraStatus) -> Void
+        private let showNote: @MainActor (String?) -> Void
         lazy var control = DJICameraSessionAdapter(session: self)
 
-        init(status: CameraStatus, body: CameraModel, render: @escaping @MainActor (CameraStatus) -> Void = { _ in }) {
+        init(status: CameraStatus, body: CameraModel, render: @escaping @MainActor (CameraStatus) -> Void = { _ in },
+            showNote: @escaping @MainActor (String?) -> Void = { _ in }) {
             self.status = status
             self.status.recordingReported = true
             self.status.focusTrack = .default
             self.status.zoomLens = status.zoomLens ?? CamFov.lens1x
             connectedModel = body
             self.render = render
+            self.showNote = showNote
         }
 
         private func report(_ name: String, onStage: (@MainActor (ControlWireEvent) -> Void)?, change: (inout CameraStatus) -> Void) {
@@ -69,6 +73,14 @@
             report("SIMULATED focus", onStage: onStage) { $0.focusMode = value }
         }
         func writeZoom(_ ratio: Double, onStage: @escaping @MainActor (ControlWireEvent) -> Void) {
+            // As the session's own zoom path: a zoom that needs a color hop waits for the take to end.
+            guard !CamFov.zoomNeedsColorHopWhileRecording(
+                factor: ratio, current: status.colorMode, isRecording: status.isRecording)
+            else {
+                controlNote = ControlHud.recordingColorLockNote
+                onStage(.notSent)
+                return
+            }
             report("SIMULATED zoom", onStage: onStage) { $0.zoomLens = CamFov.pinchLens(for: ratio) }
         }
     }
@@ -76,14 +88,14 @@
     extension AppModel {
         /// Explicit writable fixture, separate from the ordinary unknown/read-only clip preview.
         func presentSimulatedControls(status: CameraStatus, body: CameraModel) {
-            let port = MonitorReviewControlPort(status: status, body: body) { [weak self] status in
+            let port = MonitorReviewControlPort(status: status, body: body, render: { [weak self] status in
                 guard let self else { return }
                 var presentation = status
                 // Native recording reads its own report flag; a fixture's report is never one.
                 presentation.recordingReported = session.status.recordingReported
                 presentation.isRecording = session.status.isRecording
                 session.status = presentation
-            }
+            }, showNote: { [weak self] in self?.session.controlNote = $0 })
             let saved = OpenCineCore.SavedCamera(id: "simulated-common-input",
                 integration: DJICameraSessionAdapter.integration,
                 advertisedName: "SIMULATED common input", model: "SIMULATED")
