@@ -24,6 +24,7 @@ internal object MonitorReview {
     private val screens = setOf(
         ReviewLaunch.Screen.CAMERAS, ReviewLaunch.Screen.PAIR, ReviewLaunch.Screen.LIVE,
         ReviewLaunch.Screen.MEDIA, ReviewLaunch.Screen.PLAYBACK, ReviewLaunch.Screen.SETTINGS,
+        ReviewLaunch.Screen.CHROME_EDIT,
     )
 
     fun decode(intent: Intent?): ReviewLaunch? = ReviewLaunch.decode { intent?.getStringExtra(it) }
@@ -44,10 +45,14 @@ internal object MonitorReview {
             ReviewLaunch.Screen.PAIR -> model.pairing = true
             // The staged monitor is the real session's control seam, idle: the live chrome renders
             // over it, and no radio, connection or command ever reaches a camera.
-            ReviewLaunch.Screen.LIVE -> model.shell.present(ConnectedCamera(
-                SavedCamera(STAGED_CAMERA, DjiCameraSessionAdapter.INTEGRATION,
-                    advertisedName = "SIMULATED common input", model = "SIMULATED"),
-                model.session.control))
+            ReviewLaunch.Screen.LIVE, ReviewLaunch.Screen.CHROME_EDIT -> {
+                model.shell.present(ConnectedCamera(
+                    SavedCamera(STAGED_CAMERA, DjiCameraSessionAdapter.INTEGRATION,
+                        advertisedName = "SIMULATED common input", model = "SIMULATED"),
+                    model.session.control))
+                // The chrome editor over the same staged monitor (iOS `beginChromeEditing`).
+                if (review.screen == ReviewLaunch.Screen.CHROME_EDIT) model.beginChromeEditing(model.currentDispMode)
+            }
             ReviewLaunch.Screen.MEDIA, ReviewLaunch.Screen.PLAYBACK -> stageMedia(context, model, review)
             ReviewLaunch.Screen.SETTINGS -> {
                 review.settingsTab?.let { model.operatorSettingsTab = it }
