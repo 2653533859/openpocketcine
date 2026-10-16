@@ -3,6 +3,7 @@ import Network
 import OpenCineCore
 import OpenCineDJI
 import OpenCineDJIApple
+import OpenCineHostedTestSupport
 import OpenCineRelay
 import OpenCineWatch
 import OpenPocketViewCore
@@ -41,10 +42,9 @@ final class RemoteControlAdmissionTests: XCTestCase {
             XCTAssertTrue(result.accepted)
             XCTAssertFalse(
                 result.isRecording, "A dispatched command is not a recording observation")
-            for _ in 0..<10_000 {
-                if !peer.controlFrames.isEmpty { break }
-                await Task.yield()
-            }
+            // The loopback peer reads the command on its own network queue; a budget of yields
+            // measured machine load, so wait for the frame itself.
+            _ = await HostedCondition.wait { !peer.controlFrames.isEmpty }
             XCTAssertEqual(
                 peer.controlFrames.count, 1, "The actual native loopback must receive a command")
             if !photo {
