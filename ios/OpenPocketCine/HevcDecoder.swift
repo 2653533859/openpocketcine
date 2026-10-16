@@ -83,7 +83,7 @@ final class HevcDecoder: OpenCineApple.MonitorLiveVideoRuntime {
                     #endif
                 }))
         syncDemand()
-        feedUpscaler = FeedUpscaleSwitch.rendererReadsUpscaler
+        feedUpscaler = FeedUpscaleSwitch.shared.upscaler
         onSourceAdvanced = {
             NotificationCenter.default.post(name: .monitorBackdropSourceAdvanced, object: nil)
         }

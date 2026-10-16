@@ -79,9 +79,10 @@ final class CIFeedView: OpenCineApple.MonitorPictureHost {
             options: { screen in
                 LiveHDRDisplay.app.refreshGain(screen: screen)
                 return OpenCineApple.MonitorPresentationOptions(
-                    upscaler: FeedUpscaleSwitch.rendererReadsUpscaler,
+                    upscaler: FeedUpscaleSwitch.shared.upscaler,
                     hdr: LiveHDRDisplay.app.isEnabled, hdrGain: LiveHDRDisplay.app.presentGain,
-                    previewSuperResolutionInput: FeedUpscaleSwitch.presentsSuperResolutionInput)
+                    previewSuperResolutionInput:
+                        FeedUpscaleSwitch.shared.presentsSuperResolutionInput)
             }, logSubsystem: "com.opencapture.openpocketcine")
         #if DEBUG
             onSuccessfulPresent = { FeedStressAutomation.notePresent() }
