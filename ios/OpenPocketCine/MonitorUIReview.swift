@@ -132,16 +132,19 @@ import OpenCineDJIApple
             model.recordConfirmationEnabled = true
             model.portraitFeedAspect =
                 ProcessInfo.processInfo.environment["OPV_UI_REVIEW_FIT"] == "1" ? .fit16x9 : .fill
+            // The one SIMULATED live fixture every app stages (Fixtures/review-live-values.tsv).
+            let live = ReviewLiveValues.simulated
             var status = CameraStatus()
-            status.iso = 1600
+            status.iso = live.iso
             status.isoIndex = .iso1600
-            status.shutterDenom = 50
+            status.shutterDenom = live.shutterDenominator
             status.expoMode = .manual
-            status.whiteBalance = .custom(kelvin: 5600, tint: 0)
-            status.whiteBalanceKelvin = 5600
+            status.whiteBalance = .custom(kelvin: live.whiteBalanceKelvin, tint: 0)
+            status.whiteBalanceKelvin = live.whiteBalanceKelvin
             status.focusMode = .continuous
             status.audioChannel = .stereo
-            status.timecodeValue = CameraTimecode(hours: 15, minutes: 39, seconds: 50, frames: 0)
+            status.timecodeValue = CameraTimecode(
+                hours: live.timecodeHours, minutes: live.timecodeMinutes, seconds: live.timecodeSeconds, frames: 0)
             status.colorMode = .dLog2
             if let ev = launch?.meteredEV {
                 // The camera meters in thirds of a stop: the nearest one it could report.
@@ -158,12 +161,13 @@ import OpenCineDJIApple
                     status.zoomLens = CamFov.lens1x
                 }
             #endif
-            status.batteryPercent = 68
-            status.storageFreeMb = 107 * 1024
-            status.storageTotalMb = 128 * 1024
+            status.batteryPercent = live.batteryPercent
+            status.storageFreeMb = Int(live.storageFreeMebibytes)
+            status.storageTotalMb = Int(live.storageTotalMebibytes)
             status.shootingMode = 1
             status.videoResolution = VideoResolution(rawValue: 0x10)
-            status.fps = 25
+            status.fps = live.framesPerSecond
+            // 4K 25p in the camera's own format codes (live.recordWidth x live.recordHeight).
             status.videoFormat = VideoFormat(resolution: .p4K, frameRate: .fps25)
             // A real body lists several rates, so reviews show the frame-rate drum
             // with neighbours on both sides of the current 25p.
