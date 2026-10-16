@@ -4,6 +4,7 @@ import Network
 import SwiftUI
 import XCTest
 import OpenCineDJIApple
+import OpenCineHostedTestSupport
 
 @testable import OpenPocketCine
 
@@ -150,12 +151,9 @@ final class ShutterAnglePersistenceTests: XCTestCase {
             flags: 0xC0, cmdSet: frame.cmdSet, cmdId: frame.cmdId, payload: payload)
     }
 
-    private func waitFor(_ condition: () -> Bool) async throws {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(1))
-        while !condition(), ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        XCTAssertTrue(condition())
+    private func waitFor(_ condition: @MainActor @Sendable () -> Bool) async throws {
+        let held = await HostedCondition.wait(until: condition)
+        XCTAssertTrue(held)
     }
 
     func testFormatChangeKeeps180DegreesUntilExposureTelemetryCatchesUp() {

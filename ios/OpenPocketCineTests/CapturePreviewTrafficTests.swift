@@ -3,6 +3,7 @@ import Network
 import OpenCineCameraControls
 import OpenPocketViewCore
 import SwiftUI
+import OpenCineHostedTestSupport
 import XCTest
 import OpenCineDJIApple
 
@@ -73,10 +74,7 @@ final class CapturePreviewTrafficTests: XCTestCase {
         let snapshot = try XCTUnwrap(CaptureQuickSnapshot.primary(.wb, model: model))
         let value = try XCTUnwrap(snapshot.changedValue(translation: -56, current: snapshot))
         snapshot.apply(value, host: model)
-        let deadline = ContinuousClock.now.advanced(by: .seconds(1))
-        while peer.cameraCommands == baseline, ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        _ = await HostedCondition.wait { peer.cameraCommands != baseline }
         XCTAssertGreaterThan(peer.cameraCommands, baseline)
         // The commit is a pending request; reported status waits for the camera.
         XCTAssertEqual(model.session.pendingWhiteBalance, .custom(kelvin: 5700, tint: 17))

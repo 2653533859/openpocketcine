@@ -1,8 +1,12 @@
 import OpenCineDJIApple
 import OpenPocketViewCore
+import OpenCineHostedTestSupport
 import XCTest
 
 @testable import OpenPocketCine
+
+// Expectations in this file are fulfilled by the owners' own events (decode, delivery, HTTP,
+// render); every 30 s timeout is a hang guard, not a budget.
 
 @MainActor
 final class SessionRecoveryLifecycleTests: XCTestCase {
@@ -104,15 +108,13 @@ final class SessionRecoveryLifecycleTests: XCTestCase {
         guard session.startFeedRecovery({ _ in await withCheckedContinuation { first = $0 } }) else {
             XCTFail("Current real run must admit the first repair"); return
         }
-        let firstDeadline = ContinuousClock.now.advanced(by: .seconds(2))
-        while first == nil, ContinuousClock.now < firstDeadline { await Task.yield() }
+        _ = await HostedCondition.wait { first != nil }
         guard first != nil else { XCTFail("First admitted repair must reach its manual wait"); return }
         session.resetFeedWatchdog()
         guard session.startFeedRecovery({ _ in await withCheckedContinuation { second = $0 } }) else {
             first?.resume(); XCTFail("Current real run must admit the replacement repair"); return
         }
-        let secondDeadline = ContinuousClock.now.advanced(by: .seconds(2))
-        while second == nil, ContinuousClock.now < secondDeadline { await Task.yield() }
+        _ = await HostedCondition.wait { second != nil }
         guard second != nil else {
             first?.resume(); XCTFail("Replacement repair must reach its manual wait"); return
         }
@@ -181,15 +183,13 @@ final class SessionRecoveryLifecycleTests: XCTestCase {
         decoder.unlockHardwareDecoder()
         let beforePicture = Date()
         decoder.handleDecodedFrame(ScopeTestBuffers.makeEdgeBuffer())
-        let deadline = Date().addingTimeInterval(2)
-        while decoder.lastPresentedAt == nil, Date() < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        _ = await HostedCondition.wait { decoder.lastPresentedAt != nil }
         XCTAssertNotNil(decoder.lastPresentedAt)
         XCTAssertTrue(session.hasFreshRecoveryPicture(since: beforePicture))
         let newAttempt = Date()
         XCTAssertFalse(session.hasFreshRecoveryPicture(since: newAttempt))
         decoder.handleDecodedFrame(ScopeTestBuffers.makeEdgeBuffer(), isNewSourceFrame: false)
+        // Negative window: a repaint must not count as a recovered source within it.
         try await Task.sleep(for: .milliseconds(50))
         XCTAssertFalse(
             session.hasFreshRecoveryPicture(since: newAttempt),
@@ -250,7 +250,7 @@ final class SessionRecoveryLifecycleTests: XCTestCase {
         let originalPresented = decoder.onPresentedFrame
         decoder.onPresentedFrame = { originalPresented?(); presented.fulfill() }
         decoder.handleDecodedFrame(ScopeTestBuffers.makeEdgeBuffer())
-        await fulfillment(of: [presented], timeout: 2)
+        await fulfillment(of: [presented], timeout: 30)
         decoder.onPresentedFrame = originalPresented
         let heldPicture = try XCTUnwrap(decoder.lastPresentedAt)
         peer.handshakeMisses = 6
