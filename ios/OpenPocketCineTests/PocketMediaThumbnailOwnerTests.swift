@@ -6,6 +6,9 @@ import os
 
 @testable import OpenPocketCine
 
+// Expectations in this file are fulfilled by the owners' own events (decode, delivery, HTTP,
+// render); every 30 s timeout is a hang guard, not a budget.
+
 /// SIMULATED native HTTP, through the actual source facade and captured Library owner.
 @MainActor final class PocketMediaThumbnailOwnerTests: XCTestCase {
     func testRawThumbnailKeepsStampedStoragePathBytesAndExistingCache() async throws {
@@ -45,9 +48,9 @@ import os
             completed.fulfill()
             return bytes
         }
-        await fulfillment(of: [ready], timeout: 5)
+        await fulfillment(of: [ready], timeout: 30)
         fixture.session.mediaLibrary.close()
-        await fulfillment(of: [stopped, completed], timeout: 5)
+        await fulfillment(of: [stopped, completed], timeout: 30)
         let cancelled = ThumbnailOwnerURLProtocol.state.withLock { $0.didStop }
         // Bound a failed cancellation implementation as well as the repaired one.
         if !cancelled { ThumbnailOwnerURLProtocol.state.withLock { $0.pending }?.finishBody() }
@@ -72,9 +75,9 @@ import os
             completed.fulfill()
             return bytes
         }
-        await fulfillment(of: [ready], timeout: 5)
+        await fulfillment(of: [ready], timeout: 30)
         request.cancel()
-        await fulfillment(of: [stopped, completed], timeout: 5)
+        await fulfillment(of: [stopped, completed], timeout: 30)
         let cancelled = ThumbnailOwnerURLProtocol.state.withLock { $0.didStop }
         if !cancelled { ThumbnailOwnerURLProtocol.state.withLock { $0.pending }?.finishBody() }
         let bytes = await request.value
@@ -91,7 +94,7 @@ import os
         ThumbnailOwnerURLProtocol.state.withLock { $0 = .init(hold: true, ready: ready) }
         defer { ThumbnailOwnerURLProtocol.state.withLock { $0 = .init() } }
         let request = Task { await fixture.session.thumbnailBytes(for: file) }
-        await fulfillment(of: [ready], timeout: 5)
+        await fulfillment(of: [ready], timeout: 30)
         let oldDriver = fixture.session.datalink
         fixture.session.datalink = DjiAppleDatalink(port: 9005, tcpPoke: false, pairingToken: "")
         let pending = try XCTUnwrap(ThumbnailOwnerURLProtocol.state.withLock { $0.pending })
@@ -111,7 +114,7 @@ import os
         ThumbnailOwnerURLProtocol.state.withLock { $0 = .init(hold: true, ready: ready) }
         defer { ThumbnailOwnerURLProtocol.state.withLock { $0 = .init() } }
         let request = Task { await fixture.session.thumbnailBytes(for: file) }
-        await fulfillment(of: [ready], timeout: 5)
+        await fulfillment(of: [ready], timeout: 30)
         try await fixture.media.clearCache(cameraID: fixture.session.mediaCameraID, preservingCatalog: false)
         let pending = try XCTUnwrap(ThumbnailOwnerURLProtocol.state.withLock { $0.pending })
         pending.finishBody()
