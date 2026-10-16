@@ -1,6 +1,8 @@
 import MonitorUI
 import OpenCineAppKit
+import OpenCineAppKitApple
 import OpenCineCore
+import OpenCineDJIApple
 import OpenPocketViewCore
 import SwiftUI
 
@@ -25,7 +27,7 @@ enum PocketAddSetup {
         camera: SavedCamera, done: @escaping (RouteDraft?) -> Void, initialSelection: String? = nil
     ) -> AddSetupFlow {
         AddSetupFlow(
-            chooser: StationNetworkSetupView.setupChooser(context: .camera(camera)),
+            chooser: StationNetworkSetupRules.setupChooser(context: .camera(camera)),
             onSelect: { _ in },
             destination: { option in
                 AnyView(PocketSetupDestination(camera: camera, kind: option.kind, done: done))
@@ -36,7 +38,7 @@ enum PocketAddSetup {
     static func selection(camera: SavedCamera, model: AppModel) -> String? {
         CamerasMapping.addSetupSelection(
             model.cameras, camera: camera,
-            chooser: StationNetworkSetupView.setupChooser(context: .camera(camera)))
+            chooser: StationNetworkSetupRules.setupChooser(context: .camera(camera)))
     }
 }
 
@@ -49,12 +51,10 @@ private struct PocketSetupDestination: View {
 
     var body: some View {
         StationNetworkSetupView(
-            context: .camera(camera), scan: model.networkScan(camera),
-            save: { setup, ssid, password in
-                done(
-                    RouteDraft(
-                        kind: setup == .phoneHotspot ? .phoneHotspot : .infrastructureNetwork, network: ssid,
-                        secret: password))
+            context: .camera(camera), brand: PocketStationNetwork.brand,
+            services: PocketStationNetwork.services, scan: model.networkScan(camera),
+            save: { kind, ssid, password in
+                done(RouteDraft(kind: kind, network: ssid, secret: password))
                 return true
             }, close: { done(nil) }, path: path
         )
@@ -67,5 +67,23 @@ private struct PocketSetupDestination: View {
             return [.password(camera.wifiSSID ?? "")]
         }
         return [.networks]
+    }
+}
+
+/// This app's brand words and DJI services for OpenCine's station-network wizard.
+enum PocketStationNetwork {
+    static let brand = StationNetworkBrand(
+        appName: "OpenPocketCine", cameraFamily: "Osmo", cameraNetworkPrefix: "osmo")
+
+    static var services: StationNetworkServices {
+        StationNetworkServices(
+            savedNetworks: {
+                MultiviewNetworkStore.savedNetworks().map {
+                    StationNetwork(ssid: $0.ssid, password: $0.password, hotspot: $0.hotspot ?? false)
+                }
+            },
+            currentSSID: { await DjiAppleWiFiJoiner.currentSSID() },
+            hotspotActive: { DjiAppleSharedWiFiPath.address(hotspot: true) != nil },
+            acceptsJoin: { (try? MulticamCommands.join(ssid: $0, password: $1, seq: 0)) != nil })
     }
 }

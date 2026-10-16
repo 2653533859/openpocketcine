@@ -2,6 +2,7 @@ import CoreImage
 import Metal
 import OpenCineAppKitApple
 import OpenCineApple
+import OpenCineCameraControls
 import OpenCineCameraVocabulary
 import OpenCineMedia
 import OpenPocketViewCore
@@ -69,24 +70,4 @@ extension MonitorFrameEffects {
         return result
     }
 
-}
-
-/// The app supplies operator choices; the stable native host owns rendering and presentation.
-final class CIFeedView: OpenCineApple.MonitorPictureHost {
-    init(frame: CGRect = .zero) {
-        super.init(
-            frame: frame,
-            options: { screen in
-                LiveHDRDisplay.app.refreshGain(screen: screen)
-                return OpenCineApple.MonitorPresentationOptions(
-                    upscaler: FeedUpscaleSwitch.shared.upscaler,
-                    hdr: LiveHDRDisplay.app.isEnabled, hdrGain: LiveHDRDisplay.app.presentGain,
-                    previewSuperResolutionInput:
-                        FeedUpscaleSwitch.shared.presentsSuperResolutionInput)
-            }, logSubsystem: "com.opencapture.openpocketcine")
-        #if DEBUG
-            onSuccessfulPresent = { FeedStressAutomation.notePresent() }
-        #endif
-    }
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 }

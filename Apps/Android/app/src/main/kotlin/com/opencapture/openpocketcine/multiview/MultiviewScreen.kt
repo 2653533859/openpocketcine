@@ -4,6 +4,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
 import com.opencapture.opencine.vocabulary.CameraStatus
 import com.opencapture.openpocketcine.pairing.lastSSID
+import com.opencapture.openpocketcine.pairing.POCKET_STATION_BRAND
+import com.opencapture.openpocketcine.pairing.asStationNetworks
+import com.opencapture.openpocketcine.pairing.rememberWifiNameAccess
+import com.opencapture.opencine.appkit.StationNetwork
+import com.opencapture.opencine.appkit.StationNetworkSetup
 
 import android.graphics.SurfaceTexture
 import android.view.Surface
@@ -63,7 +68,6 @@ import com.opencapture.opencine.appkit.MultiviewNetworkRestore
 import com.opencapture.opencine.appkit.MultiviewStageActions
 import com.opencapture.opencine.appkit.MultiviewStageButton
 import com.opencapture.opencine.appkit.MultiviewTool
-import com.opencapture.opencine.dji.MultiviewNetworkStore
 import com.opencapture.opencine.dji.appearsInMultiview
 import com.opencapture.opencine.dji.hasMultiviewPreview
 import com.opencapture.openpocketcine.AppModel
@@ -441,8 +445,10 @@ private fun MultiviewNetworkSetup(
     cancel: () -> Unit,
     complete: () -> Unit,
 ) {
-    val saved = remember { session.savedNetworks() }
-    com.opencapture.openpocketcine.pairing.StationNetworkSetup(
+    val saved = remember { session.savedNetworks().asStationNetworks() }
+    StationNetworkSetup(
+        brand = POCKET_STATION_BRAND,
+        wifiNameAccess = rememberWifiNameAccess(),
         savedNetworks = saved,
         currentSsid = session.path::currentSsid,
         hotspotActive = { session.path.address(true) != null },
@@ -454,7 +460,7 @@ private fun MultiviewNetworkSetup(
             if (session.configureNetwork()) null else session.networkSetupError ?: "Could not connect. Try again."
         }, cancel = cancel, complete = complete,
         lockedNetwork = if (session.tiles.any { it.camera != null }) {
-            MultiviewNetworkStore.Network(session.ssid, "", session.usePhoneHotspot)
+            StationNetwork(session.ssid, "", session.usePhoneHotspot)
         } else null,
         warning = session.networkSetupError,
         cameraSsids = cameraSsids,

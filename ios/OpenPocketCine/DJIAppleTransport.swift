@@ -1,4 +1,5 @@
 import Foundation
+import OpenCineCameraControls
 import OpenCineDJIApple
 import struct OpenCineCore.SavedCamera
 import OpenPocketViewCore
