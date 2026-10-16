@@ -16,6 +16,9 @@ fun MediaLibraryScreen(model: AppModel, onClose: () -> Unit) {
     // The app model owns the library for the current camera; Settings counts and clears the same one.
     val controller = model.mediaController()
     val library = controller.library
+    // Hoisted so the staged SIMULATED review can open its first clip (iOS `MediaLibraryStub`
+    // `opensFirstClip`); the screen's own host is this same remembered construction.
+    val mediaHost = remember(library) { com.opencapture.opencine.appkit.MonitorOperatorMediaHost(library) }
     val state by library.state.collectAsState()
     val phase by model.session.phaseFlow.collectAsState()
     val isLive = phase == ConnectionPhase.LIVE
@@ -35,6 +38,19 @@ fun MediaLibraryScreen(model: AppModel, onClose: () -> Unit) {
         val label = com.opencapture.opencine.vocabulary.CameraCommands.colorLabel(mode,
             profile = model.labelProfile)
         if (label == "\u2014") null else mode.toString() to label
+    }
+    // `ReviewLaunch(screen: .playback)`: open the first staged clip once, as a tap would. The
+    // gallery's own begin retires the lifetime it starts with, so the open waits for the browsing
+    // lifetime and retries on every relist until the presentation holds.
+    if (model.reviewLaunch?.screen == com.opencapture.monitorui.ReviewLaunch.Screen.PLAYBACK) {
+        var stagedClipOpened by remember { mutableStateOf(false) }
+        LaunchedEffect(mediaHost, state.lifetimeToken, library.displayedRecords.firstOrNull()?.asset?.id) {
+            if (stagedClipOpened || !state.browsing) return@LaunchedEffect
+            val records = library.displayedRecords
+            val first = records.firstOrNull() ?: return@LaunchedEffect
+            if (mediaHost.open(com.opencapture.opencine.appkit.MonitorMediaGalleryOpen(first, records,
+                library.actionToken))) stagedClipOpened = true
+        }
     }
     CompositionLocalProvider(LocalMonitorGlass provides null, LocalMediaBackdropGlass provides false) {
         MonitorOperatorMediaScreen(library, model.session.connectedCamera?.name ?: "OpenPocketCine", isLive,
@@ -60,6 +76,7 @@ fun MediaLibraryScreen(model: AppModel, onClose: () -> Unit) {
                 if (library.isCurrent(token)) deliveryFiles = records.map { record -> controller.file(record) }
             }, dismiss = { deliveryFiles = null }),
             presentationChanged = { shown -> activity?.playbackHidesSystemNavigation = shown; activity?.updateSystemBars() },
+            host = mediaHost,
             overlays = {
                 MediaDeliveryHost(files = deliveryFiles, controller = controller, onDismissPopup = { deliveryFiles = null },
                     onPresentationChange = { deliveryActive = it })
