@@ -41,8 +41,6 @@ extension MonitorAssistState where Looks == MonitorLUTLooks {
             })
         state = self
         OperatorPrefs.load(into: self)
-        cleanViewPinnedTools = OperatorPrefs.cleanViewPinnedTools
-        playbackVisibleTools = OperatorPrefs.playbackVisibleAssistTools
         if monitorColorMode == nil { monitorColorMode = LUTPreferences.app.lastMonitorColorMode }
         looks.preparationReady = true
         if lutEnabled { refreshLUTCube() }
@@ -54,60 +52,30 @@ enum OperatorPrefs {
         keys: .init(keepScreenAwake: "OpenPocketCine.KeepScreenAwake", hdrDisplay: "OpenPocketCine.HDRDisplay",
             recordConfirmation: "OpenPocketCine.RecordConfirmation", haptics: "OpenPocketCine.HapticsEnabled",
             cacheOriginals: "OpenPocketCine.CacheFullResolution"))
+    static let motion = MonitorMotionPreferences.camera(storage: .standard, prefix: "OpenPocketCine")
+    static let sharing = MonitorSharingPreferences.camera(storage: .standard, prefix: "OpenPocketCine")
+    private static let toolUsage = MonitorToolUsagePreferences(
+        storage: .standard, key: "OpenPocketCine.AssistToolUsage.v1")
+    static let capture = MonitorCaptureOperatorPreferences(storage: .standard, prefix: "OpenPocketCine")
     static let display = MonitorDisplayPreferences(
         storage: .standard,
         keys: .init(live: "OpenPocketCine.DispChrome.Live", clean: "OpenPocketCine.DispChrome.Clean"))
-    private static let awakeKey = "OpenPocketCine.KeepScreenAwake"
-    private static let hdrDisplayKey = "OpenPocketCine.HDRDisplay"
-    private static let customRec709FileKey = "OpenPocketCine.CustomRec709File"
-    private static let customDLog2FileKey = "OpenPocketCine.CustomDLog2File"
-    private static let assistKey = "OpenPocketCine.Assist.v1"
-    private static let recordConfirmKey = "OpenPocketCine.RecordConfirmation"
-    private static let hapticsKey = "OpenPocketCine.HapticsEnabled"
-    private static let headTrackingKey = "OpenPocketCine.HeadTrackingEnabled"
-    private static let gimbalStickSensitivityKey = "OpenPocketCine.GimbalStickSensitivity"
-    private static let virtualJoystickInvertPanKey = "OpenPocketCine.VirtualJoystickInvertPan"
-    private static let virtualJoystickInvertTiltKey = "OpenPocketCine.VirtualJoystickInvertTilt"
-    private static let virtualJoystickDeadzonePercentKey =
-        "OpenPocketCine.VirtualJoystickDeadzonePercent"
-    private static let virtualJoystickResponseCurveKey =
-        "OpenPocketCine.VirtualJoystickResponseCurve"
-    private static let virtualJoystickSizeKey = "OpenPocketCine.VirtualJoystickSize"
-    private static let gimbalRampKey = "OpenPocketCine.GimbalRamp"
-    private static let gimbalDoubleTapKey = "OpenPocketCine.GimbalDoubleTap"
     private static let cleanPinsKey = "OpenPocketCine.CleanViewPins.v1"
-    private static let playbackAssistsKey = "OpenPocketCine.PlaybackAssists.v1"
-    private static let cacheFullResolutionKey = "OpenPocketCine.CacheFullResolution"
-    private static let portraitFeedAspectKey = "OpenPocketCine.PortraitFeedAspect"
-    private static let nativeISOHopKey = "OpenPocketCine.NativeISOHop"
-    private static let facePriorityExposureKey = "OpenPocketCine.FacePriorityExposure"
-    private static let shutterUsesAngleKey = "OpenPocketCine.ShutterUsesAngle"
-    private static let shutterAngleKey = "OpenPocketCine.ShutterAngleDegrees"
-    private static let shareThisFeedKey = "OpenPocketCine.ShareThisFeed"
-    private static let controlRequestsKey = "OpenPocketCine.ControlRequests"
-    private static let broadcastPriorityKey = "OpenPocketCine.BroadcastPriority"
-    private static let assistToolUsageKey = "OpenPocketCine.AssistToolUsage.v1"
 
     static var shareThisFeed: Bool {
-        get { UserDefaults.standard.bool(forKey: shareThisFeedKey) }
-        set { UserDefaults.standard.set(newValue, forKey: shareThisFeedKey) }
+        get { sharing.shareThisFeed }
+        set { sharing.shareThisFeed = newValue }
     }
 
     static var controlRequests: Bool {
-        get {
-            if UserDefaults.standard.object(forKey: controlRequestsKey) == nil { return true }
-            return UserDefaults.standard.bool(forKey: controlRequestsKey)
-        }
-        set { UserDefaults.standard.set(newValue, forKey: controlRequestsKey) }
+        get { sharing.controlRequests }
+        set { sharing.controlRequests = newValue }
     }
 
     /// Ceiling index on the watcher-relay bitrate ladder. 0 = highest quality.
     static var broadcastPriority: Int {
-        get {
-            let v = UserDefaults.standard.integer(forKey: broadcastPriorityKey)
-            return min(max(0, v), 3)
-        }
-        set { UserDefaults.standard.set(min(max(0, newValue), 3), forKey: broadcastPriorityKey) }
+        get { sharing.broadcastPriority }
+        set { sharing.broadcastPriority = newValue }
     }
 
     static var keepScreenAwake: Bool {
@@ -138,106 +106,57 @@ enum OperatorPrefs {
     }
 
     static var assistToolUsage: MonitorToolUsage {
-        get {
-            guard let data = UserDefaults.standard.data(forKey: assistToolUsageKey),
-                let value = try? JSONDecoder().decode(MonitorToolUsage.self, from: data)
-            else { return MonitorToolUsage() }
-            return value
-        }
-        set {
-            if let data = try? JSONEncoder().encode(newValue) {
-                UserDefaults.standard.set(data, forKey: assistToolUsageKey)
-            }
-        }
+        get { toolUsage.value }
+        set { toolUsage.value = newValue }
     }
 
     static var headTrackingEnabled: Bool {
-        get { UserDefaults.standard.bool(forKey: headTrackingKey) }
-        set { UserDefaults.standard.set(newValue, forKey: headTrackingKey) }
+        get { motion.headTrackingEnabled }
+        set { motion.headTrackingEnabled = newValue }
     }
 
     /// Stick double-tap / gamepad Circle/B. Absent key is Recenter.
     static var gimbalDoubleTap: GimbalDoubleTap {
-        get {
-            GimbalDoubleTap(rawValue: UserDefaults.standard.integer(forKey: gimbalDoubleTapKey))
-                ?? .recenter
-        }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: gimbalDoubleTapKey) }
+        get { motion.doubleTap }
+        set { motion.doubleTap = newValue }
     }
 
     static var gimbalRamp: GimbalRamp {
-        get {
-            guard UserDefaults.standard.object(forKey: gimbalRampKey) != nil else {
-                return .off
-            }
-            return GimbalRamp(rawValue: UserDefaults.standard.integer(forKey: gimbalRampKey))
-                ?? .off
-        }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: gimbalRampKey) }
+        get { motion.ramp }
+        set { motion.ramp = newValue }
     }
 
     static var gimbalStickSensitivity: Int {
-        get {
-            guard UserDefaults.standard.object(forKey: gimbalStickSensitivityKey) != nil else {
-                return GimbalStick.defaultSensitivity
-            }
-            return GimbalStick.clampedSensitivity(
-                UserDefaults.standard.integer(forKey: gimbalStickSensitivityKey))
-        }
-        set {
-            UserDefaults.standard.set(
-                GimbalStick.clampedSensitivity(newValue), forKey: gimbalStickSensitivityKey)
-        }
+        get { motion.gimbalStickSensitivity }
+        set { motion.gimbalStickSensitivity = newValue }
     }
 
     static var virtualJoystickInvertPan: Bool {
-        get { UserDefaults.standard.bool(forKey: virtualJoystickInvertPanKey) }
-        set { UserDefaults.standard.set(newValue, forKey: virtualJoystickInvertPanKey) }
+        get { motion.virtualJoystickInvertPan }
+        set { motion.virtualJoystickInvertPan = newValue }
     }
 
     static var virtualJoystickInvertTilt: Bool {
-        get { UserDefaults.standard.bool(forKey: virtualJoystickInvertTiltKey) }
-        set { UserDefaults.standard.set(newValue, forKey: virtualJoystickInvertTiltKey) }
+        get { motion.virtualJoystickInvertTilt }
+        set { motion.virtualJoystickInvertTilt = newValue }
     }
 
     static var virtualJoystickDeadzonePercent: Int {
-        get {
-            guard UserDefaults.standard.object(forKey: virtualJoystickDeadzonePercentKey) != nil
-            else {
-                return GimbalStick.defaultDeadzonePercent
-            }
-            return GimbalStick.clampedDeadzonePercent(
-                UserDefaults.standard.integer(forKey: virtualJoystickDeadzonePercentKey))
-        }
-        set {
-            UserDefaults.standard.set(
-                GimbalStick.clampedDeadzonePercent(newValue),
-                forKey: virtualJoystickDeadzonePercentKey)
-        }
+        get { motion.virtualJoystickDeadzonePercent }
+        set { motion.virtualJoystickDeadzonePercent = newValue }
     }
 
     static var virtualJoystickResponseCurve: GimbalStick.ResponseCurve {
-        get {
-            GimbalStick.ResponseCurve.parse(
-                UserDefaults.standard.string(forKey: virtualJoystickResponseCurveKey))
-        }
-        set {
-            UserDefaults.standard.set(newValue.rawValue, forKey: virtualJoystickResponseCurveKey)
-        }
+        get { motion.responseCurve }
+        set { motion.responseCurve = newValue }
     }
 
     static var virtualJoystickSize: MonitorJoystickSize {
-        get { MonitorJoystickSize.parse(UserDefaults.standard.string(forKey: virtualJoystickSizeKey)) }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: virtualJoystickSizeKey) }
+        get { motion.joystickSize }
+        set { motion.joystickSize = newValue }
     }
 
-    static var virtualJoystickMapping: GimbalStick.Mapping {
-        GimbalStick.Mapping(
-            invertPan: virtualJoystickInvertPan,
-            invertTilt: virtualJoystickInvertTilt,
-            deadzone: GimbalStick.deadzoneFromPercent(virtualJoystickDeadzonePercent),
-            curve: virtualJoystickResponseCurve)
-    }
+    static var virtualJoystickMapping: GimbalStick.Mapping { motion.joystickMapping }
 
     static var dispLive: MonitorDisplayChrome {
         get { display.live }
@@ -250,54 +169,30 @@ enum OperatorPrefs {
     }
 
     static var shutterUsesAngle: Bool {
-        get { UserDefaults.standard.bool(forKey: shutterUsesAngleKey) }
-        set { UserDefaults.standard.set(newValue, forKey: shutterUsesAngleKey) }
+        get { capture.shutterUsesAngle }
+        set { capture.shutterUsesAngle = newValue }
     }
 
     static var shutterAngleDegrees: Double {
-        get {
-            let stored = UserDefaults.standard.double(forKey: shutterAngleKey)
-            return stored > 0 ? ShutterAngle.nearestDegrees(stored) : ShutterAngle.defaultDegrees
-        }
-        set {
-            UserDefaults.standard.set(
-                ShutterAngle.nearestDegrees(newValue), forKey: shutterAngleKey)
-        }
+        get { capture.shutterAngleDegrees }
+        set { capture.shutterAngleDegrees = newValue }
     }
 
     static var portraitFeedAspect: PortraitFeedAspect {
-        get {
-            PortraitFeedAspect(
-                rawValue: UserDefaults.standard.string(forKey: portraitFeedAspectKey) ?? "")
-                ?? .fit16x9
-        }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: portraitFeedAspectKey) }
+        get { capture.portraitFeedAspect }
+        set { capture.portraitFeedAspect = newValue }
     }
 
     /// Auto-expo: meter Vision faces to middle gray and write EV.
     static var facePriorityExposureEnabled: Bool {
-        get { UserDefaults.standard.bool(forKey: facePriorityExposureKey) }
-        set { UserDefaults.standard.set(newValue, forKey: facePriorityExposureKey) }
+        get { capture.facePriorityExposure }
+        set { capture.facePriorityExposure = newValue }
     }
 
-    /// D-Log 400 ↔ D-Log2 1600 when the operator is still on native ISO.
+    /// D-Log 400 and D-Log2 1600 when the operator is still on native ISO.
     static var nativeISOHopEnabled: Bool {
-        get {
-            if UserDefaults.standard.object(forKey: nativeISOHopKey) == nil { return true }
-            return UserDefaults.standard.bool(forKey: nativeISOHopKey)
-        }
-        set { UserDefaults.standard.set(newValue, forKey: nativeISOHopKey) }
-    }
-
-    static var playbackVisibleAssistTools: Set<MonitorAssistSelection> {
-        get {
-            guard let raw = UserDefaults.standard.array(forKey: playbackAssistsKey) as? [String]
-            else { return [] }
-            return Set(raw.compactMap(MonitorAssistSelection.init(rawValue:)))
-        }
-        set {
-            UserDefaults.standard.set(newValue.map(\.rawValue).sorted(), forKey: playbackAssistsKey)
-        }
+        get { capture.nativeISOHop }
+        set { capture.nativeISOHop = newValue }
     }
 
     /// Absent key = never pinned, so the stock set. Stored empty = operator cleared every pin.
@@ -316,13 +211,9 @@ enum OperatorPrefs {
         }
     }
 
+    /// The shared assist state already loaded the snapshot, clean pins and playback tools.
     @MainActor
     static func load(into state: LiveAssistState) {
-        if let data = UserDefaults.standard.data(forKey: assistKey),
-            let snap = try? JSONDecoder().decode(MonitorAssistSnapshot.self, from: data)
-        {
-            snap.apply(to: state)
-        }
         LUTPreferences.app.migrateLegacySelectionIfNeeded(lutEnabled: state.lutEnabled)
         let migrated = LUTPreferences.app.lutSelection.migratedToDJICatalog
         if migrated != LUTPreferences.app.lutSelection {
@@ -332,18 +223,8 @@ enum OperatorPrefs {
     }
 
     @MainActor
-    static func save(_ state: LiveAssistState) {
-        write(encoded(state))
-    }
-
-    @MainActor
     static func encoded(_ state: LiveAssistState) -> Data? {
-        try? JSONEncoder().encode(MonitorAssistSnapshot(state))
-    }
-
-    static func write(_ data: Data?) {
-        guard let data else { return }
-        UserDefaults.standard.set(data, forKey: assistKey)
+        state.encodedSnapshot()
     }
 }
 
