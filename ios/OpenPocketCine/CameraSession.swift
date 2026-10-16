@@ -6,6 +6,7 @@ import MonitorUI
 import Observation
 import OpenCineAppKit
 import OpenCineCameraControls
+import class OpenCineApple.CameraHotspotSystem
 import class OpenCineCore.LocalVPNNotice
 import struct OpenCineCore.SavedCamera
 import OpenCineDJIApple
@@ -207,11 +208,19 @@ final class CameraSession {
         /// Recipe/repair timing is the immutable pictureRecoveryTiming passed at init.
         @ObservationIgnored var liveViewDonorTiming: DjiApplePictureRecoveryTiming?
     #endif
+    /// This session's one camera hotspot owner, kept across reconnects: a retry or cleanup
+    /// never reaches the OS while an earlier join is still pending there.
+    @ObservationIgnored private let cameraHotspot = CameraHotspotSystem()
+    private var networkHost: DjiAppleTransportHost {
+        var host = DjiAppleTransportHost.pocket
+        host.hotspot = cameraHotspot.host
+        return host
+    }
     private var connectionTransport: DjiAppleConnectionTransport {
         #if DEBUG
             if let trace = connectionNativePeers { return trace.transport }
         #endif
-        return .init(bluetooth: ble, host: .pocket)
+        return .init(bluetooth: ble, host: networkHost)
     }
     private var connectionTiming: DjiAppleConnectionTiming {
         #if DEBUG
@@ -941,7 +950,12 @@ final class CameraSession {
         }
         guard isCurrent() else { return }
         if !preserveSoftAP, let ssid = joinedSSID {
-            DjiAppleWiFiJoiner.leave(ssid: ssid)
+            // The control exchange is retired above; a later connect advances its generation,
+            // so a removal still queued behind a pending join then never runs.
+            let retired = controlGeneration
+            DjiAppleWiFiJoiner.leave(ssid: ssid, host: networkHost) { [weak self] in
+                self?.controlGeneration == retired
+            }
             guard isCurrent() else { return }
             joinedSSID = nil
         }
@@ -3929,7 +3943,7 @@ final class CameraSession {
             defer {
                 if self.foregroundGeneration == generation { self.foregroundCheckTask = nil }
             }
-            let currentSSID = await DjiAppleWiFiJoiner.currentSSID()
+            let currentSSID = await DjiAppleWiFiJoiner.currentSSID(host: self.networkHost)
             guard !Task.isCancelled, self.foregroundGeneration == generation else { return }
             await self.recoverAfterForeground(currentSSID: currentSSID, pictureOwner: pictureOwner)
         }
@@ -4629,13 +4643,19 @@ final class CameraSession {
         _ = datalink?.send(frame)
     }
 
-    func rejoinSoftAPAfterInternetHop() async {
+    func rejoinSoftAPAfterInternetHop(isCurrent: @escaping @MainActor () -> Bool = { true }) async {
         guard connectionSetup == .cameraWiFi, let ssid = cachedSSID ?? joinedSSID,
             let pass = cachedPassword
         else { return }
         let wpa3 = connectedCamera?.model.wpa3 ?? true
-        try? await DjiAppleWiFiJoiner.join(ssid: ssid, passphrase: pass, wpa3: wpa3, host: .pocket)
+        try? await DjiAppleWiFiJoiner.join(ssid: ssid, passphrase: pass, wpa3: wpa3, host: networkHost,
+            isCurrent: isCurrent)
         try? await DjiAppleWiFiJoiner.waitUntilCameraPathReady(timeout: 20, host: .pocket)
+    }
+
+    /// The internet hop's leave, through this session's hotspot owner.
+    func leaveCameraNetwork(ssid: String, isCurrent: @escaping @MainActor () -> Bool) {
+        DjiAppleWiFiJoiner.leave(ssid: ssid, host: networkHost, isCurrent: isCurrent)
     }
 
     func sendEnterPlayback() { datalink?.enterPlayback() }
