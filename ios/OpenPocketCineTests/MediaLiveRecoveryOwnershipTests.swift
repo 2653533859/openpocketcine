@@ -1,16 +1,32 @@
 import OpenCineDJIApple
+import OpenCineHostedTestSupport
 import OpenPocketViewCore
 import XCTest
 
 @testable import OpenPocketCine
+
+/// Virtual monotonic time for the media return loop: each pause advances the clock instead of
+/// sleeping, so the loop's deadline is reached by its own steps, never by machine load.
+@MainActor
+private final class VirtualMediaClock {
+    private(set) var now: TimeInterval = 0
+    var timing: DjiAppleMediaTiming {
+        .init(now: { [unowned self] in now }, sleep: { [unowned self] duration in
+            let parts = duration.components
+            now += Double(parts.seconds) + Double(parts.attoseconds) / 1e18
+            await Task.yield()
+        })
+    }
+}
 
 @MainActor
 final class MediaLiveRecoveryOwnershipTests: XCTestCase {
     func testProductionMediaLoopSendsOneEnableThenExhaustsItsPictureDeadline() async {
         var exits = 0
         var enables = 0
+        let clock = VirtualMediaClock()
         let result = await DjiAppleMediaLiveReturn.run(
-            timeout: .milliseconds(450),
+            timeout: .milliseconds(450), timing: clock.timing,
             isCurrent: { true }, inPlayback: { false }, pictureFresh: { false },
             exitPlayback: {
                 exits += 1
@@ -28,8 +44,9 @@ final class MediaLiveRecoveryOwnershipTests: XCTestCase {
     func testProductionMediaLoopWaitsForAcceptedEnableAndFreshPicture() async {
         var attempts = 0
         var accepted = 0
+        let clock = VirtualMediaClock()
         let result = await DjiAppleMediaLiveReturn.run(
-            timeout: .seconds(2),
+            timeout: .seconds(2), timing: clock.timing,
             isCurrent: { true }, inPlayback: { false }, pictureFresh: { accepted == 1 },
             exitPlayback: { true },
             enableLiveView: {
@@ -132,8 +149,7 @@ final class MediaLiveRecoveryOwnershipTests: XCTestCase {
             await withCheckedContinuation { negotiation = $0 }
             finishedNegotiation = true
         }) else { XCTFail("Current real run must admit negotiation in the genuine nil-driver gap"); return }
-        let negotiationDeadline = ContinuousClock.now.advanced(by: .seconds(2))
-        while negotiation == nil, ContinuousClock.now < negotiationDeadline { await Task.yield() }
+        _ = await HostedCondition.wait { negotiation != nil }
         guard negotiation != nil else { XCTFail("Admitted negotiation must reach the manual wait"); return }
         XCTAssertNil(session.datalink, "Exercise the full-rejoin gap before a driver is adopted")
         session.beginMediaBrowse()
@@ -143,10 +159,7 @@ final class MediaLiveRecoveryOwnershipTests: XCTestCase {
             session.cameraMedia.resumeLiveTask, "Media return cannot lose ownership in this gap")
         XCTAssertFalse(finishedNegotiation, "Opening media must not cancel negotiation")
         negotiation?.resume()
-        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
-        while session.cameraMedia.resumeLiveTask != nil, ContinuousClock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
+        _ = await HostedCondition.wait { session.cameraMedia.resumeLiveTask == nil }
         XCTAssertTrue(finishedNegotiation)
         XCTAssertNil(
             session.cameraMedia.resumeLiveTask, "Pending return must transfer into the feed slot")

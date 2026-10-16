@@ -5,6 +5,7 @@ import VideoToolbox
 import XCTest
 import OpenCineDJIApple
 import OpenCineApple
+import OpenCineHostedTestSupport
 import OpenCineMedia
 
 @testable import OpenPocketCine
@@ -26,26 +27,20 @@ final class FirstConnectTests: XCTestCase {
         decoder.onPresentedFrame = { heartbeats += 1 }
         let buffer = ScopeTestBuffers.makeEdgeBuffer()
         decoder.handleDecodedFrame(buffer)
-        let deadline = Date().addingTimeInterval(2)
-        while Date() < deadline, decoder.lastPresentedAt == nil {
-            try? await Task.sleep(for: .milliseconds(20))
-        }
+        _ = await HostedCondition.wait { decoder.lastPresentedAt != nil }
         let source = try XCTUnwrap(decoder.lastSourceFrameAt)
         let presented = try XCTUnwrap(decoder.lastPresentedAt)
         let decoded = bus.decodedFrames
         let firstHeartbeats = heartbeats
         let firstCompletions = completions
         decoder.handleDecodedFrame(buffer, isNewSourceFrame: false)
-        let redrawDeadline = Date().addingTimeInterval(2)
-        while Date() < redrawDeadline, completions == firstCompletions {
-            try? await Task.sleep(for: .milliseconds(20))
-        }
+        _ = await HostedCondition.wait { completions != firstCompletions }
         XCTAssertGreaterThan(completions, firstCompletions, "Exercise the cached repaint")
         XCTAssertEqual(decoder.lastPresentedAt, presented)
         XCTAssertEqual(decoder.lastSourceFrameAt, source)
         XCTAssertEqual(bus.decodedFrames, decoded)
         XCTAssertEqual(heartbeats, firstHeartbeats)
-        await fulfillment(of: [identity], timeout: 1)
+        await fulfillment(of: [identity], timeout: 30)
 
         // Dropping the final assist re-enqueues the held identity buffer directly.
         let container = CALayer()
@@ -468,10 +463,7 @@ final class FirstConnectTests: XCTestCase {
             accessUnit: Self.startCodes + Self.vps + Self.startCodes + Self.sps
                 + Self.startCodes + Self.pps)
         decoder.handleDecodedFrame(ScopeTestBuffers.makeEdgeBuffer())
-        let deadline = Date().addingTimeInterval(2)
-        while Date() < deadline, decoder.lastPresentedAt == nil {
-            try? await Task.sleep(for: .milliseconds(20))
-        }
+        _ = await HostedCondition.wait { decoder.lastPresentedAt != nil }
         XCTAssertNotNil(decoder.lastPresentedAt)
         XCTAssertEqual(idrRequests, 0, "first present must not send 0x09/0xa8")
         decoder.unlockHardwareDecoder()
@@ -688,7 +680,7 @@ final class ConnectionRunDonorTraceTests: XCTestCase {
             disconnected = true; session.disconnect()
         }
         session.connect(peer.camera)
-        for _ in 0..<1000 { if disconnected { break }; await Task.yield() }
+        _ = await HostedCondition.wait { disconnected }
         for _ in 0..<10 { await Task.yield() }
         XCTAssertTrue(disconnected)
         XCTAssertEqual(session.phase, .idle)
@@ -804,7 +796,10 @@ final class ConnectionRunDonorTraceTests: XCTestCase {
     }
 
     private func finish(_ session: CameraSession, expectsFailure: Bool = false) async {
-        for _ in 0..<1000 {
+        // Yield, not sleep, so the caller acts right after registration; the deadline replaces a
+        // 1000-yield budget and is only a hang guard.
+        let deadline = ContinuousClock.now.advanced(by: HostedCondition.hangLimit)
+        while ContinuousClock.now < deadline {
             if session.phase == .live { await Task.yield(); return }
             if case .failed(let reason) = session.phase { if !expectsFailure { XCTFail(reason) }; return }
             await Task.yield()
@@ -1523,8 +1518,10 @@ final class ConnectionDonorPeer {
         configureConnection(session)
         registeredAttempt = nil
         session.connect(target ?? camera)
-        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
-        while (session.phase != .live || registeredAttempt?.isCurrent != true),
+        // Yield, not sleep: callers act right after registration, before network-driven work can
+        // land. The deadline is only a hang guard.
+        let deadline = ContinuousClock.now.advanced(by: HostedCondition.hangLimit)
+        while session.phase != .live || registeredAttempt?.isCurrent != true,
             ContinuousClock.now < deadline { await Task.yield() }
         guard session.phase == .live, registeredAttempt?.isCurrent == true else {
             XCTFail("SIMULATED fixture requires a current real public connection run")

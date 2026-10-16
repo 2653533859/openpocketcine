@@ -1,6 +1,7 @@
 import OpenCineCore
 import CoreVideo
 import OpenCineApple
+import OpenCineHostedTestSupport
 import OpenPocketViewCore
 import XCTest
 import struct OpenCineCore.CameraTimecode
@@ -58,11 +59,12 @@ import OpenCineDJIApple
             cmdSet: 2, cmdId: 0x8E,
             payload: [0, 0, 1, 0x3B, 0, 2, 1, FocusTrackMode.subjectLock.rawValue])
         b.updateSettings(ack)
+        // Negative window: another tile's ACK must not settle the waiter within it.
         try await Task.sleep(for: .milliseconds(20))
         XCTAssertFalse(completed, "Another tile's ACK cannot settle this editor")
         a.updateSettings(ack)
-        try await Task.sleep(for: .milliseconds(20))
-        XCTAssertTrue(completed, "Selected camera ACK reaches the existing command waiter")
+        let settled = await HostedCondition.wait { completed }
+        XCTAssertTrue(settled, "Selected camera ACK reaches the existing command waiter")
         XCTAssertEqual(model.session.status.focusTrack, .subjectLock)
         await refresh.value
     }

@@ -66,8 +66,8 @@ private final class DeliveryParityFileManager: FileManager, @unchecked Sendable 
         let popup = model.deliveryPopup(files: [clip], preferred: .remoteUpload)
         defer { popup.model.close() }
         popup.model.hopToInternet()
-        for _ in 0..<200 where popup.model.projectsError == nil && !model.internetHop.isActive {
-            try await Task.sleep(for: .milliseconds(10))
+        _ = await HostedCondition.wait {
+            popup.model.projectsError != nil || model.internetHop.isActive
         }
         XCTAssertFalse(model.internetHop.isActive, "An uncached clip must not leave the camera network")
         XCTAssertNotNil(popup.model.projectsError)
@@ -101,11 +101,9 @@ private final class DeliveryParityFileManager: FileManager, @unchecked Sendable 
         // only a host where it cannot (a device without assistive access) may skip.
         try XCTSkipIf(!mounted && !HostedAccessibility.enableRuntime(), "No accessibility tree: enable app accessibility")
         model.delivery.fail("Export settings are unavailable.")
-        var announced = false
-        for _ in 0..<60 where !announced {
-            try await Task.sleep(for: .milliseconds(50))
+        let announced = await HostedCondition.wait {
             host.view.layoutIfNeeded()
-            announced = Self.labels(host.view).contains("Export settings are unavailable.")
+            return Self.labels(host.view).contains("Export settings are unavailable.")
         }
         XCTAssertTrue(announced, "The failed delivery's outcome must be visible")
     }

@@ -176,7 +176,9 @@ final class LiveFeedOrientationTests: XCTestCase {
         // Unstamped effects (the compositor here) read the reference ceiling.
         let clip = DJIScopeExposureCeiling.referenceClipByte(transfer: .rec709)
         PocketFalseColorMap.warm(scale: .ire, mode: .normal, rec709: false, clipByte: clip)
-        let deadline = Date().addingTimeInterval(5)
+        // Hang guard, not a budget: the cold lattices take about five seconds in an unoptimized
+        // simulator build on their own, longer under load (as in FalseColorAssistTests).
+        let deadline = Date().addingTimeInterval(30)
         while Date() < deadline {
             if PocketFalseColorMap.overlayPaintData(
                 scale: .ire, mode: .normal, rec709: false, clipByte: clip) != nil,

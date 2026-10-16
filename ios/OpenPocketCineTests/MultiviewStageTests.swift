@@ -1,4 +1,5 @@
 import OpenCineCore
+import OpenCineHostedTestSupport
 import OpenPocketViewCore
 import XCTest
 import OpenCineDJIApple
@@ -167,10 +168,7 @@ import OpenCineDJIApple
             decoder.reset()
         }
         decoder.handleDecodedFrame(ScopeTestBuffers.makeEdgeBuffer())
-        let deadline = Date().addingTimeInterval(2)
-        while Date() < deadline, decoder.lastPresentedAt == nil {
-            try await Task.sleep(for: .milliseconds(20))
-        }
+        _ = await HostedCondition.wait { decoder.lastPresentedAt != nil }
         XCTAssertNotNil(decoder.lastPresentedAt)
         let camera = DjiAppleSighting(
             id: UUID(), name: "OsmoPocket4P-Test",

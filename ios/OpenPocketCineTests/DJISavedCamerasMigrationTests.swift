@@ -1,6 +1,7 @@
 import Foundation
 import OpenCineAppKit
 import OpenCineCore
+import OpenCineHostedTestSupport
 import OpenCineDJI
 import XCTest
 import OpenCineDJIApple
@@ -338,9 +339,9 @@ final class DJISavedCamerasMigrationTests: XCTestCase {
         XCTAssertEqual(OpenPocketCine.CameraSession.sighting(nameless).modelId, 0x19)
     }
 
-    private func until(_ condition: () -> Bool) async throws {
-        for _ in 0..<500 where !condition() { try await Task.sleep(for: .milliseconds(10)) }
-        XCTAssertTrue(condition())
+    private func until(_ condition: @MainActor @Sendable () -> Bool) async throws {
+        let held = await HostedCondition.wait(until: condition)
+        XCTAssertTrue(held)
     }
 }
 

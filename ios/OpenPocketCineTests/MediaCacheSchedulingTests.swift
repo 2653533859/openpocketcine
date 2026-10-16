@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import OpenCineHostedTestSupport
 import OpenPocketViewCore
 import XCTest
 import os
@@ -7,6 +8,8 @@ import OpenCineDJIApple
 
 @testable import OpenPocketCine
 
+// Expectations here are fulfilled by the URL protocol's or the cache's own events; every 30 s
+// timeout is a hang guard, not a budget.
 @MainActor
 final class MediaCacheSchedulingTests: XCTestCase {
     func testCancelledDownloadCannotPublishQueuedProgress() async throws {
@@ -26,7 +29,7 @@ final class MediaCacheSchedulingTests: XCTestCase {
         defer { StreamingProxyProtocol.state.withLock { $0 = .init() } }
         let progress = QueuedMediaProgressProbe(session: session, path: file.path)
         let download = Task { try await session.cachePlaybackFile(file: file, path: proxy) }
-        await fulfillment(of: [ready], timeout: 5)
+        await fulfillment(of: [ready], timeout: 30)
         progress.values.removeAll()
         // Queue bytes on the actual URLProtocol/native stream while MainActor is occupied,
         // then cancel before its captured library progress publication can run.
@@ -68,16 +71,15 @@ final class MediaCacheSchedulingTests: XCTestCase {
         }
         defer { StreamingProxyProtocol.state.withLock { $0 = .init() } }
         let download = Task { try await session.cachePlaybackFile(file: file, path: proxy) }
-        await fulfillment(of: [firstChunk], timeout: 5)
+        await fulfillment(of: [firstChunk], timeout: 30)
         let directory = dest.deletingLastPathComponent()
         var bytesOnDisk = 0
-        for _ in 0..<50 {
+        _ = await HostedCondition.wait {
             let parts =
                 (try? FileManager.default.contentsOfDirectory(
                     at: directory, includingPropertiesForKeys: nil)) ?? []
             bytesOnDisk = parts.reduce(0) { $0 + ((try? Data(contentsOf: $1).count) ?? 0) }
-            if bytesOnDisk >= StreamingProxyProtocol.chunkSize { break }
-            try await Task.sleep(for: .milliseconds(10))
+            return bytesOnDisk >= StreamingProxyProtocol.chunkSize
         }
         let paused = StreamingProxyProtocol.state.withLock { $0.paused }
         paused?.finishBody()
@@ -123,9 +125,9 @@ final class MediaCacheSchedulingTests: XCTestCase {
                 return (error as? URLError)?.code == .cancelled
             }
         }
-        await fulfillment(of: [firstChunk], timeout: 5)
+        await fulfillment(of: [firstChunk], timeout: 30)
         download.cancel()
-        await fulfillment(of: [completed, stoppedTransfer], timeout: 1)
+        await fulfillment(of: [completed, stoppedTransfer], timeout: 30)
         let (stopped, paused) = StreamingProxyProtocol.state.withLock { ($0.stopped, $0.paused) }
         // Let the broken implementation finish in the red run.
         if !stopped { paused?.finishBody() }
@@ -160,10 +162,11 @@ final class MediaCacheSchedulingTests: XCTestCase {
                 wroteReplacement.fulfill()
                 heartbeat.signal()
             }
-            _ = heartbeat.wait(timeout: .now() + 1)
+            // Hang guard: the main actor is free (the test awaits), so the write lands first.
+            _ = heartbeat.wait(timeout: .now() + 10)
         }
         try await cache.clearCache(cameraID: "test", preservingCatalog: true)
-        await fulfillment(of: [wroteReplacement], timeout: 2)
+        await fulfillment(of: [wroteReplacement], timeout: 30)
         XCTAssertEqual(manager.removedOnMain, false)
         XCTAssertFalse(FileManager.default.fileExists(atPath: oldDownload.path))
         XCTAssertEqual(try Data(contentsOf: newDownload), Data([2]))

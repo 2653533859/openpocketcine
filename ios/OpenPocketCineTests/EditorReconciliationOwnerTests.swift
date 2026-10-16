@@ -2,6 +2,7 @@ import Foundation
 import Network
 import Observation
 import OpenCineDJI
+import OpenCineHostedTestSupport
 import OpenPocketViewCore
 import XCTest
 import OpenCineDJIApple
@@ -228,8 +229,11 @@ final class EditorReconciliationOwnerTests: XCTestCase {
                         && $0.payload == command.payload
                 })
             session.receiveMultiview(reply(sent, payload: [0]))
-            // This real request resumes on the owner actor; allow its event and FIFO tail to settle.
-            for _ in 0..<100 { await Task.yield() }
+            // This real request resumes on the owner actor; wait for its event and FIFO tail.
+            _ = await HostedCondition.wait {
+                reentry.value && session.status.audioChannel == .mono
+                    && session.status.isoLimit == .max800
+            }
             XCTAssertTrue(reentry.value)
             XCTAssertEqual(session.status.audioChannel, .mono)
             XCTAssertEqual(session.status.isoLimit, .max800)
@@ -296,7 +300,10 @@ final class EditorReconciliationOwnerTests: XCTestCase {
                         \.seq)
                 ).count, 1)
             session.receiveMultiview(reply(actual, payload: [0]))
-            for _ in 0..<100 { await Task.yield() }
+            _ = await HostedCondition.wait {
+                session.status.audioDspBlob == AudioDspBlob.patchWind(blob, .on)
+                    && session.status.windNR == .on
+            }
             XCTAssertEqual(session.status.audioDspBlob, AudioDspBlob.patchWind(blob, .on))
             XCTAssertEqual(session.status.windNR, .on)
             XCTAssertEqual(session.status.isoLimit, .max800)
@@ -326,6 +333,8 @@ final class EditorReconciliationOwnerTests: XCTestCase {
             let sent = try XCTUnwrap(
                 peer.frames.first { $0.cmdSet == get.cmdSet && $0.cmdId == get.cmdId })
             session.receiveMultiview(reply(sent, payload: [0] + Array(UInt8(0)..<UInt8(26))))
+            _ = await HostedCondition.wait { reentry.value && session.datalink == nil }
+            // Negative settle: a retired source must not continue onto the borrowed transport.
             for _ in 0..<100 { await Task.yield() }
             XCTAssertTrue(reentry.value)
             XCTAssertNil(session.datalink)
@@ -383,12 +392,9 @@ final class EditorReconciliationOwnerTests: XCTestCase {
             flags: 0xC0, cmdSet: frame.cmdSet, cmdId: frame.cmdId, payload: payload)
     }
 
-    private func waitFor(_ condition: () -> Bool) async throws {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(1))
-        while !condition(), ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        XCTAssertTrue(condition())
+    private func waitFor(_ condition: @MainActor @Sendable () -> Bool) async throws {
+        let held = await HostedCondition.wait(until: condition)
+        XCTAssertTrue(held)
     }
 
     private func subscribe(_ name: String, _ value: [UInt8]) -> Duml.Frame {
