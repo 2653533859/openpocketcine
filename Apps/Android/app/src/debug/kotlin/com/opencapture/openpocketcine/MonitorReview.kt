@@ -57,7 +57,7 @@ internal object MonitorReview {
             ReviewLaunch.Screen.MEDIA, ReviewLaunch.Screen.PLAYBACK -> stageMedia(context, model, review)
             ReviewLaunch.Screen.SETTINGS -> {
                 review.settingsTab?.let { model.operatorSettingsTab = it }
-                model.homePanel = AppPanel.SETTINGS
+                model.shell.open(ShellModel.Cover.SETTINGS)
             }
             else -> Unit // CAMERAS: the seeded saved cameras leave the shell on the cameras page.
         }
