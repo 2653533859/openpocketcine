@@ -76,8 +76,8 @@ internal fun operatorSetupApp(model: AppModel) = OperatorSetupApp(
         AppDiagnostics.reporting, AppDiagnostics.manualReport, AppDiagnostics.incidents,
         diagnosticText = { DiagnosticCenter.boundedDiagnosticText(model.session) },
         shareReport = { DiagnosticCenter.shareReport(it, model.session, copyForFeedback = false) },
-        reportActionMinimumTouchTarget = false,
     ),
+    reportProblem = { model.problemReportOpen = true },
     legal = PocketLegalDocuments,
     lutPicker = { onClose -> LUTPicker(model = model, onClose = onClose) },
     cacheSource = {

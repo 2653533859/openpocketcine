@@ -7,11 +7,6 @@ import SwiftUI
 import UIKit
 
 
-enum AppPanel: String, Identifiable {
-    case settings, media, privacy, terms, licenses, notice
-    var id: String { rawValue }
-}
-
 enum OpenPocketCineLinks {
     static let source = URL(string: "https://github.com/erik-sutton95/OpenPocketCine")
     static let support = URL(

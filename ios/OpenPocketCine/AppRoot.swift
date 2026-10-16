@@ -222,30 +222,9 @@ final class AppModel {
         session.decoder.incomingColorMode = LiveMonitorColorScience.colorMode(
             isPhoto: photo, colorMode: raw)
     }
-    /// Legal documents are app-owned. Settings and media have one shared cover state.
-    private var legalPanel: AppPanel?
-    var homePanel: AppPanel? {
-        get {
-            if let legalPanel { return legalPanel }
-            guard shell.monitor == nil else { return nil }
-            return shell.cover.map { $0 == .settings ? .settings : .media }
-        }
-        set {
-            switch newValue {
-            case .settings:
-                legalPanel = nil
-                shell.open(.settings)
-            case .media:
-                legalPanel = nil
-                shell.open(.media)
-            case nil:
-                legalPanel = nil
-                shell.dismissCover()
-            default: legalPanel = newValue
-            }
-        }
-    }
-    var showsLegalPanel: Bool { legalPanel != nil }
+    /// The problem report sheet, owned by the app root (A2-24): the cameras page and Settings
+    /// both open it here, so a draft outlives the camera session and the Settings cover.
+    var isProblemReportPresented = false
     var captureSheet: CaptureSheet?
     var captureDrum: CaptureDrumPresentation?
     var keepScreenAwake: Bool = OperatorPrefs.keepScreenAwake {
@@ -706,7 +685,6 @@ final class AppModel {
     }
 
     func noteBecameLive() {
-        legalPanel = nil
         operatorSession.synchronize(source: shell.monitor?.id)
         captureSheet = nil
         if shareThisFeed { startRelayHost() }
@@ -910,13 +888,6 @@ struct AppRoot: View {
                     .zIndex(100)
             }
 
-            if model.showsLegalPanel, !model.isWatchingFeed {
-                AppPanelHost()
-                    .environment(model)
-                    .transition(.opacity)
-                    .zIndex(80)
-            }
-
             if model.showsWatcherBrowse, !model.isLive {
                 MonitorTheme.background
                     .ignoresSafeArea()
@@ -929,18 +900,7 @@ struct AppRoot: View {
         }
         .environment(model)
         .environment(\.font, MonitorTheme.font(16))
-        .environment(
-            \.monitorHDRChromeGain,
-            model.hdrDisplayActive ? CGFloat(LiveHDRDisplay.app.presentGain) : 1
-        )
-        .background {
-            HDRChromeHost(display: .app, enabled: model.hdrDisplayActive).allowsHitTesting(false)
-        }
-        .onReceive(
-            NotificationCenter.default.publisher(for: UIScreen.capturedDidChangeNotification)
-        ) { _ in
-            model.screenCaptured = UIScreen.main.isCaptured
-        }
+        .monitorHDRDisplay(.app, active: model.hdrDisplayActive, screenCaptured: Bindable(model).screenCaptured)
         .preferredColorScheme(.dark)
         .monitorAppStartup(startup, splashVisible: Bindable(model).showsLaunchSplash) { choice in
             ReliabilityConsentPrompt(onChoice: choice).environment(model)
@@ -964,7 +924,6 @@ struct AppRoot: View {
             }
             model.prepareStartup()
             model.activateWatchRelay()
-            model.screenCaptured = UIScreen.main.isCaptured
         }
         .onChange(of: model.relayClient.status) { _, status in
             model.noteWatcherStatusChanged(status)
@@ -1054,7 +1013,6 @@ struct LinkExperience: View {
     @Environment(\.openURL) private var openURL
     @State private var diagnostics: MonitorDiagnosticsShareItem?
     @State private var diagnosticsFailure: String?
-    @State private var showProblemReport = false
     @State private var showMultiview = false
     @State private var reviewAddSetup: SavedCamera?
 
@@ -1067,7 +1025,7 @@ struct LinkExperience: View {
                     case .ready(let item): diagnostics = item
                     case .failed(let message): diagnosticsFailure = message
                     }
-                }, reportProblem: { showProblemReport = true },
+                }, reportProblem: { model.isProblemReportPresented = true },
                 watchFeed: {
                     if model.cameras.attempts.isEmpty { model.openWatcherBrowse() }
                 },
@@ -1120,7 +1078,9 @@ struct LinkExperience: View {
         } message: {
             Text(diagnosticsFailure ?? "")
         }
-        .sheet(isPresented: $showProblemReport) { ProblemReportView().environment(model) }
+        // The app's one problem report, above every cover: a draft opened from Settings
+        // survives the camera session ending and the cover closing (A2-24).
+        .sheet(isPresented: Bindable(model).isProblemReportPresented) { ProblemReportView().environment(model) }
         // Simulator review only: the add-route slot as the cameras page presents it.
         .sheet(item: $reviewAddSetup) { camera in
             AddSetupView(camera: camera) { _ in reviewAddSetup = nil }

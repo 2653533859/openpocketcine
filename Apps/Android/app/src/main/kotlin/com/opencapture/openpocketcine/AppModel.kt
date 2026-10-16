@@ -189,23 +189,16 @@ class AppModel(
     var pairing: Boolean
         get() = shellState.pairing
         set(value) { if (value) shell.beginPairing() else shell.endPairing() }
+    /**
+     * The problem report, owned by the app root (A2-24): the cameras page and Settings both open
+     * it here, so a draft outlives the camera session ending and the Settings cover closing.
+     */
+    var problemReportOpen by mutableStateOf(false)
     /** Long-press on the tap-focus box locks it: feed taps no longer move focus. */
     var focusBoxLocked by mutableStateOf(false)
     var coreVersion by mutableStateOf<String?>(null)
-    private var legalPanel by mutableStateOf<AppPanel?>(null)
-    val showsLegalPanel: Boolean get() = legalPanel != null
-    var homePanel: AppPanel?
-        get() = legalPanel ?: if (shellState.monitor == null) shellState.cover?.let {
-            if (it == ShellModel.Cover.SETTINGS) AppPanel.SETTINGS else AppPanel.MEDIA
-        } else null
-        set(value) {
-            when (value) {
-                AppPanel.SETTINGS -> { legalPanel = null; shell.open(ShellModel.Cover.SETTINGS) }
-                AppPanel.MEDIA -> { legalPanel = null; shell.open(ShellModel.Cover.MEDIA) }
-                null -> { legalPanel = null; shell.dismissCover() }
-                else -> legalPanel = value
-            }
-        }
+    /** The privacy page the reports offer opens over home; going live closes it. */
+    var privacyOpen by mutableStateOf(false)
     /**
      * The open Multiview stage. Owned here, not by its screen, so whatever the root composes (a late
      * connect going live, a recreated activity) its tiles live until [closeMultiview].
@@ -218,6 +211,9 @@ class AppModel(
     override var operatorSettingsTab: MonitorSettingsTab
         get() = operatorSession.settingsTab
         set(value) { operatorSession.settingsTab = value }
+    override val operatorSettingsScrollOffsets: Map<MonitorSettingsTab, Int> get() = operatorSession.settingsScrollOffsets
+    override fun noteOperatorSettingsScroll(tab: MonitorSettingsTab, offset: Int): Unit =
+        operatorSession.noteSettingsScroll(tab, offset)
     var chromeEditorMode: MonitorDisplayMode?
         get() = operatorSession.editingMode
         set(value) { operatorSession.editingMode = value }
@@ -310,7 +306,7 @@ class AppModel(
     fun setDisplayMode(clean: Boolean) { operatorSession.select(if (clean) MonitorDisplayMode.CLEAN else MonitorDisplayMode.LIVE) }
 
     fun noteBecameLive() {
-        legalPanel = null
+        privacyOpen = false
         operatorSession.synchronize(shell.state.value.monitor?.id)
     }
 
