@@ -16,6 +16,14 @@ internal val appLayoutBase =
 /** What the monitor lays out: the DJI integration's projection of the connected body (iOS `OsmoMonitorPresentation.capabilities`). */
 internal fun AppModel.monitorLayout(): MonitorLayoutCapabilities = session.control.layout(appLayoutBase)
 
+/**
+ * The DJI integration's one control model of the connected body (iOS
+ * `OsmoMonitorPresentation.controls`). Null before a body is known keeps the layout's app base
+ * (main offered the AUDIO tile before the body was known).
+ */
+internal fun AppModel.controlCapabilities(): com.opencapture.opencine.vocabulary.ControlCapabilities? =
+    session.connectedCamera?.let { session.control.controlCapabilities() }
+
 /** AUDIO tile, assist, live meter and drum: a body that reports audio levels, in a video mode. */
 internal fun AppModel.showsAudio(status: CameraStatus): Boolean =
     monitorLayout().audio && CaptureShutterPolicy.showsAudioControls(status.shootingMode)
