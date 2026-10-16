@@ -1,5 +1,6 @@
 import Foundation
 import OpenCineAppKit
+import OpenCineCameraControls
 import OpenCineSentryApple
 import OpenPocketViewCore
 import UIKit

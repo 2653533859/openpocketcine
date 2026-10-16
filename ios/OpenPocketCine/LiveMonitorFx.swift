@@ -2,6 +2,7 @@ import CoreImage
 import Metal
 import OpenCineAppKitApple
 import OpenCineApple
+import OpenCineCameraControls
 import OpenCineCameraVocabulary
 import OpenCineMedia
 import OpenPocketViewCore

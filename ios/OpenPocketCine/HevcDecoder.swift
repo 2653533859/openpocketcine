@@ -3,6 +3,7 @@ import CoreImage
 import CoreVideo
 import Foundation
 import OpenCineApple
+import OpenCineCameraControls
 import OpenCineMedia
 import OpenPocketViewCore
 import VideoToolbox
