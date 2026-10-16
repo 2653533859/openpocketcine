@@ -56,6 +56,8 @@ final class ControlCapabilityAdoptionTests: XCTestCase {
             XCTAssertFalse(model.captureCapabilities.faceMetering, name)
             XCTAssertFalse(model.captureCapabilities.nativeIsoHop, name)
             XCTAssertFalse(model.captureCapabilities.isoLimit, name)
+            // The shared pre-connection rule: no identified body, no AUDIO pin or tile.
+            if id == nil { XCTAssertFalse(OsmoMonitorPresentation.capabilities(model.session).audio) }
         }
     }
 }

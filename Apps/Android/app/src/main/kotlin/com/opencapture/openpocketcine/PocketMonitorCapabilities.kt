@@ -6,23 +6,23 @@ import com.opencapture.opencine.vocabulary.CaptureShutterPolicy
 
 /**
  * The app's part of the layout: clip delete, clip star and the internet hop, until media and
- * connection routes carry them (SHELL-02). Audio stays on before the body is known, as main
- * offered the AUDIO tile and Clean view pin on every body. Everything else is what the camera
- * declares.
+ * connection routes carry them (SHELL-02). Everything else is what the camera declares; before the
+ * body is known nothing camera-dependent (audio included) is laid out, the shared pre-connection rule.
  */
 internal val appLayoutBase =
-    MonitorLayoutCapabilities(audio = true, clipDelete = true, clipStar = true, requiresInternetHop = true)
+    MonitorLayoutCapabilities(clipDelete = true, clipStar = true, requiresInternetHop = true)
 
 /** What the monitor lays out: the DJI integration's projection of the connected body (iOS `OsmoMonitorPresentation.capabilities`). */
 internal fun AppModel.monitorLayout(): MonitorLayoutCapabilities = session.control.layout(appLayoutBase)
 
 /**
  * The DJI integration's one control model of the connected body (iOS
- * `OsmoMonitorPresentation.controls`). Null before a body is known keeps the layout's app base
- * (main offered the AUDIO tile before the body was known).
+ * `OsmoMonitorPresentation.controls`); before a body is identified, the shared pre-connection rule
+ * offers no camera-dependent control.
  */
-internal fun AppModel.controlCapabilities(): com.opencapture.opencine.vocabulary.ControlCapabilities? =
+internal fun AppModel.controlCapabilities(): com.opencapture.opencine.vocabulary.ControlCapabilities =
     session.connectedCamera?.let { session.control.controlCapabilities() }
+        ?: com.opencapture.opencine.vocabulary.ControlCapabilities.beforeConnection(null)
 
 /** AUDIO tile, assist, live meter and drum: a body that reports audio levels, in a video mode. */
 internal fun AppModel.showsAudio(status: CameraStatus): Boolean =

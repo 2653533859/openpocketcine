@@ -99,7 +99,9 @@ class CaptureSheetHostTest {
         var known: com.opencapture.opencine.vocabulary.ControlCapabilities? = null
         val state = pocketCaptureSessionState({ null }, { null }, { false }, { false },
             { MonitorLayoutCapabilities(audio = true) }, controls = { known })
-        assertTrue(state.controls(MonitorLayoutCapabilities(audio = true)).audio.isOffered, "no body: the app base")
+        assertTrue(state.controls(MonitorLayoutCapabilities(audio = true)).audio.isOffered, "a legacy host: its layout")
+        known = com.opencapture.opencine.vocabulary.ControlCapabilities.beforeConnection(null)
+        assertFalse(state.controls(MonitorLayoutCapabilities(audio = true)).audio.isOffered, "no body: nothing camera-dependent")
         val pocket = com.opencapture.opencine.vocabulary.CameraCaptureProfile(
             supportsFocusMode = true, supportsTapFocus = true, supportsAperture = false, hasGimbal = true, supportsZoom = true)
         known = com.opencapture.opencine.vocabulary.ControlCapabilities.derive(

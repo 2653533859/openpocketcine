@@ -27,20 +27,21 @@ enum OsmoMonitorPresentation {
     static func controls(_ session: CameraSession, codecColor: CaptureCodecColorChoices? = nil)
         -> ControlCapabilities
     {
-        session.control.controlCapabilities(codecColor: codecColor)
+        // The shared pre-connection rule: no DJI body identified yet, no camera-dependent control.
+        guard session.connectedCamera != nil else { return ControlCapabilities(beforeConnection: nil) }
+        return session.control.controlCapabilities(codecColor: codecColor)
     }
 
     /// What the monitor lays out: a view of the control model over the app's base. Only clip
     /// delete, clip star and the internet hop are the app's, until media and connection routes
-    /// carry them (SHELL-02). Audio stays on before the body is known, as main offered the AUDIO
-    /// tile and Clean view pin on every body (unknown keeps the base).
+    /// carry them (SHELL-02). Before the body is known nothing camera-dependent (audio included)
+    /// is laid out: the shared pre-connection rule.
     static func capabilities(_ session: CameraSession) -> MonitorLayoutCapabilities {
         MonitorLayoutCapabilities(controls: controls(session), base: appBase)
     }
 
     private static let appBase: MonitorLayoutCapabilities = {
         var base = MonitorLayoutCapabilities()
-        base.audio = true
         base.clipDelete = true
         base.clipStar = true
         base.requiresInternetHop = true

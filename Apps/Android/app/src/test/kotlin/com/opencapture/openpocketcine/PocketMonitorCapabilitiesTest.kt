@@ -8,7 +8,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Pocket main laid out the timecode and audio on every body (`PocketMonitorCapabilities` `timecode = true`, `audio = true`). */
+/** Pocket lays out timecode and audio from the body's declaration; nothing camera-dependent before the body is known. */
 class PocketMonitorCapabilitiesTest {
     private fun declared(model: CameraModel?) = MonitorLayoutCapabilities(
         CapabilitySnapshot(
@@ -26,7 +26,10 @@ class PocketMonitorCapabilitiesTest {
         assertTrue(declared(CameraModel(name = "Osmo Pocket 3", verified = true)).timecode)
     }
 
-    @Test fun audioPinAndTileStayOfferedBeforeTheBodyIsKnown() {
-        assertTrue(declared(null).audio)
+    /** The shared pre-connection rule (deliberate alignment with iOS): no body, no AUDIO. */
+    @Test fun noAudioPinOrTileBeforeTheBodyIsKnown() {
+        assertFalse(declared(null).audio)
+        assertFalse(com.opencapture.opencine.vocabulary.MonitorLayoutCapabilities(
+            com.opencapture.opencine.vocabulary.ControlCapabilities.beforeConnection(null), appLayoutBase).audio)
     }
 }
