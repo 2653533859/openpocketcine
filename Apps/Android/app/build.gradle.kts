@@ -330,6 +330,7 @@ dependencies {
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.json)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(testFixtures("com.opencapture.opencine:core:0.1.0-SNAPSHOT"))
 }
 
 // Legal tests compare the staged pages with the repository files themselves.

@@ -25,6 +25,12 @@ import com.opencapture.opencine.vocabulary.CaptureSetting
 import com.opencapture.opencine.vocabulary.FocusTrackMode
 
 /**
+ * Pocket's capture strip reads the camera's report until it confirms an edit, never the pending
+ * selection (iOS `AppModel.captureStripShowsPendingEdits` is `false`).
+ */
+internal val pocketCaptureReadoutSelection = com.opencapture.opencine.appkit.MonitorCaptureSelection.REPORTED
+
+/**
  * Pocket's capture session state: the DJI session's AE/AWB locks and format pin, and the DJI
  * integration's layout for focus and iris. Native ISO support stays unknown without a source declaration.
  * Values are read when the sheet reads them (the format pin expires on time).

@@ -2,6 +2,7 @@ import MonitorPresentation
 import MonitorUI
 import OpenCineAppKit
 import Observation
+import OpenCineCore
 import OpenPocketViewCore
 import SwiftUI
 import XCTest
@@ -11,7 +12,7 @@ import OpenCineDJIApple
 
 @MainActor final class MultiviewPresentationTests: XCTestCase {
     func testUnknownTelemetryDoesNotInventReadings() {
-        let values = MultiviewTelemetryPresentation(settings: CameraStatus())
+        let values = MultiviewTelemetryPresentation(settings: CameraStatus(), power: .unknown)
         XCTAssertEqual(values.iso, "—")
         XCTAssertEqual(values.shutter, "—")
         XCTAssertEqual(values.whiteBalance, "—")
@@ -23,10 +24,10 @@ import OpenCineDJIApple
 
     func testFullStorageAndZeroBatteryRemainRealReadings() {
         var status = CameraStatus()
-        status.batteryPercent = 0
         status.storageTotalMb = 128 * 1024
         status.storageFreeMb = 0
-        let values = MultiviewTelemetryPresentation(settings: status)
+        let values = MultiviewTelemetryPresentation(
+            settings: status, power: PowerStatus(battery: .init(0, origin: .cameraReported, at: nil)))
         XCTAssertEqual(values.battery, "0%")
         XCTAssertEqual(values.storage, "0 B")
     }
@@ -36,7 +37,17 @@ import OpenCineDJIApple
         var status = CameraStatus()
         status.storageFreeMb = 57_220
         status.storageTotalMb = 122_070
-        XCTAssertEqual(MultiviewTelemetryPresentation(settings: status).storage, "60 GB")
+        XCTAssertEqual(MultiviewTelemetryPresentation(settings: status, power: .unknown).storage, "60 GB")
+    }
+
+    func testCommonPowerOverridesRetainedLegacyBatteryWithoutInventingUnknown() {
+        var status = CameraStatus()
+        status.batteryPercent = 99
+        let gauge = PowerStatus(battery: .init(0.25, origin: .cameraReported, at: nil, precision: .quantized(step: 0.25)))
+        XCTAssertEqual(MultiviewTelemetryPresentation(settings: status, power: gauge).battery, "1/4")
+        XCTAssertEqual(MultiviewTelemetryPresentation(settings: status, power: .unknown).battery, "\u{2014}")
+        let zero = PowerStatus(battery: .init(0, origin: .cameraReported, at: nil))
+        XCTAssertEqual(MultiviewTelemetryPresentation(settings: status, power: zero).battery, "0%")
     }
 
     func testGroupResultAndRecoveryAreVisibleWithoutInventingConnectedCameras() {

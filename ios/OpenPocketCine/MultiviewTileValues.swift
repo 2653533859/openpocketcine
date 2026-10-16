@@ -1,6 +1,7 @@
 import MonitorUI
 import OpenCineAppKit
 import OpenCineCore
+import OpenCineCameraControls
 import OpenCineMedia
 import OpenCineMulticam
 import OpenPocketViewCore
@@ -10,7 +11,12 @@ import SwiftUI
 /// timecode; the session's existing status publication remains its cadence owner.
 struct MultiviewTelemetryPresentation {
     let settings: CameraStatus
-    var storageObservation: StorageStatus? = nil
+    private let power: PowerStatus
+    let storageObservation: StorageStatus?
+
+    init(settings: CameraStatus, power: PowerStatus, storageObservation: StorageStatus? = nil) {
+        self.settings = settings; self.power = power; self.storageObservation = storageObservation
+    }
 
     var iso: String { settings.iso > 0 ? "\(settings.iso)" : "—" }
     var shutter: String { settings.shutterDenom > 0 ? "1/\(settings.shutterDenom)" : "—" }
@@ -25,7 +31,7 @@ struct MultiviewTelemetryPresentation {
         }
     }
     var battery: String {
-        (0...100).contains(settings.batteryPercent) ? "\(settings.batteryPercent)%" : "—"
+        MonitorOperatorPowerReading.readoutLabel(power.batteryReading) ?? "\u{2014}"
     }
     var storage: String {
         let readout = storageObservation.map { $0.storageReadout } ?? settings.storageReadout
@@ -76,8 +82,9 @@ extension MultiviewSession {
     func stageTile(_ index: Int) -> MultiviewTile? {
         let tile = tiles[index]
         guard let camera = tile.camera else { return nil }
+        let power = tile.control.current.power
         let values = MultiviewTelemetryPresentation(
-            settings: tile.settings, storageObservation: tile.control.current.storage)
+            settings: tile.settings, power: power, storageObservation: tile.control.current.storage)
         let preview = camera.hasMultiviewPreview
         let settled = !busy && !tile.connecting && !tile.recovering
         var actions = [
@@ -113,9 +120,7 @@ extension MultiviewSession {
         let showsStatus = !tile.hasPicture || tile.failureMessage != nil || tile.recovering
         return MultiviewTile(
             name: camera.name, model: camera.model.name, format: values.format,
-            battery: (0...100).contains(tile.settings.batteryPercent)
-                ? tile.settings.batteryPercent : nil,
-            charging: tile.settings.charging, storage: values.storage,
+            storage: values.storage,
             timecode: tile.timecodeReadout,
             tally: MultiviewTelemetryPresentation.recordingStatus(tile),
             recording: tile.recordingActive == true, lut: tile.lutEnabled, note: note,
@@ -133,7 +138,8 @@ extension MultiviewSession {
             detail: tile.status, failure: tile.failureMessage,
             footnote: tile.networkVerified && !preview
                 ? "Remove this camera to enable group recording for your other cameras." : nil,
-            actions: actions, accessibilityValue: tile.previewAccessibilityValue)
+            actions: actions, accessibilityValue: tile.previewAccessibilityValue
+        ).withPower(power)
     }
 
     /// The record plan for every camera (`nil`) or one slot, with what blocks it now.

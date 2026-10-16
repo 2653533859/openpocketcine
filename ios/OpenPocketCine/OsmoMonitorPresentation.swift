@@ -26,11 +26,7 @@ enum OsmoMonitorPresentation {
     /// the app's, until media and connection routes carry them (SHELL-02). Audio stays on before
     /// the body is known, as main offered the AUDIO tile and Clean view pin on every body.
     static func capabilities(_ session: CameraSession) -> MonitorLayoutCapabilities {
-        var layout = session.control.layout(base: appBase)
-        // Single view shows the timecode on every body, Nano included, as main did; Multi View
-        // reads the body's declaration.
-        layout.timecode = true
-        return layout
+        session.control.layout(base: appBase)
     }
 
     private static let appBase: MonitorLayoutCapabilities = {

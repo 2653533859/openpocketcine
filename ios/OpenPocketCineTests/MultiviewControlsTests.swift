@@ -3,6 +3,7 @@ import CoreVideo
 import OpenCineApple
 import OpenPocketViewCore
 import XCTest
+import struct OpenCineCore.CameraTimecode
 import OpenCineDJIApple
 
 @testable import OpenPocketCine
