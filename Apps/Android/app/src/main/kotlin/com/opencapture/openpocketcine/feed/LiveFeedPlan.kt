@@ -1,6 +1,9 @@
 package com.opencapture.openpocketcine.feed
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
 import com.opencapture.monitorui.MonitorAssistTool
 import com.opencapture.opencine.appkit.MonitorAssistState
 import com.opencapture.opencine.cameracontrols.rememberMonitorFeedEffectsPlans
@@ -13,6 +16,7 @@ import com.opencapture.opencine.media.FeedEffectsRenderPlan
 import com.opencapture.opencine.runtime.GlesPresentationOptions
 import com.opencapture.opencine.vocabulary.CameraStatus
 import com.opencapture.openpocketcine.OperatorPrefs
+import com.opencapture.openpocketcine.lut.appLutLibrary
 import com.opencapture.openpocketcine.bridge.SwiftCore
 import com.opencapture.openpocketcine.diagnostics.DiagnosticCenter
 
@@ -33,6 +37,8 @@ internal fun rememberLiveFeedEffectsPlan(
     previewTool: MonitorAssistTool? = null,
 ): FeedEffectsRenderPlan {
     val plans = rememberMonitorFeedEffectsPlans(SwiftCore)
+    val customLutGeneration by appLutLibrary(LocalContext.current).renderGeneration.collectAsState()
     return rememberMonitorFeedEffectsPlan(plans, OperatorPrefs, assist, lutSelection, status,
-        DjiCameraLUTProfile.make(family, cameraName), playback, clipColorMode, previewTool)
+        DjiCameraLUTProfile.make(family, cameraName), playback, clipColorMode, previewTool,
+        customLutGeneration = customLutGeneration)
 }
