@@ -2,6 +2,7 @@ import Foundation
 import Network
 import OpenCineCore
 import OpenPocketViewCore
+import OpenCineHostedTestSupport
 import XCTest
 import OpenCineDJIApple
 
@@ -90,7 +91,7 @@ final class DJICameraSessionAdapterTests: XCTestCase {
         let unknown = OpenPocketCine.CameraSession(borrowing: HevcDecoder())
         XCTAssertFalse(OsmoMonitorPresentation.capabilities(unknown).focus, "no body, no claim")
         XCTAssertFalse(OsmoMonitorPresentation.capabilities(unknown).timecode, "no body, no counter claim")
-        XCTAssertTrue(OsmoMonitorPresentation.capabilities(unknown).audio)
+        XCTAssertFalse(OsmoMonitorPresentation.capabilities(unknown).audio, "no body, no camera-dependent control")
     }
 
     func testUndeclaredSettingStaysUnknownInsteadOfPretending() {
@@ -302,11 +303,9 @@ final class DJICameraSessionAdapterTests: XCTestCase {
         of operation: OperationID, in session: OpenPocketCine.CameraSession,
         until done: (CommandStage) -> Bool
     ) async throws -> CommandStage? {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
-        while let stage = session.control.receipt(of: operation)?.stage, !done(stage),
-            ContinuousClock.now < deadline
-        {
-            try await Task.sleep(for: .milliseconds(10))
+        _ = await HostedCondition.wait {
+            guard let stage = session.control.receipt(of: operation)?.stage else { return true }
+            return done(stage)
         }
         return session.control.receipt(of: operation)?.stage
     }

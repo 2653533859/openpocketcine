@@ -3,6 +3,7 @@ import MonitorUI
 import OpenCineAppKit
 import Observation
 import OpenCineCore
+import OpenCineHostedTestSupport
 import OpenPocketViewCore
 import SwiftUI
 import XCTest
@@ -131,8 +132,10 @@ import OpenCineDJIApple
             window.isHidden = true
             window.rootViewController = nil
         }
-        controller.view.layoutIfNeeded()
-        try await Task.sleep(for: .milliseconds(300))
+        _ = await HostedCondition.wait {
+            controller.view.layoutIfNeeded()
+            return displayHosts(in: controller.view).count == 4
+        }
         let originalHosts = displayHosts(in: controller.view)
         XCTAssertEqual(originalHosts.count, 4)
         let identities = Set(originalHosts.map(ObjectIdentifier.init))
@@ -141,6 +144,7 @@ import OpenCineDJIApple
             session.focusedIndex = selected
             controller.view.setNeedsLayout()
             controller.view.layoutIfNeeded()
+            // Negative window: no display host may be replaced within it.
             try await Task.sleep(for: .milliseconds(150))
             XCTAssertEqual(
                 Set(displayHosts(in: controller.view).map(ObjectIdentifier.init)), identities)
@@ -176,8 +180,12 @@ import OpenCineDJIApple
             safeArea: .init(leading: 59, bottom: 21),
             arrangement: .centerStage, selected: 0)
         controller.update(layout: first, roots: roots)
-        controller.view.layoutIfNeeded()
-        try await Task.sleep(for: .milliseconds(150))
+        _ = await HostedCondition.wait {
+            controller.view.layoutIfNeeded()
+            return controller.view.subviews.compactMap { $0 as? UIScrollView }.first.map {
+                $0.contentSize.height > $0.bounds.height
+            } == true
+        }
         let original = try owners()
         let strip = try XCTUnwrap(controller.view.subviews.compactMap { $0 as? UIScrollView }.first)
         XCTAssertGreaterThan(strip.contentSize.height, strip.bounds.height)
@@ -199,6 +207,7 @@ import OpenCineDJIApple
                 arrangement: arrangement, selected: selected)
             controller.update(layout: layout, roots: roots)
             controller.view.layoutIfNeeded()
+            // Negative window: no camera host may change owner within it.
             try await Task.sleep(for: .milliseconds(100))
             XCTAssertEqual(try owners(), original)
             XCTAssertEqual(displayHosts(in: controller.view).count, 4)

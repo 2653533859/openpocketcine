@@ -1,5 +1,6 @@
 import OpenPocketViewCore
 import OpenCineCore
+import OpenCineHostedTestSupport
 import XCTest
 
 @testable import OpenPocketCine
@@ -18,7 +19,7 @@ final class SessionRecoveryChromeTests: XCTestCase {
         model.session.sessionRecovery = .waitingForOperator(attemptsMade: 8)
         XCTAssertEqual(model.shell.monitor?.id, monitor)
         model.exitMonitorToOperatorMenu()
-        for _ in 0..<200 where model.session.holdsMonitor { await Task.yield() }
+        _ = await HostedCondition.wait { !model.session.holdsMonitor }
         XCTAssertNil(model.shell.monitor)
         XCTAssertFalse(model.session.holdsMonitor)
         XCTAssertEqual(model.session.sessionRecovery, .idle)

@@ -248,7 +248,9 @@ final class PlaybackOutputFixture {
                 readiness.fulfill()
             }
         }
-        await test.fulfillment(of: [ready], timeout: 3)
+        // Fulfilled by the item's own status change. AVFoundation loads the encoded clip off
+        // the main thread, so under parallel load the window is a hang guard, not a budget.
+        await test.fulfillment(of: [ready], timeout: 30)
         readinessObservation?.invalidate()
         readinessObservation = nil
         readiness = nil
@@ -262,8 +264,9 @@ final class PlaybackOutputFixture {
         waiter.arm()
         session.noteItemReady()
         player.play()
-        // Same publication timeout as the former direct-buffer fixtures.
-        await test.fulfillment(of: [delivered], timeout: 2)
+        // Fulfilled by the observed publication itself; playback output under parallel load
+        // decides when it arrives, so the window is a hang guard and asserts no frame budget.
+        await test.fulfillment(of: [delivered], timeout: 30)
         waiter.stop()
         player.pause()
     }
@@ -360,7 +363,9 @@ private final class PlaybackClipWriter {
             // This callback was explicitly scheduled on the main queue.
             MainActor.assumeIsolated { self?.appendAvailableFrames() }
         }
-        await test.fulfillment(of: [completion], timeout: 3)
+        // Fulfilled by finishWriting's own completion. The H.264 encode of this setup fixture
+        // took over three seconds under parallel load, so the window is a hang guard only.
+        await test.fulfillment(of: [completion], timeout: 30)
         guard writer.status == .completed else {
             cancelled = true
             completed = nil

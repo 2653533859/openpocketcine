@@ -10,6 +10,9 @@ import XCTest
 
 @testable import OpenPocketCine
 
+// Expectations in this file are fulfilled by the owners' own events (decode, delivery, HTTP,
+// render); every 30 s timeout is a hang guard, not a budget.
+
 private final class PlaybackOwnerFileManager: FileManager, @unchecked Sendable {
   let support = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
   override func urls(
@@ -173,7 +176,7 @@ private final class PlaybackOwnerFileManager: FileManager, @unchecked Sendable {
     native.onItemChanged = { item in if item != nil { installed.fulfill() } }
     let record = try XCTUnwrap(session.mediaPlaybackRecord(for: file))
     owner.load(record, playlist: [record])
-    await fulfillment(of: [installed], timeout: 3)
+    await fulfillment(of: [installed], timeout: 30)
     let old = owner.token
     let oldCallback = native.onEvent
     try await directory.clear(preserving: ["index.json"])
@@ -236,7 +239,7 @@ private final class PlaybackOwnerFileManager: FileManager, @unchecked Sendable {
       return reentry.admitted
     }
     try await NativePlaybackBoundaryStart(fixture: outgoing).start(using: feed, in: self)
-    await fulfillment(of: [replaced], timeout: 2)
+    await fulfillment(of: [replaced], timeout: 30)
     outgoing.player.pause()
     XCTAssertTrue(reentry.observedFirstPicture)
     XCTAssertTrue(reentry.rejectedAfterPublication)
@@ -283,7 +286,7 @@ private final class PlaybackOwnerFileManager: FileManager, @unchecked Sendable {
       return reentry.admitted
     }
     try await NativePlaybackBoundaryStart(fixture: fixture).start(using: feed, in: self)
-    await fulfillment(of: [revoked], timeout: 2)
+    await fulfillment(of: [revoked], timeout: 30)
     fixture.player.pause()
     XCTAssertTrue(reentry.observedFirstPicture)
     XCTAssertNotNil(samples.playbackSourcePixelBuffer)
@@ -327,7 +330,7 @@ private final class PlaybackOwnerFileManager: FileManager, @unchecked Sendable {
       observation = nil
       readiness = nil
     }
-    await test.fulfillment(of: [ready], timeout: 3)
+    await test.fulfillment(of: [ready], timeout: 30)
     guard fixture.item.status == .readyToPlay else {
       throw fixture.item.error ?? NativePlaybackBoundaryError.itemNotReady
     }
@@ -365,7 +368,7 @@ private enum NativePlaybackBoundaryError: Error { case itemNotReady }
         readiness.fulfill()
       }
     }
-    await test.fulfillment(of: [ready], timeout: 3)
+    await test.fulfillment(of: [ready], timeout: 30)
     readinessObservation?.invalidate()
     readinessObservation = nil
     readiness = nil
@@ -379,7 +382,7 @@ private enum NativePlaybackBoundaryError: Error { case itemNotReady }
     waiter.arm()
     session.noteItemReady()
     player.play()
-    await test.fulfillment(of: [delivered], timeout: 2)
+    await test.fulfillment(of: [delivered], timeout: 30)
     waiter.stop()
     player.pause()
   }

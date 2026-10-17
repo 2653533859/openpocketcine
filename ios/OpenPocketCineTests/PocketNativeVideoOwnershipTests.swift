@@ -11,6 +11,9 @@ import OpenCineDJIApple
 
 @testable import OpenPocketCine
 
+// Expectations in this file are fulfilled by the owners' own events (decode, delivery, HTTP,
+// render); every 30 s timeout is a hang guard, not a budget.
+
 /// SIMULATED source input exercises the actual app adapter and native publication owner.
 @MainActor
 final class PocketNativeVideoOwnershipTests: XCTestCase {
@@ -24,7 +27,7 @@ final class PocketNativeVideoOwnershipTests: XCTestCase {
         let delivered = expectation(description: "successor native source delivered")
         successor.onSourceFrame = { _ in delivered.fulfill() }
         successor.handleDecodedFrame(source)
-        await fulfillment(of: [delivered], timeout: 2)
+        await fulfillment(of: [delivered], timeout: 30)
         XCTAssertTrue(samples.sourcePixelBuffer === source)
 
         old.reset()
@@ -101,7 +104,7 @@ final class PocketNativeVideoOwnershipTests: XCTestCase {
         let delivered = expectation(description: "owned tile source delivered")
         decoder.onSourceFrame = { _ in delivered.fulfill() }
         decoder.handleDecodedFrame(source)
-        await fulfillment(of: [delivered], timeout: 2)
+        await fulfillment(of: [delivered], timeout: 30)
         let token = decoder.sourceToken
         let borrowed = OpenPocketCine.CameraSession(borrowing: decoder, controlsOnly: true)
         let model = AppModel(session: borrowed)

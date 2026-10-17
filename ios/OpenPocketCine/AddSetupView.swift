@@ -53,8 +53,10 @@ private struct PocketSetupDestination: View {
         StationNetworkSetupView(
             context: .camera(camera), brand: PocketStationNetwork.brand,
             services: PocketStationNetwork.services, scan: model.networkScan(camera),
-            save: { kind, ssid, password in
-                done(RouteDraft(kind: kind, network: ssid, secret: password))
+            save: { network in
+                done(RouteDraft(
+                    kind: network.hotspot ? .phoneHotspot : .infrastructureNetwork,
+                    network: network.ssid, secret: network.password))
                 return true
             }, close: { done(nil) }, path: path
         )

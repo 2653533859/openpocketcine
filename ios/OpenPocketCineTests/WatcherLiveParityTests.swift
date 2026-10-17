@@ -15,12 +15,15 @@ import XCTest
 @MainActor
 final class WatcherLiveParityTests: XCTestCase {
     func testLookProfileMatchesTheAppForEveryRelayedBody() {
+        let model = AppModel()
         for nano in [nil, false, true] as [Bool?] {
             for name in [nil, "", "Osmo Pocket 3", "Osmo Nano", "Osmo Pocket 4P"] as [String?] {
                 let state = WatcherRelayState(cameraModel: name, isNano: nano)
                 let frozen = DJICameraLUTProfile.make(
                     family: state.isNano == true ? .nano : .pocket, cameraName: state.cameraModel)
-                XCTAssertEqual(AppModel.watcherBrand.lookProfile(state), frozen, "\(String(describing: nano)) \(String(describing: name))")
+                model.relayClient.state = state
+                XCTAssertEqual(model.watcherCameraFamily, state.isNano == true ? .nano : .pocket)
+                XCTAssertEqual(model.watcherLookProfile, frozen, "\(String(describing: nano)) \(String(describing: name))")
             }
         }
     }

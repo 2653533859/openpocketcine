@@ -8,6 +8,9 @@ import os
 
 @testable import OpenPocketCine
 
+// Expectations in this file are fulfilled by the owners' own events (decode, delivery, HTTP,
+// render); every 30 s timeout is a hang guard, not a budget.
+
 /// SIMULATED native original-image IO through the actual app source facade and Library task.
 @MainActor final class PocketMediaOriginalImageOwnerTests: XCTestCase {
     func testActualOriginalKeepsStampedPathBytesCacheAndShotColor() async throws {
@@ -69,9 +72,9 @@ import os
             let bytes = await fixture.session.originalImageBytes(for: file, ifCurrent: { true })
             completed.fulfill(); return bytes
         }
-        await fulfillment(of: [ready], timeout: 5)
+        await fulfillment(of: [ready], timeout: 30)
         fixture.session.mediaLibrary.close()
-        await fulfillment(of: [stopped, completed], timeout: 5)
+        await fulfillment(of: [stopped, completed], timeout: 30)
         let cancelled = OriginalImageOwnerURLProtocol.state.withLock { $0.didStop }
         if !cancelled { OriginalImageOwnerURLProtocol.state.withLock { $0.pending }?.finishBody() }
         let bytes = await request.value
@@ -95,9 +98,9 @@ import os
             let bytes = await fixture.session.originalImageBytes(for: file, ifCurrent: { true })
             completed.fulfill(); return bytes
         }
-        await fulfillment(of: [ready], timeout: 5)
+        await fulfillment(of: [ready], timeout: 30)
         request.cancel()
-        await fulfillment(of: [stopped, completed], timeout: 5)
+        await fulfillment(of: [stopped, completed], timeout: 30)
         let cancelled = OriginalImageOwnerURLProtocol.state.withLock { $0.didStop }
         if !cancelled { OriginalImageOwnerURLProtocol.state.withLock { $0.pending }?.finishBody() }
         let bytes = await request.value
@@ -114,7 +117,7 @@ import os
         OriginalImageOwnerURLProtocol.state.withLock { $0 = .init(hold: true, ready: ready) }
         defer { OriginalImageOwnerURLProtocol.state.withLock { $0 = .init() } }
         let request = Task { await fixture.session.originalImageBytes(for: file, ifCurrent: { true }) }
-        await fulfillment(of: [ready], timeout: 5)
+        await fulfillment(of: [ready], timeout: 30)
         let oldDriver = fixture.session.datalink
         fixture.session.datalink = DjiAppleDatalink(port: 9005, tcpPoke: false, pairingToken: "")
         let pending = try XCTUnwrap(OriginalImageOwnerURLProtocol.state.withLock { $0.pending })
@@ -138,7 +141,7 @@ import os
         OriginalImageOwnerURLProtocol.state.withLock { $0 = .init(hold: true, ready: ready) }
         defer { OriginalImageOwnerURLProtocol.state.withLock { $0 = .init() } }
         let request = Task { await fixture.session.originalImageBytes(for: file, ifCurrent: { true }) }
-        await fulfillment(of: [ready], timeout: 5)
+        await fulfillment(of: [ready], timeout: 30)
         try fixture.seed(next)
         let pending = try XCTUnwrap(OriginalImageOwnerURLProtocol.state.withLock { $0.pending })
         pending.finishBody(); let bytes = await request.value
@@ -157,7 +160,7 @@ import os
         defer { OriginalImageOwnerURLProtocol.state.withLock { $0 = .init() } }
         var current = true
         let request = Task { await fixture.session.originalImageBytes(for: file, ifCurrent: { current }) }
-        await fulfillment(of: [ready], timeout: 5)
+        await fulfillment(of: [ready], timeout: 30)
         current = false
         let pending = try XCTUnwrap(OriginalImageOwnerURLProtocol.state.withLock { $0.pending })
         pending.finishBody(); let bytes = await request.value

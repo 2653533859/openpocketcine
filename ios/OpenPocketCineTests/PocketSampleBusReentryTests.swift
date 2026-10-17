@@ -240,7 +240,8 @@ final class PocketSampleBusReentryTests: XCTestCase {
         XCTAssertTrue(bus.isCurrent(source))
         XCTAssertEqual(bus.playbackBundle?.revision, 2)
         XCTAssertTrue(bus.playbackSourcePixelBuffer === probe.successorBuffer)
-        await fulfillment(of: [notified], timeout: 2)
+        // Fulfilled by the successor's own notification; the bound is a hang guard.
+        await fulfillment(of: [notified], timeout: 30)
         bus.closeSource(source)
     }
 }

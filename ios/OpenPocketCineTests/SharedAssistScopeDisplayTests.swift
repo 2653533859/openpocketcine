@@ -78,7 +78,8 @@ final class SharedAssistScopeDisplayTests: XCTestCase {
             host.view.setNeedsLayout()
             host.view.layoutIfNeeded()
             window.layoutIfNeeded()
-            wait(for: [configured], timeout: 2)
+            // Fulfilled by the scope display's own configuration during layout; hang guard only.
+            wait(for: [configured], timeout: 30)
             let view = try XCTUnwrap(observedView)
             let selected = try XCTUnwrap(options)
             if let originalView {

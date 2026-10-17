@@ -48,7 +48,8 @@ internal fun AppModel.operatorSetupState(): OperatorSetupState {
     val camera = session.connectedCamera
     return OperatorSetupState(phase, failure, status.monitorColorMode, session.joinedSSID, camera?.name,
         camera?.model?.family, remember(status) { monitorLayout() },
-        lookProfile = camera?.model?.captureProfile?.looks ?: com.opencapture.opencine.dji.DjiCameraLUTProfile.make("pocket", null))
+        lookProfile = camera?.model?.captureProfile?.looks ?: com.opencapture.opencine.dji.DjiCameraLUTProfile.make("pocket", null),
+        monitorPresented = isLive)
 }
 
 /** Pocket's copy, links, stores and pages, as on main. */
