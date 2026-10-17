@@ -2013,3 +2013,20 @@ Android keeps the ML Kit component registrar constructors that its release
 shrinker otherwise removes. Every release bundle runs the shared OpenCine dex
 check, and pull requests build that bundle. This is Android SDK packaging; iOS
 uses Vision and needs no corresponding runtime change.
+
+## Validated custom LUT replacement on Android
+
+The Android shared picker uses the supplied custom library for bounded document
+imports and deletion. A rejected, oversized or truncated replacement keeps the
+valid original, selected identity and prepared look. An accepted same-name
+replacement refreshes the existing live, playback and inspector plan. Custom
+filenames, list order, categories and displayed copy keep their current policy.
+Explicit imports select and arm the stored look; Auto and official Auto retain
+their current selection and arm. Deleting the selected custom look returns to
+Auto and arms, as before.
+
+The Swift picker already uses its validated, locked atomic store and refreshes
+prepared and inspector payloads after import. Its source is unchanged for this
+Android adoption repair. Automated source qualification and integration are
+tracked in the existing LOOK-7 task handoff. Physical Android verification
+remains untested; this is the recorded qualification exception for this change.
