@@ -7,10 +7,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import com.opencapture.monitorui.ReviewLaunch
+import com.opencapture.monitorui.ReviewLiveValues
+import com.opencapture.opencine.core.CameraTimecode
 import com.opencapture.opencine.core.ConnectedCamera
 import com.opencapture.opencine.core.SavedCamera
 import com.opencapture.opencine.dji.DjiCameraSessionAdapter
 import com.opencapture.opencine.platform.ReviewMediaSeed
+import com.opencapture.opencine.vocabulary.CameraCommands
+import com.opencapture.opencine.vocabulary.CameraModel
+import com.opencapture.opencine.vocabulary.CameraStatus
+import com.opencapture.opencine.vocabulary.FoundCamera
 import com.opencapture.opencine.vocabulary.MediaFile
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -41,16 +47,34 @@ internal object MonitorReview {
         ReviewCameras.seed("", context.getSharedPreferences(AppModel.LEGACY_CAMERAS, Context.MODE_PRIVATE))
     }
 
+    /** The review body, a Pocket 4 Pro as the iOS live review stages it. */
+    val liveCamera = FoundCamera("simulated-dji", "SIMULATED", "SIMULATED Pocket 4 Pro",
+        CameraModel(name = "Osmo Pocket 4 Pro", family = "pocket", verified = true), null)
+
+    /** The shared LIVE review values as this camera reports them, in its own colour (D-Log2). */
+    fun liveStatus(values: ReviewLiveValues = ReviewLiveValues.SIMULATED): CameraStatus =
+        CameraStatus(batteryPercent = values.batteryPercent, storageTotalMb = values.storageTotalMebibytes.toInt(),
+            storageFreeMb = values.storageFreeMebibytes.toInt(), shootingMode = 1, iso = values.iso,
+            isoIndex = 7, shutterDenom = values.shutterDenominator, expoMode = CameraCommands.EXPO_MANUAL,
+            colorMode = CameraCommands.COLOR_DLOG2, resolutionCode = CameraCommands.RES_4K, fps = values.framesPerSecond,
+            fpsIndex = 2, wbMode = 6, wbKelvin = values.whiteBalanceKelvin, focusMode = 2, focusTrack = 0, audioChannel = 2)
+            .withTimecodeValue(CameraTimecode(values.timecodeHours, values.timecodeMinutes, values.timecodeSeconds, frames = 0))
+
     suspend fun start(context: Context, model: AppModel, review: ReviewLaunch) {
         when (review.screen) {
             ReviewLaunch.Screen.PAIR -> model.pairing = true
-            // The staged monitor is the real session's control seam, idle: the live chrome renders
-            // over it, and no radio, connection or command ever reaches a camera.
+            // The live review stages values through the real session projection. The editor keeps
+            // its idle control seam; neither starts a radio, connection or command to a camera.
             ReviewLaunch.Screen.LIVE, ReviewLaunch.Screen.CHROME_EDIT -> {
-                model.shell.present(ConnectedCamera(
+                val camera = if (review.screen == ReviewLaunch.Screen.LIVE) {
+                    model.session.stageSimulatedLive(liveCamera, liveStatus())
+                    SavedCamera(liveCamera.id, DjiCameraSessionAdapter.INTEGRATION,
+                        advertisedName = liveCamera.name, model = liveCamera.model.name)
+                } else {
                     SavedCamera(STAGED_CAMERA, DjiCameraSessionAdapter.INTEGRATION,
-                        advertisedName = "SIMULATED common input", model = "SIMULATED"),
-                    model.session.control))
+                        advertisedName = "SIMULATED common input", model = "SIMULATED")
+                }
+                model.shell.present(ConnectedCamera(camera, model.session.control))
                 // The chrome editor over the same staged monitor (iOS `beginChromeEditing`).
                 if (review.screen == ReviewLaunch.Screen.CHROME_EDIT) model.beginChromeEditing(model.currentDispMode)
             }
