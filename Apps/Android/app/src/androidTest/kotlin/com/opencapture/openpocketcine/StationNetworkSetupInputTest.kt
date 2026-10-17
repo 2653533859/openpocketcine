@@ -55,7 +55,7 @@ class StationNetworkSetupInputTest {
                         }
                     }
                 }
-                click("Wi-Fi")
+                click("Choose Wi-Fi")
                 val beforeCurrent = bounds(awaitText("THIS PHONE IS ON"))
                 val beforeNearby = bounds(awaitText("NEARBY"))
                 assertTrue(abs(beforeCurrent.top - beforeNearby.top) <= 1)
@@ -125,7 +125,7 @@ class StationNetworkSetupInputTest {
                     }
                 }
             }
-            click("Wi-Fi")
+            click("Choose Wi-Fi")
             awaitText("Nearby test network")
             click("Test network")
             click("Connect over Wi-Fi")

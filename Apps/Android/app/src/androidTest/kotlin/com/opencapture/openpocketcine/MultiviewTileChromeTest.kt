@@ -190,7 +190,7 @@ class MultiviewTileChromeTest {
                 awaitNode("Collapse Multiview tools")
                 // Expanded, the four tools fill two columns of two, ranked FOCUS/GRID, LUT, FIT, CAM.
                 val titles = listOf(layoutTitle, "Toggle Auto LUT for all cameras", "Fill frame with feed", "Camera settings")
-                val hits = titles.map { title -> android.graphics.Rect().also { awaitNode(title).getBoundsInScreen(it) } }
+                var hits = titles.map { title -> android.graphics.Rect().also { awaitNode(title).getBoundsInScreen(it) } }
                 val lane = android.graphics.Rect().also { awaitNode("Collapse Multiview tools").getBoundsInScreen(it) }
                 fun x(dp: Float) = origin.x + dp * scale
                 fun y(dp: Float) = origin.y + dp * scale
@@ -203,6 +203,21 @@ class MultiviewTileChromeTest {
                     android.graphics.RectF(x(layout.assists.x + 4 + column * step), y(top + row * step),
                         x(layout.assists.x + 4 + column * step + cell), y(minOf(top + row * step + cell, layout.assists.maxY - 4)))
                 }
+                // The collapse label appears during the reveal spring, before the plate has
+                // its final height. Read fresh native bounds until the original geometry holds.
+                val geometryDeadline = SystemClock.uptimeMillis() + 5_000
+                fun matchesCell(hit: android.graphics.Rect, want: android.graphics.RectF) =
+                    abs(hit.left - want.left) <= 1.5f && abs(hit.top - want.top) <= 1.5f &&
+                        abs(hit.right - want.right) <= 1.5f && abs(hit.bottom - want.bottom) <= 1.5f
+                do {
+                    hits = titles.map { title -> android.graphics.Rect().also { rect ->
+                        val node = awaitNode(title)
+                        assertTrue(node.refresh(), "Palette action must remain attached: $title")
+                        node.getBoundsInScreen(rect)
+                    } }
+                    if (hits.indices.all { matchesCell(hits[it], expected[it]) }) break
+                    SystemClock.sleep(32)
+                } while (SystemClock.uptimeMillis() < geometryDeadline)
                 titles.indices.forEach { index ->
                     val hit = hits[index]
                     val want = expected[index]
