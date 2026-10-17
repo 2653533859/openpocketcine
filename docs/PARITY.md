@@ -1997,3 +1997,10 @@ cached clips, thumbnails and camera indexes; the current gallery retains its
 operation fencing and cache revision, and reloads from the camera when connected.
 Favorites, preference keys and existing on-disk namespace spellings stay unchanged.
 Physical verification of this adoption remains untested.
+
+## Android release initialization
+
+Android keeps the ML Kit component registrar constructors that its release
+shrinker otherwise removes. Every release bundle runs the shared OpenCine dex
+check, and pull requests build that bundle. This is Android SDK packaging; iOS
+uses Vision and needs no corresponding runtime change.
