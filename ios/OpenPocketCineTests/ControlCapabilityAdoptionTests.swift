@@ -2,6 +2,7 @@ import MonitorPresentation
 import OpenCineAppKit
 import OpenCineCameraVocabulary
 import OpenCineCameraControls
+import OpenCineCore
 import OpenCineDJIApple
 import OpenPocketViewCore
 import XCTest
@@ -12,6 +13,16 @@ import XCTest
 /// provides (the app sets no capability literal). Pins the capture strip each body shows today.
 @MainActor
 final class ControlCapabilityAdoptionTests: XCTestCase {
+    func testAudioAdmissionUsesTypedSupport() {
+        let declarations: [ControlCapability<NoOffer>] = [.unknown, .unsupported, .supported(),
+            .supported(access: .readOnly)]
+        for audio in declarations {
+            var controls = ControlCapabilities()
+            controls.audio = audio
+            XCTAssertEqual(CaptureSheetCapabilities(controls: controls).audio, audio.isOffered)
+        }
+    }
+
     private func model(_ id: Int?, _ name: String) -> AppModel {
         let model = AppModel()
         model.session = CameraSession(borrowing: HevcDecoder())

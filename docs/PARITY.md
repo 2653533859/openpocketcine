@@ -53,6 +53,15 @@ The Android instrumentation tests drive the shared stage; on the lane emulator
 the same 9 of 19 pass before and after. Physical Multiview remains untested
 for this change on both platforms.
 
+### Multiview AUDIO admission continuation
+
+Android's Multiview settings categories now require the tile's typed AUDIO control to be
+supported and writable, as well as the existing video-mode rule. Losing the borrowed session's
+known camera removes AUDIO even while the tile retains its last identity. Unknown, unsupported
+and read-only controls never admit this editor. Actual Android borrowed-session regressions and
+the paired iOS typed sheet projection pass on the task candidate. The existing iOS category
+policy stays unchanged in this Android-only continuation. Physical behavior remains untested.
+
 ## Shared operator settings ownership (P2)
 
 Both shells now compose the shared operator settings page and typed section

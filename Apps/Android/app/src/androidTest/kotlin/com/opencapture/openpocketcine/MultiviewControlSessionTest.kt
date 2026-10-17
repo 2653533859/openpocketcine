@@ -2,6 +2,8 @@ package com.opencapture.openpocketcine
 
 import com.opencapture.opencine.dji.CMD_PARAM
 import com.opencapture.opencine.dji.DjiNative
+import com.opencapture.opencine.cameracontrols.LiveSheet
+import com.opencapture.opencine.core.SupportStatus
 import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -12,6 +14,7 @@ import com.opencapture.opencine.vocabulary.CameraStatus
 import com.opencapture.opencine.vocabulary.FoundCamera
 import com.opencapture.openpocketcine.bridge.SwiftCore
 import com.opencapture.openpocketcine.multiview.MultiviewSession
+import com.opencapture.openpocketcine.multiview.multiviewSettingsCategories
 import com.opencapture.opencine.dji.CameraNetworkPath
 import com.opencapture.opencine.dji.DatalinkDriver
 import com.opencapture.opencine.dji.DumlFrame
@@ -29,6 +32,39 @@ import org.junit.runner.RunWith
 /** Exercises the real native SET mailbox and ACK handling; no socket or camera is opened. */
 @RunWith(AndroidJUnit4::class)
 class MultiviewControlSessionTest {
+    /** SIMULATED tile uses the real borrowed native session; its endpoint must never open a socket. */
+    @Test fun audioAdmissionUsesTheTileModel() {
+        main {
+            assertTrue(SwiftCore.isAvailable)
+            val tile = tile(0)
+            try {
+                val camera = assertNotNull(tile.camera)
+                val editor = assertNotNull(tile.openControls { true })
+                val sheet = pocketCaptureSessionState({ editor.session.aeLock.value }, { editor.session.awbLockKelvin.value },
+                    { false }, { editor.session.isFormatPinActive }, controls = { editor.controlCapabilities() })
+                val video = CameraStatus(shootingMode = CameraCommands.SHOOT_VIDEO)
+                val originalCommandAt = tile.lastCommandAt
+                assertEquals(SupportStatus.SUPPORTED, editor.controlCapabilities().audio.support)
+                assertEquals(editor.controlCapabilities(), sheet.controlCapabilities)
+                assertTrue(LiveSheet.AUDIO in multiviewSettingsCategories(camera.model, video, editor.controlCapabilities()))
+                assertFalse(LiveSheet.AUDIO in multiviewSettingsCategories(camera.model,
+                    video.copy(shootingMode = CameraCommands.SHOOT_PHOTO), editor.controlCapabilities()))
+                // The tile still has its last identity while the borrowed session loses its body.
+                // A saved category list must not invent AUDIO for the now-unknown control model.
+                editor.session.updateMultiview(null, tile.driver, video)
+                assertEquals(SupportStatus.UNKNOWN, editor.controlCapabilities().audio.support)
+                assertEquals(SupportStatus.UNKNOWN, sheet.controlCapabilities.audio.support)
+                assertFalse(LiveSheet.AUDIO in multiviewSettingsCategories(camera.model, video, editor.controlCapabilities()))
+                editor.session.updateMultiview(camera, tile.driver, video)
+                assertTrue(LiveSheet.AUDIO in multiviewSettingsCategories(camera.model, video, editor.controlCapabilities()))
+                assertEquals(0, editor.session.pendingCameraSetCount)
+                assertEquals(originalCommandAt, tile.lastCommandAt, "Reading admission sends no command")
+            } finally {
+                tile.reset()
+            }
+        }
+    }
+
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private fun main(action: () -> Unit) = instrumentation.runOnMainSync(action)
     private fun tile(index: Int): MultiviewSession.Tile =

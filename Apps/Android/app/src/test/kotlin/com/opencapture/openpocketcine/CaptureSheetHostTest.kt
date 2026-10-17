@@ -12,10 +12,16 @@ import com.opencapture.opencine.core.testing.FakeCameraSession
 import com.opencapture.opencine.core.testing.lunaLike
 import kotlinx.coroutines.test.runTest
 import kotlin.test.assertNotNull
-import com.opencapture.opencine.core.MonitorLayoutCapabilities
 import com.opencapture.opencine.core.SettingKey
+import com.opencapture.opencine.core.CapabilitySnapshot
+import com.opencapture.opencine.core.SettingAccess
+import com.opencapture.opencine.core.SupportStatus
 import com.opencapture.opencine.vocabulary.CameraCommands
-import com.opencapture.opencine.vocabulary.controls
+import com.opencapture.opencine.vocabulary.CameraCaptureProfile
+import com.opencapture.opencine.vocabulary.CaptureNativeISOCapabilities
+import com.opencapture.opencine.vocabulary.ControlCapabilities
+import com.opencapture.opencine.vocabulary.ControlFamily
+import com.opencapture.opencine.vocabulary.ControlStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -24,6 +30,24 @@ import kotlin.test.assertTrue
 
 /** Pocket's capture sheet host values, as on main. */
 class CaptureSheetHostTest {
+    @Test fun typedModelControlsEveryHostProjectionAndKeepsUnknown() {
+        var model = ControlCapabilities()
+        val state = pocketCaptureSessionState({ null }, { null }, { false }, { false },
+            controls = { model })
+        assertFalse(state.focusModeSupported)
+        assertFalse(state.irisSupported)
+        assertFalse(state.nativeIsoHopSupported)
+        assertNull(state.nativeISO.hop)
+        assertNull(state.nativeISO.ceiling)
+        model = ControlCapabilities.beforeConnection(CameraCaptureProfile(supportsFocusMode = true,
+            supportsAperture = true, nativeISO = CaptureNativeISOCapabilities(hop = true, ceiling = false)))
+        assertTrue(state.focusModeSupported && state.irisSupported && state.nativeIsoHopSupported)
+        assertEquals(false, state.nativeISO.ceiling)
+        model = model.restricting(mapOf(ControlFamily.FOCUS to ControlStatus(SupportStatus.SUPPORTED, SettingAccess.READ_ONLY),
+            ControlFamily.IRIS to ControlStatus(SupportStatus.UNSUPPORTED)))
+        assertFalse(state.focusModeSupported || state.irisSupported)
+    }
+
     /** SIMULATED common report and a contradictory pending edit (iOS `PocketCommonReadoutTests`). */
     @Test fun theCaptureStripReadsTheReportUntilTheCameraConfirms() = runTest {
         assertEquals(MonitorCaptureSelection.REPORTED, pocketCaptureReadoutSelection,
@@ -42,10 +66,10 @@ class CaptureSheetHostTest {
     }
 
     @Test fun anUnqualifiedNativeIsoPairDoesNotOfferAnAutomaticHop() {
-        val unknown = pocketCaptureSessionState({ null }, { null }, { false }, { false }, { MonitorLayoutCapabilities() })
+        val unknown = pocketCaptureSessionState({ null }, { null }, { false }, { false }, { ControlCapabilities() })
         assertFalse(unknown.nativeIsoHopSupported, "No native ISO pair was declared by this source")
         val knownFocus = pocketCaptureSessionState({ null }, { null }, { false }, { false },
-            { MonitorLayoutCapabilities(focus = true, iris = true) })
+            { ControlCapabilities.beforeConnection(CameraCaptureProfile(supportsFocusMode = true, supportsAperture = true)) })
         assertFalse(knownFocus.nativeIsoHopSupported, "Focus and iris support do not declare a native ISO pair")
     }
 
@@ -65,7 +89,7 @@ class CaptureSheetHostTest {
         var aeLock: Any? = null
         var awbKelvin: Int? = null
         var pinned = true
-        val state = pocketCaptureSessionState({ aeLock }, { awbKelvin }, { true }, { pinned }, { MonitorLayoutCapabilities() })
+        val state = pocketCaptureSessionState({ aeLock }, { awbKelvin }, { true }, { pinned }, { ControlCapabilities() })
         assertFalse(state.aeLocked)
         assertNull(state.awbLockKelvin)
         assertTrue(state.awbLockOffered)
@@ -78,15 +102,15 @@ class CaptureSheetHostTest {
         assertFalse(state.formatPinned)
     }
 
-    @Test fun focusAndIrisFollowTheLayoutWithoutInventingNativeIsoSupport() {
-        val none = pocketCaptureSessionState({ null }, { null }, { false }, { false }, { MonitorLayoutCapabilities() })
+    @Test fun focusAndIrisFollowTheModelWithoutInventingNativeIsoSupport() {
+        val none = pocketCaptureSessionState({ null }, { null }, { false }, { false }, { ControlCapabilities() })
         assertFalse(none.focusModeSupported)
         assertFalse(none.irisSupported)
         assertFalse(none.nativeIsoHopSupported)
         assertNull(none.nativeISO.hop)
         assertNull(none.nativeISO.ceiling)
         val both = pocketCaptureSessionState({ null }, { null }, { false }, { false },
-            { MonitorLayoutCapabilities(focus = true, iris = true) })
+            { ControlCapabilities.beforeConnection(CameraCaptureProfile(supportsFocusMode = true, supportsAperture = true)) })
         assertTrue(both.focusModeSupported)
         assertTrue(both.irisSupported)
         assertFalse(both.nativeIsoHopSupported)
@@ -94,21 +118,22 @@ class CaptureSheetHostTest {
         assertNull(both.nativeISO.ceiling)
     }
 
-    /** Once a body is known the DJI control model decides; before that the layout does. */
+    /** No legacy layout may override the required model, even before a body is known. */
     @Test fun theBodysControlModelDecidesOnceKnown() {
-        var known: com.opencapture.opencine.vocabulary.ControlCapabilities? = null
+        var known = ControlCapabilities.beforeConnection(null)
         val state = pocketCaptureSessionState({ null }, { null }, { false }, { false },
-            { MonitorLayoutCapabilities(audio = true) }, controls = { known })
-        assertTrue(state.controls(MonitorLayoutCapabilities(audio = true)).audio.isOffered, "a legacy host: its layout")
-        known = com.opencapture.opencine.vocabulary.ControlCapabilities.beforeConnection(null)
-        assertFalse(state.controls(MonitorLayoutCapabilities(audio = true)).audio.isOffered, "no body: nothing camera-dependent")
+            controls = { known })
+        assertFalse(state.controlCapabilities.audio.isOffered, "no body: nothing camera-dependent")
         val pocket = com.opencapture.opencine.vocabulary.CameraCaptureProfile(
             supportsFocusMode = true, supportsTapFocus = true, supportsAperture = false, hasGimbal = true, supportsZoom = true)
         known = com.opencapture.opencine.vocabulary.ControlCapabilities.derive(
-            com.opencapture.opencine.core.CapabilitySnapshot(), pocket)
-        val controls = state.controls(MonitorLayoutCapabilities(audio = true))
+            CapabilitySnapshot(audioLevels = SupportStatus.SUPPORTED), pocket)
+        val controls = state.controlCapabilities
         assertTrue(controls.focus.isOffered)
         assertFalse(controls.iris.isOffered)
+        assertTrue(controls.audio.isOffered)
         assertNull(controls.nativeISO.hop)
+        known = ControlCapabilities.beforeConnection(null)
+        assertFalse(state.controlCapabilities.audio.isOffered)
     }
 }

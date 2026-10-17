@@ -15,7 +15,6 @@ import com.opencapture.opencine.cameracontrols.CaptureRefresh
 import com.opencapture.opencine.cameracontrols.LiveSheet
 import com.opencapture.opencine.cameracontrols.applyCaptureShootingMode
 import com.opencapture.opencine.core.ISOValue
-import com.opencapture.opencine.core.MonitorLayoutCapabilities
 import com.opencapture.opencine.core.SettingValue
 import com.opencapture.opencine.core.ShutterValue
 import com.opencapture.opencine.core.WhiteBalanceValue
@@ -32,8 +31,8 @@ internal val pocketCaptureReadoutSelection = com.opencapture.opencine.appkit.Mon
 
 /**
  * Pocket's capture session state: the DJI session's AE/AWB locks and format pin, and the DJI
- * integration's control model once a body is known ([controls]); before that, its layout for focus
- * and iris. Native ISO support stays unknown without a source declaration.
+ * integration's required control model ([controls]), including its pre-connection declaration.
+ * Native ISO support stays unknown without a source declaration.
  * Values are read when the sheet reads them (the format pin expires on time).
  */
 internal fun pocketCaptureSessionState(
@@ -41,20 +40,12 @@ internal fun pocketCaptureSessionState(
     awbLockKelvin: () -> Int?,
     awbLockOffered: () -> Boolean,
     formatPinned: () -> Boolean,
-    layout: () -> MonitorLayoutCapabilities,
-    nativeISOCapabilities: () -> com.opencapture.opencine.vocabulary.CaptureNativeISOCapabilities = {
-        com.opencapture.opencine.vocabulary.CaptureNativeISOCapabilities()
-    },
-    controls: () -> com.opencapture.opencine.vocabulary.ControlCapabilities? = { null },
+    controls: () -> com.opencapture.opencine.vocabulary.ControlCapabilities,
 ): CaptureSessionState = object : CaptureSessionState {
     override val aeLocked get() = aeLock() != null
     override val awbLockKelvin get() = awbLockKelvin()
     override val awbLockOffered get() = awbLockOffered()
     override val formatPinned get() = formatPinned()
-    override val focusModeSupported get() = layout().focus
-    override val irisSupported get() = layout().iris
-    override val nativeISO get() = nativeISOCapabilities()
-    override val nativeIsoHopSupported get() = nativeISO.hop == true
     override val controlCapabilities get() = controls()
 }
 
@@ -63,7 +54,7 @@ internal fun AppModel.observedCaptureSessionState(status: CameraStatus): Capture
     val aeLock by session.aeLock.collectAsState()
     val awbLock by session.awbLockKelvin.collectAsState()
     return pocketCaptureSessionState({ aeLock }, { awbLock }, { session.autoWhiteBalanceLock(status) != null },
-        { session.isFormatPinActive }, { monitorLayout() }, { session.nativeISOCapabilities }, { controlCapabilities() })
+        { session.isFormatPinActive }, { controlCapabilities() })
 }
 
 /** ISO, shutter and white balance Kelvin through the captured Core field; EV through Core too. */

@@ -61,18 +61,21 @@ import com.opencapture.opencine.vocabulary.CameraCommands
 import com.opencapture.opencine.vocabulary.CameraModel
 import com.opencapture.opencine.vocabulary.CameraStatus
 import com.opencapture.opencine.vocabulary.CaptureShutterPolicy
+import com.opencapture.opencine.vocabulary.ControlCapabilities
+import com.opencapture.openpocketcine.controlCapabilities
 import com.opencapture.openpocketcine.LiveDesign
 import com.opencapture.openpocketcine.LiveType
 import com.opencapture.monitorui.MonitorIcon
 import com.opencapture.opencine.runtime.InspectorPreviewPipeline
 
-internal fun multiviewSettingsCategories(camera: CameraModel, status: CameraStatus): List<LiveSheet> = buildList {
+internal fun multiviewSettingsCategories(camera: CameraModel, status: CameraStatus,
+    controls: ControlCapabilities): List<LiveSheet> = buildList {
     addAll(listOf(LiveSheet.ISO, LiveSheet.SHUTTER, LiveSheet.EXPO, LiveSheet.WB))
     if (camera.supportsFocusMode) add(LiveSheet.FOCUS)
     if (camera.supportsAperture) add(LiveSheet.APERTURE)
     if (!CameraCommands.isPhotoMode(status.shootingMode)) addAll(listOf(LiveSheet.FORMAT, LiveSheet.COLOR))
     add(LiveSheet.MODE)
-    if (CaptureShutterPolicy.showsAudioControls(status.shootingMode)) add(LiveSheet.AUDIO)
+    if (controls.audio.isOffered && CaptureShutterPolicy.showsAudioControls(status.shootingMode)) add(LiveSheet.AUDIO)
 }
 
 internal fun multiviewSettingsLocked(sheet: LiveSheet, recording: Boolean): Boolean =
@@ -156,7 +159,7 @@ internal fun MultiviewCameraSettings(
             }
             if (ready && camera != null && controls != null) {
                 val status by controls.session.chromeStatus.collectAsState()
-                val categories = multiviewSettingsCategories(camera.model, status)
+                val categories = multiviewSettingsCategories(camera.model, status, controls.controlCapabilities())
                 val sheet = selectedSheet.takeIf { it in categories } ?: LiveSheet.ISO
                 Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     BoxWithConstraints(Modifier.weight(1f).fillMaxHeight()) {
