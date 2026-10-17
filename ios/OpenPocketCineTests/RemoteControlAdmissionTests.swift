@@ -17,41 +17,126 @@ final class RemoteControlAdmissionTests: XCTestCase {
     /// SIMULATED loopback peer sees the real app Watch submission and native wire command.
     func testWatchAcceptsActualRecordAndPhotoDispatchWithoutInventingRecording() async throws {
         for photo in [false, true] {
-            let peer = try WatchAckingCamera()
-            let driver = DjiAppleDatalink.loopbackForTesting(port: try await peer.start())
-            let session = CameraSession(borrowing: HevcDecoder())
-            defer {
-                session.disconnect()
-                peer.stop()
+            try await assertWatchDispatch(photo: photo, betweenPollingQueries: false)
+        }
+    }
+
+    /// SIMULATED real queries on either side cannot substitute for, or duplicate, a capture.
+    func testWatchDispatchIsExactlyOnceBetweenActualPollingQueries() async throws {
+        for photo in [false, true] {
+            try await assertWatchDispatch(photo: photo, betweenPollingQueries: true)
+        }
+    }
+
+    private func assertWatchDispatch(photo: Bool, betweenPollingQueries: Bool) async throws {
+        let peer = try WatchAckingCamera()
+        let driver = DjiAppleDatalink.loopbackForTesting(port: try await peer.start())
+        let session = CameraSession(borrowing: HevcDecoder())
+        defer {
+            session.disconnect()
+            peer.stop()
+            retainWireTrace(peer, name: "photo=\(photo) betweenQueries=\(betweenPollingQueries)")
+        }
+        session.datalink = driver
+        driver.onStatusFrame = { [weak session] in session?.applyIncomingStatus($0) }
+        try await driver.open()
+        session.phase = .live
+        session.status.shootingMode =
+            photo ? Int(ShootingMode.photo.rawValue) : Int(ShootingMode.video.rawValue)
+        session.status.recordingReported = true
+        let model = AppModel(session: session)
+        model.activateWatchRelay()
+        let (phone, receipt) = try watchReceipt()
+        defer { phone.close() }
+        if betweenPollingQueries {
+            let queryArrived = await HostedCondition.wait {
+                peer.controlFrames.contains(where: WatchAckingCamera.isPollingRead)
             }
-            session.datalink = driver
-            driver.onStatusFrame = { [weak session] in session?.applyIncomingStatus($0) }
-            try await driver.open()
-            session.phase = .live
-            session.status.shootingMode =
-                photo ? Int(ShootingMode.photo.rawValue) : Int(ShootingMode.video.rawValue)
-            session.status.recordingReported = true
-            let model = AppModel(session: session)
-            model.activateWatchRelay()
-            let (phone, receipt) = try watchReceipt()
-            defer { phone.close() }
-            let result = try XCTUnwrap(
-                photo
-                    ? model.watchRelay.onAdmittedCapture?(receipt)
-                    : model.watchRelay.onAdmittedToggleRecord?(receipt))
-            XCTAssertTrue(result.accepted)
-            XCTAssertFalse(
-                result.isRecording, "A dispatched command is not a recording observation")
-            // The loopback peer reads the command on its own network queue; a budget of yields
-            // measured machine load, so wait for the frame itself.
-            _ = await HostedCondition.wait { !peer.controlFrames.isEmpty }
-            XCTAssertEqual(
-                peer.controlFrames.count, 1, "The actual native loopback must receive a command")
-            if !photo {
-                XCTAssertEqual(peer.controlFrames.first?.payload, Commands.recordStart().payload)
-                XCTAssertEqual(peer.controlFrames.first?.cmdId, Commands.recordStart().cmdId)
+            XCTAssertTrue(queryArrived, "The real polling read must precede this capture")
+        }
+        let result = try XCTUnwrap(
+            photo
+                ? model.watchRelay.onAdmittedCapture?(receipt)
+                : model.watchRelay.onAdmittedToggleRecord?(receipt))
+        XCTAssertTrue(result.accepted)
+        XCTAssertFalse(result.isRecording, "A dispatched command is not a recording observation")
+        let expectedCommand: UInt8 = photo ? 0x01 : 0x02
+        let captureArrived = await HostedCondition.wait {
+            peer.controlFrames.contains { $0.cmdId == expectedCommand }
+        }
+        XCTAssertTrue(captureArrived, "The actual capture must reach the loopback")
+        let settled = await HostedCondition.wait { !session.controlBusy }
+        XCTAssertTrue(settled, "The actual command reply must settle before counting writes")
+        XCTAssertFalse(session.status.isRecording, "A command reply is not a recording observation")
+        if betweenPollingQueries {
+            let nextQueryArrived = await HostedCondition.wait {
+                let frames = peer.controlFrames
+                guard let capture = frames.firstIndex(where: { $0.cmdId == expectedCommand }) else {
+                    return false
+                }
+                return frames.dropFirst(capture + 1).contains(
+                    where: WatchAckingCamera.isPollingRead)
+            }
+            XCTAssertTrue(nextQueryArrived, "The real polling read must continue after capture")
+        }
+        let writes = peer.nonPollingControlFrames
+        XCTAssertEqual(
+            writes.count, 1, "The actual native loopback must receive exactly one command")
+        let command = try XCTUnwrap(writes.first)
+        XCTAssertEqual(command.sender, 0x02)
+        XCTAssertEqual(command.receiver, 0x01)
+        XCTAssertEqual(command.flags, 0x40)
+        XCTAssertEqual(command.cmdSet, 0x02)
+        XCTAssertEqual(command.cmdId, expectedCommand)
+        XCTAssertEqual(command.payload, [0x01])
+    }
+
+    /// SIMULATED observer tripwire: neither a parameter SET nor an unknown write is a polling read.
+    func testLoopbackObserverRetainsParameterSetsAndUnknownCameraWrites() async throws {
+        let peer = try WatchAckingCamera()
+        let driver = DjiAppleDatalink.loopbackForTesting(port: try await peer.start())
+        defer {
+            driver.close()
+            peer.stop()
+            retainWireTrace(peer, name: "unexpected-writes")
+        }
+        try await driver.open()
+        let queryArrived = await HostedCondition.wait {
+            peer.controlFrames.contains(where: WatchAckingCamera.isPollingRead)
+        }
+        XCTAssertTrue(queryArrived)
+        let admission = DJICommandAdmission(owner: driver.commandOwner, isCurrent: { true })
+        let frames = [
+            Duml.Frame(
+                sender: 0x02, receiver: 0x01, seq: 0, flags: 0x40,
+                cmdSet: 0x02, cmdId: 0x8E, payload: [0x01, 0x01, 0x4C, 0, 0x01, 0]),
+            Duml.Frame(
+                sender: 0x02, receiver: 0x01, seq: 0, flags: 0x40,
+                cmdSet: 0x02, cmdId: 0x7F, payload: [0xA5]),
+        ]
+        for frame in frames {
+            guard case .queued = driver.sendUntracked(frame, admission: admission) else {
+                return XCTFail("The real native port must admit each SIMULATED tripwire write")
             }
         }
+        let arrived = await HostedCondition.wait { peer.nonPollingControlFrames.count >= 2 }
+        XCTAssertTrue(arrived)
+        let writes = peer.nonPollingControlFrames
+        XCTAssertEqual(writes.count, 2)
+        XCTAssertEqual(writes.map(\.cmdId).sorted(), [0x7F, 0x8E])
+        XCTAssertEqual(
+            writes.first(where: { $0.cmdId == 0x8E })?.payload,
+            [0x01, 0x01, 0x4C, 0, 0x01, 0])
+        XCTAssertEqual(writes.first(where: { $0.cmdId == 0x7F })?.payload, [0xA5])
+    }
+
+    private func retainWireTrace(_ peer: WatchAckingCamera, name: String) {
+        let trace = "[WATCH-CASE] \(name)\n" + peer.wireTrace.joined(separator: "\n")
+        let attachment = XCTAttachment(string: trace)
+        attachment.name = "SIMULATED Watch wire \(name)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        print(trace)
     }
 
     func testWatchRefusesNilUnknownRecordUnsupportedModeLockAndMissingNativeLink() {
@@ -271,7 +356,16 @@ private final class WatchAckingCamera: @unchecked Sendable {
     private var connections: [NWConnection] = []
     private var peer: NWConnection?
     private var frames: [Duml.Frame] = []
+    private var trace: [String] = []
+    var wireTrace: [String] { queue.sync { trace } }
     var controlFrames: [Duml.Frame] { queue.sync { frames } }
+    // Count every other camera frame, including unexpected writes and retransmissions.
+    var nonPollingControlFrames: [Duml.Frame] { controlFrames.filter { !Self.isPollingRead($0) } }
+
+    static func isPollingRead(_ frame: Duml.Frame) -> Bool {
+        frame.sender == 0x02 && frame.receiver == 0x01 && frame.flags == 0x40
+            && frame.cmdSet == 0x02 && frame.cmdId == 0x8E && frame.payload == [0, 1, 0x38, 0]
+    }
     private let reply: UInt8
 
     init(reply: UInt8 = 0x00) throws {
@@ -318,25 +412,40 @@ private final class WatchAckingCamera: @unchecked Sendable {
         }
     }
 
+    private func notePacket(_ bytes: [UInt8], direction: String) {
+        let raw = bytes.map { String(format: "%02X", $0) }.joined(separator: " ")
+        let sequence = DumlTransport.transportSeq(bytes).map(String.init) ?? "nil"
+        trace.append("[WATCH-WIRE] direction=\(direction) transportSeq=\(sequence) raw=\(raw)")
+        for frame in DumlTransport.scanFrames(bytes) {
+            trace.append(
+                "[WATCH-WIRE] direction=\(direction) transportSeq=\(sequence) dumlSeq=\(frame.seq) sender=\(frame.sender) receiver=\(frame.receiver) set=\(frame.cmdSet) cmd=\(frame.cmdId) flags=\(frame.flags) payload=\(frame.payload)"
+            )
+        }
+    }
+
     private func consume(_ bytes: [UInt8], from connection: NWConnection) {
+        notePacket(bytes, direction: "app-to-peer")
         if DumlTransport.isHandshake(bytes) {
             peer = connection
             let ack =
                 DumlTransport.transportHeader(
                     pktType: 0, payloadLen: 7, sessionId: 1, seq: 0) + [1, 0, 0, 0, 0, 0, 0]
+            notePacket(ack, direction: "peer-to-app")
             connection.send(content: Data(ack), completion: .idempotent)
             let window = DumlTransport.ackPayload(peerCursor: 0x6000, baseSeq: 0x6000)
             let packet =
                 DumlTransport.transportHeader(
                     pktType: 1, payloadLen: window.count, sessionId: 1, seq: 8) + window
+            notePacket(packet, direction: "peer-to-app")
             connection.send(content: Data(packet), completion: .idempotent)
             return
         }
         guard peer === connection else { return }
         for frame in DumlTransport.scanFrames(bytes)
-        where frame.cmdSet == 0x02 && Duml.isLiveCameraControl(set: frame.cmdSet, cmd: frame.cmdId)
-        {
+        where frame.cmdSet == 0x02 {
             frames.append(frame)
+            // Preserve the original reply behavior; broader observation never grants a reply.
+            guard Duml.isLiveCameraControl(set: frame.cmdSet, cmd: frame.cmdId) else { continue }
             let answer = Duml.encode(
                 Duml.Frame(
                     sender: frame.receiver, receiver: frame.sender, seq: frame.seq, flags: 0x80,
@@ -344,6 +453,7 @@ private final class WatchAckingCamera: @unchecked Sendable {
             let packet =
                 DumlTransport.transportHeader(
                     pktType: 1, payloadLen: answer.count, sessionId: 1, seq: 8) + answer
+            notePacket(packet, direction: "peer-to-app")
             connection.send(content: Data(packet), completion: .idempotent)
         }
     }
