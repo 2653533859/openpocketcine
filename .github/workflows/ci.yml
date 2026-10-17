@@ -239,12 +239,40 @@ jobs:
       # repository is published. Delete when the app pins it by url + version.
       - name: Check out pinned OpenCine next to the repository
         run: scripts/checkout-opencine.sh
+      - name: Original storage oracle on a private native 2x iPad
+        env:
+          TEST_RUNNER_CI: "true"
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/native-storage-oracle"
+          mkdir -p "$evidence"
+          just ios-generate
+          udid=""
+          trap 'if [ -n "$udid" ]; then python3 ../OpenCine/scripts/ios-private-simulator.py delete "$udid"; fi' EXIT
+          udid=$(python3 ../OpenCine/scripts/ios-private-simulator.py create \
+            "opc-pocket-storage-2x-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --device "iPad Pro 11-inch (M4)" --report "$evidence/simulator-setup.json")
+          xcodebuild -project ios/OpenPocketCine.xcodeproj -scheme OpenPocketCine \
+            -destination "platform=iOS Simulator,id=$udid" -parallel-testing-enabled NO \
+            -resultBundlePath "$evidence/storage-oracle.xcresult" \
+            -only-testing:OpenPocketCineTests/MonitorPortraitHeaderClearanceTests/testCompactDeclaredGaugeRetainsClearanceWhenSafeTopChanges test
+      - name: Retain original storage oracle evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-storage-oracle-evidence
+          path: ${{ runner.temp }}/native-storage-oracle
+          retention-days: 7
+          if-no-files-found: error
       - name: Run native checks
         # Xcode forwards TEST_RUNNER_ variables into the test host.
         # Preserve the existing hosted-CI versus hardware timing contract.
         env:
           TEST_RUNNER_CI: "true"
-        run: just native-check
+        run: |
+          just swift-test
+          just ios-test -skip-testing:OpenPocketCineTests/MonitorPortraitHeaderClearanceTests/testCompactDeclaredGaugeRetainsClearanceWhenSafeTopChanges
+          just ios-build watch-build
 
   conformance:
     name: Shared conformance scenarios, iOS
