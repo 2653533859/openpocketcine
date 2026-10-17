@@ -6,7 +6,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import com.opencapture.opencine.appkit.MonitorCaptureDrum
 import com.opencapture.opencine.appkit.MonitorCaptureField
 import com.opencapture.opencine.appkit.captureField
 import com.opencapture.opencine.appkit.commit
@@ -71,9 +70,14 @@ internal fun AppModel.PocketCommonDrum(sheet: LiveSheet, status: CameraStatus, f
             is SettingValue.ExposureCompensation -> true
             else -> false
         } }
-        MonitorCaptureDrum(control, retained,
+        LadderSheet(
+            presentation = com.opencapture.opencine.vocabulary.LadderSheetPresentation("", "", listOf(
+                com.opencapture.opencine.vocabulary.LadderTab("", sheet,
+                    com.opencapture.opencine.vocabulary.CaptureLadder(retained.label, choices.map { it.label }),
+                    applyOnActivate = false))),
             enabled = enabled && (!CaptureLists.isEvSheet(sheet, status.expoMode) || !facePriorityExposureEnabled),
-            choices = choices)
+            onWrite = {}, onClose = {}, control = control, chromeless = true,
+            host = LadderSheetHost(0, retained.label, LadderSheetDrum.Field(retained, choices), onSelectTab = {}))
     }
 }
 
