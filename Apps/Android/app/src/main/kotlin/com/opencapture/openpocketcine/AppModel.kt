@@ -169,7 +169,10 @@ class AppModel(
     }
     val shell = ShellModel(cameras, control).also { shell ->
         shell.onSceneActivity = { active ->
-            if (active) session.noteSceneBecameActive() else session.noteSceneBecameInactive()
+            // A radio-free review has no camera connection to suspend or recover.
+            if (reviewLaunch == null) {
+                if (active) session.noteSceneBecameActive() else session.noteSceneBecameInactive()
+            }
         }
     }
     var shellState by mutableStateOf(shell.state.value)
@@ -598,6 +601,11 @@ class AppModel(
             shellState.cover == null &&
             !isEditingChrome &&
             !session.browsingMedia
+
+    /** Debug review work follows the retained root and is cancelled by close. */
+    internal fun launchReview(work: suspend () -> Unit) {
+        scope.launch { work() }
+    }
 
     fun prepareStartup() {
         coreVersion =

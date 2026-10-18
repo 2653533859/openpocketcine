@@ -13,6 +13,7 @@ import com.opencapture.opencine.core.ConnectedCamera
 import com.opencapture.opencine.core.SavedCamera
 import com.opencapture.opencine.dji.DjiCameraSessionAdapter
 import com.opencapture.opencine.platform.ReviewMediaSeed
+import com.opencapture.opencine.platform.ReviewLiveVideoSeed
 import com.opencapture.opencine.vocabulary.CameraCommands
 import com.opencapture.opencine.vocabulary.CameraModel
 import com.opencapture.opencine.vocabulary.CameraStatus
@@ -21,6 +22,8 @@ import com.opencapture.opencine.vocabulary.MediaFile
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.takeWhile
+import kotlinx.coroutines.flow.collect
 
 internal fun Modifier.reviewMetadata(review: ReviewLaunch?): Modifier =
     if (review == null) this else semantics { testTagsAsResourceId = true }
@@ -77,6 +80,22 @@ internal object MonitorReview {
                 model.shell.present(ConnectedCamera(camera, model.session.control))
                 // The chrome editor over the same staged monitor (iOS `beginChromeEditing`).
                 if (review.screen == ReviewLaunch.Screen.CHROME_EDIT) model.beginChromeEditing(model.currentDispMode)
+                if (review.screen == ReviewLaunch.Screen.LIVE) {
+                    val monitor = checkNotNull(model.shell.state.value.monitor)
+                    val decoder = model.session.decoder
+                    val owner = decoder.claimInputOwner()
+                    decoder.advanceInputEpoch(owner, 1)
+                    try {
+                        withContext(Dispatchers.Default) {
+                            ReviewLiveVideoSeed.frames(context).takeWhile {
+                                model.shell.state.value.monitor === monitor
+                            }.collect { decoder.decode(it, owner, 1) }
+                        }
+                    } finally {
+                        // Retire only this input owner; an old review cannot invalidate a successor.
+                        decoder.advanceInputEpoch(owner, 2)
+                    }
+                }
             }
             ReviewLaunch.Screen.MEDIA, ReviewLaunch.Screen.PLAYBACK -> stageMedia(context, model, review)
             ReviewLaunch.Screen.SETTINGS -> {

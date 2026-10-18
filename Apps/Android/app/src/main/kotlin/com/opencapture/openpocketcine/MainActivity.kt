@@ -29,8 +29,6 @@ import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.content.Intent
 import android.os.Bundle
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.launch
 import android.provider.Settings
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -106,7 +104,7 @@ open class MainActivity : ComponentActivity() {
         // The staged review seeds its saved cameras before the model reads the store.
         if (localReview != null) MonitorReview.prepare(applicationContext, localReview)
         return AppModel(applicationContext, discovers = localReview == null, reviewLaunch = localReview).also { model ->
-            if (localReview != null) lifecycleScope.launch { MonitorReview.start(applicationContext, model, localReview) }
+            if (localReview != null) model.launchReview { MonitorReview.start(applicationContext, model, localReview) }
         }
     }
 
