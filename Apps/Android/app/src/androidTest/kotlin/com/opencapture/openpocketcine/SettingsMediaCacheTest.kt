@@ -20,12 +20,11 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 /**
- * Settings > Storage counts and clears the current camera's gallery cache, the one rule Insta and
- * iOS follow (F09: Pocket counted and cleared every camera's folder). SIMULATED cache bytes for two
- * cameras in an isolated context; the actual app model, settings composition and settings owner.
+ * Settings > Storage uses the adopted all-camera cache scope, including camera indexes.
+ * SIMULATED bytes for two cameras exercise the actual app model, settings composition and owner
+ * in an isolated context; no operator footage is involved.
  */
 @RunWith(AndroidJUnit4::class)
 class SettingsMediaCacheTest {
@@ -51,8 +50,8 @@ class SettingsMediaCacheTest {
             return original to File(folder, "index.json").apply { writeText("[]") }
         }
         val (original, catalog) = gallery("current", 4_096)
-        val (otherOriginal, _) = gallery("other", 65_536)
-        val written = original.length() + catalog.length()
+        val (otherOriginal, otherCatalog) = gallery("other", 65_536)
+        val written = original.length() + catalog.length() + otherOriginal.length() + otherCatalog.length()
         context.getSharedPreferences("openpocketcine.media", Context.MODE_PRIVATE).edit()
             .putString("opc.media.lastCameraID", "current").commit()
         var model: AppModel? = null
@@ -73,15 +72,16 @@ class SettingsMediaCacheTest {
                     val settings = MonitorSettingsCacheModel(this)
                     settings.refresh(captured)
                     val counted = withTimeout(10_000) { settings.state.first { it.bytes != null || it.readFailed } }
-                    assertEquals(written, counted.bytes, "Settings counts the current camera's gallery only")
+                    assertEquals(written, counted.bytes, "Settings counts cached files and indexes for every camera")
                     settings.requestClear()
                     settings.clear()
                     withTimeout(10_000) { settings.state.first { !it.clearing } }
                     settings.retire()
                 }
                 assertFalse(original.exists(), "Clear cache removes the current camera's originals")
-                assertTrue(catalog.isFile, "Clear cache keeps the clip list")
-                assertTrue(otherOriginal.isFile, "Clear cache leaves other cameras' galleries")
+                assertFalse(catalog.exists(), "The all-camera Settings clear removes the current camera index")
+                assertFalse(otherOriginal.exists(), "The all-camera Settings clear removes other cameras' cached files")
+                assertFalse(otherCatalog.exists(), "The all-camera Settings clear removes other camera indexes")
             }
         } finally {
             instrumentation.runOnMainSync { model?.close() }
