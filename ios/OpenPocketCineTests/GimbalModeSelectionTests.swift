@@ -1,3 +1,4 @@
+import OpenCineHostedTestSupport
 import OpenPocketViewCore
 import XCTest
 import OpenCineDJIApple
@@ -23,7 +24,8 @@ final class GimbalModeSelectionTests: XCTestCase {
         if let admittedModel {
             // The owned session's real presentation callback records rolling
             // native output; warmup must finish before repair becomes the gate.
-            let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+            // The 25 Hz feed is the frame source; the deadline is only a hang guard.
+            let deadline = ContinuousClock.now.advanced(by: HostedCondition.hangLimit)
             while admittedModel.session.isFeedWarming, ContinuousClock.now < deadline {
                 decoder.handleDecodedFrame(ScopeTestBuffers.makeEdgeBuffer())
                 try await Task.sleep(for: .milliseconds(40))
@@ -32,10 +34,7 @@ final class GimbalModeSelectionTests: XCTestCase {
         } else {
             // Preserve the original borrowed-context native picture setup.
             decoder.handleDecodedFrame(ScopeTestBuffers.makeEdgeBuffer())
-            let deadline = ContinuousClock.now.advanced(by: .seconds(2))
-            while decoder.lastPresentedAt == nil, ContinuousClock.now < deadline {
-                try await Task.sleep(for: .milliseconds(10))
-            }
+            _ = await HostedCondition.wait { decoder.lastPresentedAt != nil }
         }
         XCTAssertNotNil(decoder.lastPresentedAt)
         let model = admittedModel ?? AppModel()

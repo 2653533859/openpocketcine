@@ -6,6 +6,7 @@ import MonitorUI
 import Observation
 import OpenCineAppKit
 import OpenCineCameraControls
+import class OpenCineApple.CameraHotspotSystem
 import class OpenCineCore.LocalVPNNotice
 import struct OpenCineCore.SavedCamera
 import OpenCineDJIApple
@@ -64,8 +65,6 @@ final class CameraSession {
     var found: [DjiAppleSighting] = [] {
         didSet { onSightings?(found.map(Self.sighting)) }
     }
-    /// A scan has run 20 s without a camera. The pair page then lists what to check.
-    var scanLooksEmpty = false
     /// The shared connection flow's port (`DJIIntegration`, SHELL-02) listens here.
     @ObservationIgnored var onSightings: (([DJISighting]) -> Void)?
     @ObservationIgnored var onStage: ((DJIConnectionStage, String?) -> Void)?
@@ -118,8 +117,8 @@ final class CameraSession {
     private(set) var isVerticalPicture = false
     /// OpenZCine `NativeAppModel.liveSignalBars` — 0–4 from `LinkSignalBars` + link-health score.
     var liveSignalBars = 0
-    @ObservationIgnored private var frameRate = FrameRateSampler()
-    @ObservationIgnored private var signalBarsFilter = LinkSignalBars()
+    /// The shared chip word, rate and bars (A5-17).
+    @ObservationIgnored private var linkMeter = MonitorLinkMeter()
     @ObservationIgnored private var lastGoodFrameAt: Date?
     @ObservationIgnored private var consecutiveBadLiveFrames = 0
     @ObservationIgnored private var lastDecoderErrorCount = 0
@@ -132,7 +131,11 @@ final class CameraSession {
     private var firstPictureFormatPoked: Bool { firstPictureFormat.snapshot.poked }
     /// One `0x09/0xa8` write in flight. Overlapping enables are a black well.
     @ObservationIgnored private var incidentSessionActive = false
-    @ObservationIgnored private var incidentPrevious: (at: Double, counts: [Int])?
+    /// This session's hold on the reporting camera path, from connect start until disconnect.
+    @ObservationIgnored private var cameraPathLease: ReliabilityCameraPathLease?
+    @ObservationIgnored private var incidentSessionSource: FeedIncidentSessionSource?
+    @ObservationIgnored private var incidentAssistState: String?
+    @ObservationIgnored private var incidentRateSampler = FeedIncidentRateSampler()
     @ObservationIgnored private var incidentSocketGeneration = 0
     @ObservationIgnored var incidentSettingsCovered = false
 
@@ -159,6 +162,8 @@ final class CameraSession {
         gimbal.lastThrowAt.map { Date().timeIntervalSince($0) }
     }
     @ObservationIgnored private var feedWatchdog = FeedWatchdog()
+    /// Gating inputs of the last watchdog pass, for incidents (PI-2E slow -12903 recovery).
+    @ObservationIgnored private var watchdogGate: FeedIncidentWatchdogGate?
     @ObservationIgnored private var lastFeedFreezeLogAt: Date?
     @ObservationIgnored lazy var pictureRecovery = makePictureRecovery()
     @ObservationIgnored private var liveViewSource: DjiAppleLiveViewScope?
@@ -197,7 +202,6 @@ final class CameraSession {
     @ObservationIgnored private let log = Logger(
         subsystem: "com.opencapture.openpocketcine", category: "session")
     @ObservationIgnored private var scanTask: Task<Void, Never>?
-    @ObservationIgnored private var scanHintTask: Task<Void, Never>?
     @ObservationIgnored private lazy var connectionRun = makeConnectionRun()
     #if DEBUG
         @ObservationIgnored var connectionNativePeers: ConnectionNativePeers?
@@ -206,11 +210,19 @@ final class CameraSession {
         /// Recipe/repair timing is the immutable pictureRecoveryTiming passed at init.
         @ObservationIgnored var liveViewDonorTiming: DjiApplePictureRecoveryTiming?
     #endif
+    /// This session's one camera hotspot owner, kept across reconnects: a retry or cleanup
+    /// never reaches the OS while an earlier join is still pending there.
+    @ObservationIgnored private let cameraHotspot = CameraHotspotSystem()
+    private var networkHost: DjiAppleTransportHost {
+        var host = DjiAppleTransportHost.pocket
+        host.hotspot = cameraHotspot.host
+        return host
+    }
     private var connectionTransport: DjiAppleConnectionTransport {
         #if DEBUG
             if let trace = connectionNativePeers { return trace.transport }
         #endif
-        return .init(bluetooth: ble, host: .pocket)
+        return .init(bluetooth: ble, host: networkHost)
     }
     private var connectionTiming: DjiAppleConnectionTiming {
         #if DEBUG
@@ -486,6 +498,9 @@ final class CameraSession {
     /// After a local res+fps / color SET, ignore subscribe snapshots that have not caught up.
     /// FORMAT sheet: skip reseat while `0x02/0x18` is in flight.
     var isFormatPinActive: Bool { editorReconciliation.hasFormat }
+    var nativeISOCapabilities: CaptureNativeISOCapabilities {
+        connectedCamera?.model.captureProfile?.nativeISO ?? .init()
+    }
     /// Requested white balance remains separate from actual camera status.
     var pendingWhiteBalance: WhiteBalance? {
         access(keyPath: \.pendingWhiteBalance)
@@ -663,9 +678,7 @@ final class CameraSession {
         isReconnecting = id != nil
         phase = .scanning
         found = []
-        scanLooksEmpty = false
         scanTask?.cancel()
-        scanHintTask?.cancel()
         scanTask = Task {
             guard await ble.waitUntilPoweredOn(), !Task.isCancelled else {
                 if !Task.isCancelled {
@@ -673,12 +686,6 @@ final class CameraSession {
                     phase = .failed(ble.unavailableReason)
                 }
                 return
-            }
-            scanHintTask = Task {
-                try? await Task.sleep(for: .seconds(20))
-                guard !Task.isCancelled, phase == .scanning, found.isEmpty else { return }
-                ControlLiveLog.line("ble: no camera after 20 s of scanning \(ble.stateSummary)")
-                scanLooksEmpty = true
             }
             for await camera in ble.scan() {
                 if Task.isCancelled { break }
@@ -710,7 +717,6 @@ final class CameraSession {
             return
         }
         scanTask?.cancel()
-        scanHintTask?.cancel()
         ble.stopScan()
         if phase == .scanning { phase = .idle }
     }
@@ -753,14 +759,13 @@ final class CameraSession {
             guard isCurrent() else { return nil }
             cameraReportedCapture = CameraStatus()
         }
-        AppDiagnostics.reporting.setCameraSessionActive(true)
+        if cameraPathLease == nil { cameraPathLease = AppDiagnostics.reporting.beginCameraPath() }
         guard isCurrent() else { return nil }
         LocalVPNNotice.app.noteIfActive()
         guard isCurrent() else { return nil }
         LocalNetworkAccess.requestEarly()
         guard isCurrent() else { return nil }
         scanTask?.cancel()
-        scanHintTask?.cancel()
         abortInFlightRun(preserveDecoder: preserveMonitor, recoveryAttempt: recoveryAttempt)
         guard isCurrent() else { return nil }
         reconnectTarget = nil
@@ -790,10 +795,14 @@ final class CameraSession {
         cameraReportedCapture = CameraStatus()
         // Before the link closes: do not leave the camera on Fast for the next session.
         gimbal.restorePrepNow()
-        AppDiagnostics.reporting.setCameraSessionActive(false)
-        AppDiagnostics.incidents.endSession(now: ProcessInfo.processInfo.systemUptime)
+        cameraPathLease?.end()
+        cameraPathLease = nil
+        let outgoingIncidentSource = incidentSessionSource
+        incidentSessionSource = nil
+        incidentAssistState = nil
+        outgoingIncidentSource?.endSession(now: ProcessInfo.processInfo.systemUptime)
         incidentSessionActive = false
-        incidentPrevious = nil
+        incidentRateSampler.reset()
         reconnectTarget = nil
         connectionTargetID = nil
         isReconnecting = false
@@ -943,7 +952,12 @@ final class CameraSession {
         }
         guard isCurrent() else { return }
         if !preserveSoftAP, let ssid = joinedSSID {
-            DjiAppleWiFiJoiner.leave(ssid: ssid)
+            // The control exchange is retired above; a later connect advances its generation,
+            // so a removal still queued behind a pending join then never runs.
+            let retired = controlGeneration
+            DjiAppleWiFiJoiner.leave(ssid: ssid, host: networkHost) { [weak self] in
+                self?.controlGeneration == retired
+            }
             guard isCurrent() else { return }
             joinedSSID = nil
         }
@@ -1807,6 +1821,7 @@ final class CameraSession {
     }
 
     func setIsoLimit(_ limit: IsoLimit) {
+        guard nativeISOCapabilities.ceiling == true else { return }
         let previous = status.isoLimit
         let pin = editorReconciliation.holdIsoLimit(limit)
         status.isoLimit = limit
@@ -1868,6 +1883,7 @@ final class CameraSession {
     }
 
     func refreshIsoLimit() async {
+        guard nativeISOCapabilities.ceiling == true else { return }
         guard IsoLimit.shouldGet(colorMode: status.colorMode) else { return }
         cameraSettings.refreshIsoLimit()
         await cameraSettings.waitForPending()
@@ -1995,6 +2011,7 @@ final class CameraSession {
     private func hopNativeISO(from: ColorMode?, to: ColorMode) { hopNativeISO(from: from, to: to, suppliedAdmission: nil) }
 
     private func hopNativeISO(from: ColorMode?, to: ColorMode, suppliedAdmission admission: DJICommandAdmission?) {
+        guard nativeISOCapabilities.hop == true else { return }
         guard admission?.admits(commandOwner) ?? true else { return }
         guard
             let next = CamCapIso.nativeISOHop(
@@ -2355,28 +2372,26 @@ final class CameraSession {
         let previousRes = status.videoResolution
         let previousFps = status.fps
         let previousShutter = status.shutterDenom
-        let angle =
-            ShutterAngle.rematchesFormat(
-                usesAngle: OperatorPrefs.shutterUsesAngle, manual: status.expoMode == .manual,
-                isPhoto: status.isPhoto, previousFps: previousFps, nextFps: format.frameRate.fps,
-                alreadyPending: editorReconciliation.requestedFormatAngle != nil)
-            ? editorReconciliation.requestedFormatAngle ?? OperatorPrefs.shutterAngleDegrees : nil
+        let rematch = ShutterAngle.formatRematch(
+            degrees: editorReconciliation.requestedFormatAngle ?? OperatorPrefs.shutterAngleDegrees,
+            usesAngle: OperatorPrefs.shutterUsesAngle, manual: status.expoMode == .manual,
+            isPhoto: status.isPhoto, previousFps: previousFps, nextFps: format.frameRate.fps,
+            available: status.availableShutterDenoms,
+            alreadyPending: editorReconciliation.requestedFormatAngle != nil)
         editorReconciliation.advanceFormatGeneration()
         let requestGeneration = editorReconciliation.formatGeneration
         let modeGeneration = editorReconciliation.captureGeneration
         let sessionGeneration = controlGeneration
         // The dependent shutter has a bounded confirmation window beyond the
         // normal two-second FORMAT projection; no separate command task owns it.
-        editorReconciliation.holdFormat(format, shutterAngle: angle)
+        editorReconciliation.holdFormat(format, shutterAngle: rematch?.degrees)
         var next = status
         next.videoResolution = format.resolution
         next.videoFormat = format
         next.fps = format.frameRate.fps
-        if let angle {
-            let denom = ShutterAngle.denom(
-                degrees: angle, fps: next.fps, available: next.availableShutterDenoms)
-            editorReconciliation.pinExpo(shutter: denom)
-            next.shutterDenom = denom
+        if let rematch {
+            editorReconciliation.pinExpo(shutter: rematch.denom)
+            next.shutterDenom = rematch.denom
         }
         status = next
         fireCamera(
@@ -3011,91 +3026,77 @@ final class CameraSession {
 
     private func beginFeedIncidentSession(cameraFamily: String) {
         incidentSessionActive = true
-        incidentPrevious = nil
-        let info = Bundle.main.infoDictionary ?? [:]
-        AppDiagnostics.incidents.beginSession(
-            FeedIncidentSessionContext(
-                sessionID: UUID().uuidString,
-                appVersion: info["CFBundleShortVersionString"] as? String ?? "unknown",
-                appBuild: info["CFBundleVersion"] as? String ?? "unknown",
-                sourceRevision: info["OPCSourceRevision"] as? String ?? "unknown",
-                osName: "iOS", osVersion: UIDevice.current.systemVersion,
-                hardwareClass: DiagnosticCenter.machineIdentifier,
-                cameraFamily: cameraFamily,
-                testSource: AppDiagnostics.origin.currentTestSource(),
-                buildIdentity: AppDiagnostics.origin.currentBuildIdentity()))
+        incidentRateSampler.reset()
+        incidentAssistState = nil
+        incidentSessionSource = AppDiagnostics.incidents.beginBoundSession(
+            AppDiagnostics.incidents.sessionContext(cameraFamily: cameraFamily))
     }
 
     func recordFeedBreadcrumb(_ kind: FeedIncidentBreadcrumbKind, detail: String = "") {
-        AppDiagnostics.incidents.recordBreadcrumb(
+        incidentSessionSource?.recordBreadcrumb(
             FeedIncidentBreadcrumb(
                 monotonicAt: ProcessInfo.processInfo.systemUptime, kind: kind, detail: detail))
     }
 
     private func recordFeedRepair(_ action: String, phase: FeedRepairPhase, reason: String? = nil) {
-        AppDiagnostics.incidents.recordRepair(
+        recordFeedRepair(action, phase: phase, reason: reason, source: incidentSessionSource)
+    }
+
+    private func recordFeedRepair(_ action: String, phase: FeedRepairPhase, reason: String?,
+        source: FeedIncidentSessionSource?) {
+        source?.recordRepair(
             FeedRepairRecord(
                 monotonicAt: ProcessInfo.processInfo.systemUptime, action: action, phase: phase,
                 reason: reason))
     }
 
     private func publishFeedIncidentSnapshot() {
-        guard incidentSessionActive else { return }
+        guard incidentSessionActive, let incidentSource = incidentSessionSource else { return }
         let now = ProcessInfo.processInfo.systemUptime
         let wall = Date()
-        let decode = decoder.incidentDecodeSnapshot
-        let counts = [
-            datalink?.videoPackets ?? 0, datalink?.accessUnits ?? 0,
-            decode.submitted, decode.accepted, decode.output, decode.assistOutput,
-            decoder.incidentPresentations, datalink?.incidentACKs ?? 0,
-        ]
-        let previous = incidentPrevious
-        let elapsed = previous.map { now - $0.at } ?? 0
-        let rates = counts.enumerated().map { index, count -> Double in
-            guard let previous, elapsed > 0 else { return 0 }
-            return Double(max(0, count - previous.counts[index])) / elapsed
+        let assistState = decoder.effects.replacesIdentityFeed ? "replacement" : "identity"
+        if incidentAssistState != assistState {
+            incidentAssistState = assistState
+            incidentSource.recordBreadcrumb(
+                .init(monotonicAt: now, kind: .assistChange, detail: assistState))
         }
-        incidentPrevious = (now, counts)
-        let currentError = decoder.isDecoderWedged
-        AppDiagnostics.incidents.noteDecoderGeneration(decoder.sourceFrameGeneration)
-        AppDiagnostics.incidents.ingestSnapshot(
+        incidentSource.noteTestSource(AppDiagnostics.origin.currentTestSource())
+        let decode = decoder.incidentDecodeSnapshot
+        let rates = incidentRateSampler.sample(
+            now: now,
+            counts: .init(
+                packet: datalink?.videoPackets, accessUnit: datalink?.accessUnits,
+                decodeSubmit: decode.submitted, decodeAccept: decode.accepted,
+                decodedOutput: decode.output,
+                assistOutput: decode.assistOutput, present: decoder.incidentPresentations,
+                ack: datalink?.incidentACKs),
+            epoch: .init(
+                decoderGeneration: decoder.sourceFrameGeneration,
+                socketGeneration: incidentSocketGeneration,
+                processedPresentation: decoder.effects.replacesIdentityFeed))
+        incidentSource.noteDecoderGeneration(decoder.sourceFrameGeneration)
+        incidentSource.ingestSnapshot(
             FeedIncidentSnapshot(
                 monotonicNow: now, wallClock: wall,
-                rates: FeedIncidentRates(
-                    packetHz: rates[0], accessUnitHz: rates[1],
-                    decodeSubmitHz: rates[2], decodeAcceptHz: rates[3], decodedOutputHz: rates[4],
-                    assistOutputHz: rates[5], presentHz: rates[6], ackHz: rates[7]),
+                rates: rates,
                 ages: FeedIncidentAges(
-                    packetAge: datalink?.lastVideoPacketAt.map { wall.timeIntervalSince($0) },
-                    accessUnitAge: datalink?.lastAccessUnitAt.map { wall.timeIntervalSince($0) },
+                    packetAge: FeedIncidentRateSampler.age(
+                        since: datalink?.lastVideoPacketAt, now: wall),
+                    accessUnitAge: FeedIncidentRateSampler.age(
+                        since: datalink?.lastAccessUnitAt, now: wall),
                     decodeAcceptAge: decode.acceptedAge, decodedOutputAge: decode.outputAge,
                     assistOutputAge: decode.assistOutputAge,
-                    presentAge: decoder.monitorPresentedAt.map { wall.timeIntervalSince($0) },
-                    statusAge: datalink?.lastStatusAt.map { wall.timeIntervalSince($0) },
-                    sendErrorAge: datalink?.lastSendError.map { wall.timeIntervalSince($0.at) },
+                    presentAge: FeedIncidentRateSampler.age(
+                        since: decoder.monitorPresentedAt, now: wall),
+                    statusAge: FeedIncidentRateSampler.age(
+                        since: datalink?.lastStatusAt, now: wall),
+                    sendErrorAge: FeedIncidentRateSampler.age(
+                        since: datalink?.lastSendError?.at, now: wall),
                     sendErrorCode: datalink?.lastSendError?.code,
-                    uplinkReplyAge: datalink?.lastSelfieFlipReplyAt.map {
-                        wall.timeIntervalSince($0)
-                    }),
+                    uplinkReplyAge: FeedIncidentRateSampler.age(
+                        since: datalink?.lastSelfieFlipReplyAt, now: wall)),
                 queue: datalink.map { FeedIncidentQueue($0.incidentQueue) } ?? FeedIncidentQueue(),
-                decoder: FeedIncidentDecoder(
-                    generation: decoder.sourceFrameGeneration,
-                    formatGeneration: decoder.vtRebuildCount,
-                    codec: decoder.incidentCodec,
-                    width: Int(decoder.pictureSize.width), height: Int(decoder.pictureSize.height),
-                    lastStatus: decoder.lastDecodeStatus, lastFlags: decoder.lastDecodeFlags,
-                    origin: decoder.lastDecodeOrigin == "submit"
-                        ? .sync
-                        : FeedDecoderErrorOrigin(rawValue: decoder.lastDecodeOrigin) ?? .none,
-                    errorClass: currentError ? "nativeDecoder" : nil,
-                    errorCount: decoder.decoderErrors,
-                    decoderFailed: currentError,
-                    errorAge: decoder.lastDecodeErrorAt.map { wall.timeIntervalSince($0) },
-                    receivedIrap: decoder.sawKeyframe,
-                    awaitingIrap: decoder.awaitingIDR,
-                    hasDecodableReferences: decoder.canReleaseIDRHold,
-                    lastIrapAge: decoder.lastIrapAt.map { wall.timeIntervalSince($0) },
-                    lastSuccessfulOutputAge: decode.outputAge),
+                decoder: decoder.incidentDecoder(wall: wall),
                 lifecycle: FeedIncidentLifecycle(
                     foreground: gimbalControlSceneActive, settingsCovered: incidentSettingsCovered,
                     playbackActive: status.inPlayback || isBrowsingMedia,
@@ -3109,7 +3110,8 @@ final class CameraSession {
                     outputObservable: decoder.videoToolboxActive,
                     presentationExpected: !incidentSettingsCovered),
                 watchdogAction: feedWatchdog.stage.rawValue,
-                ingress: datalink?.incidentIngress))
+                ingress: datalink?.incidentIngress,
+                watchdogGate: watchdogGate))
     }
 
     private func publishPipelineStats() {
@@ -3544,8 +3546,21 @@ final class CameraSession {
     }
 
     private func applyFeedWatchdog() {
-        if needsForegroundRecover { return }
-        if datalink?.isRebuilding == true || pictureRecovery.isBusy { return }
+        let pathReady = cameraPathReady()
+        let repairReady =
+            decoder.isDisplayReady && !isBrowsingMedia && !status.inPlayback
+            && !liveViewHistory.gateInFlight
+        let shellHold: String? =
+            if needsForegroundRecover { "foregroundRecover" }
+            else if datalink?.isRebuilding == true { "endpointRebuild" }
+            else if pictureRecovery.isBusy { "repairInFlight" }
+            else { nil }
+        if let shellHold {
+            watchdogGate = FeedIncidentWatchdogGate(
+                pathReady: pathReady, repairReady: repairReady,
+                outputExpected: decoder.nativeOutputExpected, hold: shellHold)
+            return
+        }
         #if DEBUG
         let now = liveViewDonorDate()
         #else
@@ -3561,7 +3576,7 @@ final class CameraSession {
             lastAccessUnitAge: datalink?.lastAccessUnitAt.map { now.timeIntervalSince($0) },
             lastStatusAge: datalink?.lastStatusAt.map { now.timeIntervalSince($0) },
             flowHealthy: datalink?.isFlowHealthy ?? false,
-            pathReady: cameraPathReady(),
+            pathReady: pathReady,
             hasFormat: decoder.hasFormat,
             decoderFailed: decoder.isDecoderWedged || decoder.displayLayer.status == .failed,
             live: live,
@@ -3584,11 +3599,13 @@ final class CameraSession {
             decoderOutputExpected: decoder.nativeOutputExpected,
             referenceRecoveryNeeded: decoder.referenceRecoveryNeeded,
             secondsSinceLastIrap: decoder.lastIrapAt.map { now.timeIntervalSince($0) },
-            repairReady: decoder.isDisplayReady && !isBrowsingMedia && !status.inPlayback
-                && !liveViewHistory.gateInFlight
+            repairReady: repairReady
         )
         let watchdogBeforeTick = feedWatchdog
         let action = feedWatchdog.tick(snap)
+        watchdogGate = FeedIncidentWatchdogGate(
+            pathReady: pathReady, repairReady: repairReady,
+            outputExpected: snap.decoderOutputExpected, hold: feedWatchdog.lastHold?.rawValue)
         let recovering = feedWatchdog.isRecovering || pictureRecovery.isBusy
         if recovering != feedRecovering { feedRecovering = recovering }
         switch action {
@@ -3685,6 +3702,7 @@ final class CameraSession {
             ControlLiveLog.line("recovery: action=decoder effect=requested reason=\(reason)")
             logFeedObserve(snap: snap, watchdog: action)
             let pictureOwner = cameraMedia.resumeID
+            let repairIncidentSource = incidentSessionSource
             startFeedRecovery { [weak self] attempt in
                 guard let self, attempt.isCurrent, self.isLivePictureRepairCurrent(pictureOwner) else { return }
                 let result = await attempt.repairNativeOutput(referenceLossOnly: referenceLossOnly,
@@ -3694,20 +3712,20 @@ final class CameraSession {
                 case .unspent:
                     self.feedWatchdog = watchdogBeforeTick
                 case .blockedReadiness:
-                    self.recordFeedRepair("decoder", phase: .blocked, reason: "notReady")
+                    self.recordFeedRepair("decoder", phase: .blocked, reason: "notReady", source: repairIncidentSource)
                     ControlLiveLog.line("recovery: action=decoder effect=blocked reason=notReady")
                 case .restored:
-                    self.recordFeedRepair("decoder", phase: .pictureRestored, reason: "outputResumed")
+                    self.recordFeedRepair("decoder", phase: .pictureRestored, reason: "outputResumed", source: repairIncidentSource)
                     ControlLiveLog.line("recovery: action=decoder effect=freshPicture reason=outputResumed")
                     self.feedWatchdog = FeedWatchdog()
                 case .presentationOnly:
-                    self.recordFeedRepair("decoder", phase: .blocked, reason: "presentationOnly")
+                    self.recordFeedRepair("decoder", phase: .blocked, reason: "presentationOnly", source: repairIncidentSource)
                     ControlLiveLog.line("recovery: action=decoder effect=blocked reason=presentationOnly")
                     self.feedWatchdog = FeedWatchdog()
                 case .fullRejoinRequired:
-                    AppDiagnostics.incidents.noteExhausted(now: ProcessInfo.processInfo.systemUptime)
+                    repairIncidentSource?.noteExhausted(now: ProcessInfo.processInfo.systemUptime)
                     ControlLiveLog.line("recovery: action=decoder effect=exhausted reason=pictureDeadline")
-                    self.recordFeedRepair("rejoin", phase: .requested, reason: "pictureDeadline")
+                    self.recordFeedRepair("rejoin", phase: .requested, reason: "pictureDeadline", source: repairIncidentSource)
                     await self.rejoinDatalinkKeepingLive(attempt: attempt)
                 case .endpointRepair, .superseded: break
                 }
@@ -3763,14 +3781,13 @@ final class CameraSession {
 
     private func resetLinkHealthMeasurements(ifCurrent: () -> Bool = { true }) {
         guard ifCurrent() else { return }
-        frameRate = FrameRateSampler()
-        signalBarsFilter = LinkSignalBars()
+        linkMeter = MonitorLinkMeter()
         lastGoodFrameAt = nil
         consecutiveBadLiveFrames = 0
         lastDecoderErrorCount = 0
         lastReceiveErrorCount = 0
         recentKeepaliveFailures = 0
-        liveFPS = "\u{2014}"
+        liveFPS = MonitorLinkMeter.idle
         guard ifCurrent() else { return }
         liveSignalBars = 0
         guard ifCurrent() else { return }
@@ -3821,9 +3838,7 @@ final class CameraSession {
                 }
             }
         }
-        let before = frameRate.displayFPS
-        frameRate.recordFrame(at: Date.timeIntervalSinceReferenceDate)
-        if frameRate.displayFPS != before {
+        if linkMeter.notePresented(at: Date.timeIntervalSinceReferenceDate) {
             applyLinkPresentation()
         } else {
             refreshFeedWarmup()
@@ -3831,33 +3846,21 @@ final class CameraSession {
     }
 
     func refreshLinkHealth(at timestamp: TimeInterval = Date.timeIntervalSinceReferenceDate) {
-        frameRate.age(at: timestamp)
+        linkMeter.age(at: timestamp)
         noteTransportFailures()
         applyLinkPresentation()
     }
 
     private func applyLinkPresentation(ifCurrent: () -> Bool = { true }) {
         guard ifCurrent() else { return }
-        if sessionRecovery.isRecovering {
-            if liveFPS != SessionRecoveryCopy.heldFrameBadge {
-                liveFPS = SessionRecoveryCopy.heldFrameBadge
-            }
-            guard ifCurrent() else { return }
-            refreshFeedWarmup()
-            return
-        }
-        let measured = frameRate.displayFPS
-        let label = LiveViewLink.fpsChipLabel(
-            connection: phase,
-            recovering: feedRecovering,
-            formattedFPS: frameRate.formatted,
-            measuredFPS: measured
+        linkMeter.update(
+            connection: phase, feedRecovering: feedRecovering,
+            sessionRecovering: sessionRecovery.isRecovering,
+            linkHealthScore: CameraLinkHealthScorer.score(currentLinkHealthInputs()).linkHealthScore
         )
-        if label != liveFPS { liveFPS = label }
+        if linkMeter.label != liveFPS { liveFPS = linkMeter.label }
         guard ifCurrent() else { return }
-        let snapshot = CameraLinkHealthScorer.score(currentLinkHealthInputs())
-        let bars = signalBarsFilter.update(score: snapshot.linkHealthScore)
-        if bars != liveSignalBars { liveSignalBars = bars }
+        if linkMeter.bars != liveSignalBars { liveSignalBars = linkMeter.bars }
         guard ifCurrent() else { return }
         refreshFeedWarmup()
     }
@@ -3873,8 +3876,8 @@ final class CameraSession {
         if !isFeedWarming, decoder.lastPresentedAt != nil { return }
         let next = LiveFeedWarmup.isWarming(
             hasPresentedPicture: decoder.lastPresentedAt != nil,
-            measuredFPS: frameRate.displayFPS,
-            rollingIntervals: frameRate.intervalCount,
+            measuredFPS: linkMeter.measuredFPS,
+            rollingIntervals: linkMeter.rollingIntervals,
             recovering: feedRecovering || pictureRecovery.isBusy,
             secondsSinceLastPresented: decoder.lastPresentedAt.map {
                 Date().timeIntervalSince($0)
@@ -3884,7 +3887,7 @@ final class CameraSession {
     }
 
     private func currentLinkHealthInputs() -> CameraLinkHealthInputs {
-        let measured = frameRate.displayFPS
+        let measured = linkMeter.measuredFPS
         let linkPhase = LiveViewLink.cameraLinkPhase(
             connection: phase,
             recovering: feedRecovering,
@@ -3958,7 +3961,7 @@ final class CameraSession {
             defer {
                 if self.foregroundGeneration == generation { self.foregroundCheckTask = nil }
             }
-            let currentSSID = await DjiAppleWiFiJoiner.currentSSID()
+            let currentSSID = await DjiAppleWiFiJoiner.currentSSID(host: self.networkHost)
             guard !Task.isCancelled, self.foregroundGeneration == generation else { return }
             await self.recoverAfterForeground(currentSSID: currentSSID, pictureOwner: pictureOwner)
         }
@@ -4357,7 +4360,7 @@ final class CameraSession {
         attempt: DjiAppleRecoveryEpisode.Attempt) {
         guard attempt.isCurrent, !isMultiviewBorrowed else { return }
         if case .initialDrop = kind {
-            AppDiagnostics.incidents.noteUnexpectedDisconnect(now: ProcessInfo.processInfo.systemUptime)
+            incidentSessionSource?.noteUnexpectedDisconnect(now: ProcessInfo.processInfo.systemUptime)
             guard attempt.isCurrent else { return }
             recordFeedRepair("session", phase: .requested, reason: String(describing: attempt.trigger))
             guard attempt.isCurrent else { return }
@@ -4552,7 +4555,7 @@ final class CameraSession {
 
     private func wireDatalink(_ dl: DjiAppleDatalink) {
         incidentSocketGeneration += 1
-        AppDiagnostics.incidents.noteSocketGeneration(incidentSocketGeneration)
+        incidentSessionSource?.noteSocketGeneration(incidentSocketGeneration)
         dl.onVideoDiscontinuity = { [weak self, weak dl] in
             guard let self, let dl, self.datalink === dl else { return }
             self.decoder.noteCompressedDiscontinuity()
@@ -4658,13 +4661,19 @@ final class CameraSession {
         _ = datalink?.send(frame)
     }
 
-    func rejoinSoftAPAfterInternetHop() async {
+    func rejoinSoftAPAfterInternetHop(isCurrent: @escaping @MainActor () -> Bool = { true }) async {
         guard connectionSetup == .cameraWiFi, let ssid = cachedSSID ?? joinedSSID,
             let pass = cachedPassword
         else { return }
         let wpa3 = connectedCamera?.model.wpa3 ?? true
-        try? await DjiAppleWiFiJoiner.join(ssid: ssid, passphrase: pass, wpa3: wpa3, host: .pocket)
+        try? await DjiAppleWiFiJoiner.join(ssid: ssid, passphrase: pass, wpa3: wpa3, host: networkHost,
+            isCurrent: isCurrent)
         try? await DjiAppleWiFiJoiner.waitUntilCameraPathReady(timeout: 20, host: .pocket)
+    }
+
+    /// The internet hop's leave, through this session's hotspot owner.
+    func leaveCameraNetwork(ssid: String, isCurrent: @escaping @MainActor () -> Bool) {
+        DjiAppleWiFiJoiner.leave(ssid: ssid, host: networkHost, isCurrent: isCurrent)
     }
 
     func sendEnterPlayback() { datalink?.enterPlayback() }
@@ -4702,6 +4711,20 @@ final class CameraSession {
         library.bind(nil)
         let token = library.actionToken
         try await cameraMedia.clearCache(cameraID: mediaCameraID, preservingCatalog: true)
+        guard library.isCurrent(token), !Task.isCancelled else { return }
+        mediaIOCacheRevision &+= 1
+        library.refreshLocalCache()
+    }
+
+    /// Settings Clear covers every camera bucket under the shared root (A2-33). The current
+    /// camera's library still gets the same reset, unbind and refresh bookkeeping, and the
+    /// revision bump retires the displayed count so the scope recounts from an empty cache.
+    func clearAllCamerasMediaCache() async throws {
+        let library = mediaLibrary
+        cameraMedia.resetSession()
+        library.bind(nil)
+        let token = library.actionToken
+        try await cameraMedia.clearAllCamerasCache()
         guard library.isCurrent(token), !Task.isCancelled else { return }
         mediaIOCacheRevision &+= 1
         library.refreshLocalCache()

@@ -1,6 +1,5 @@
 import OpenCineCameraControls
 import OpenCineAppKitApple
-import Observation
 import AVFoundation
 import Foundation
 import OpenCineAppKit
@@ -83,27 +82,11 @@ struct PocketPlaybackLook: Equatable, Sendable {
     }
 
     func mediaPlaybackRecord(for file: MediaFile) -> MonitorMediaRecord<MediaFile>? {
-        if let record = mediaRecord(for: file) { return record }
-        #if targetEnvironment(simulator)
-            if MonitorMediaReview.isActive, file.path.hasPrefix(MonitorMediaReview.pathPrefix) {
-                // The explicit simulator review accepts its fixture files outside its catalog, with
-                // or without supplied footage: the player's controls work without it, as on main.
-                // A typed local value is not inserted into a camera catalog or local index.
-                let codec = PocketMediaCatalogCodec(
-                    source: { nil }, sourceOwnsFavorites: { false }, shotColor: { _ in nil })
-                return codec.record(file)
-            }
-        #endif
-        return nil
+        mediaRecord(for: file)
     }
 
     func playbackCandidates(_ record: MonitorMediaRecord<MediaFile>) -> [MonitorPlaybackCandidate] {
         let file = record.payload
-        #if targetEnvironment(simulator)
-            if let url = MonitorMediaReview.clipURL(for: file) {
-                return [.cached(.init(url: url, mimeType: "video/mp4", sourceKey: file.path))]
-            }
-        #endif
         var choices: [MonitorPlaybackCandidate] = []
         func cached(_ source: MediaPlaybackSource) -> MonitorPlaybackCandidate {
             .cached(
@@ -175,39 +158,29 @@ struct PocketPlaybackLook: Equatable, Sendable {
     }
 }
 
-/// Bounded native/source construction. Shared operators own the complete page lifetime.
-@MainActor @Observable final class PocketPlaybackPresentationSource {
-    @ObservationIgnored private var currentNative: MonitorApplePlaybackOwner?
-    @ObservationIgnored private var currentAssists: MonitorPlaybackAssistSession?
-    var native: MonitorApplePlaybackOwner? {
-        access(keyPath: \.native); return currentNative
+/// Pocket's camera source for the shared playback host: the page runtime over Pocket's feed,
+/// its authority admission, operations and per-record values.
+@MainActor final class PocketPlaybackPresentationSource: MonitorPlaybackPresentationSource {
+    let presentation: MonitorApplePlaybackPresentation<MediaFile, PocketPlaybackLook>
+    private let model: AppModel
+    init(model: AppModel) {
+        self.model = model
+        presentation = .init(makeFeed: { PlaybackFeedSession() }, audioSession: model.playbackAudioSession,
+            samples: { model.frameSamples }, projectEffects: { $0.playbackFrameEffects },
+            onTapFailure: MediaPlaybackAudioSession.tapFailure,
+            onAudioFailure: MediaPlaybackAudioSession.audioFailure)
     }
-    var assists: MonitorPlaybackAssistSession? {
-        access(keyPath: \.assists); return currentAssists
-    }
-    func makeOwner(model: AppModel) -> MonitorOperatorMediaModel<MediaFile, PocketPlaybackLook> {
-        MonitorOperatorMediaModel(library: model.session.mediaLibrary,
+    func makeOwner() -> MonitorOperatorMediaModel<MediaFile, PocketPlaybackLook> {
+        let model = model
+        return presentation.makeOwner(library: model.session.mediaLibrary,
             recordAdmission: { record in PocketPlaybackAuthority(session: model.session, file: record.payload).admission },
-            makeAdmittedPlayback: { [self] _, admission in
-                currentAssists?.close()
-                guard admission.isCurrent() else { return nil }
-                let native = MonitorApplePlaybackOwner(feed: PlaybackFeedSession())
-                let player = model.session.makeMediaPlayback(native: native,
-                    previousColor: { model.assist.monitorColorMode })
-                let assists = MonitorPlaybackAssistSession(audioSession: model.playbackAudioSession,
-                    native: native, samples: model.frameSamples,
-                    projectEffects: { $0.playbackFrameEffects },
-                    onTapFailure: MediaPlaybackAudioSession.tapFailure,
-                    onAudioFailure: MediaPlaybackAudioSession.audioFailure)
-                guard admission.isCurrent() else { assists.close(); player.close(); return nil }
-                currentNative = native; currentAssists = assists
-                withMutation(keyPath: \.native) {}; withMutation(keyPath: \.assists) {}
-                guard admission.isCurrent() else { assists.close(); player.close(); return nil }
-                return player
+            makePlayback: { native in
+                model.session.makeMediaPlayback(native: native, previousColor: { model.assist.monitorColorMode })
             })
     }
-    func operations(model: AppModel,
+    func operations(
         owner: MonitorOperatorMediaModel<MediaFile, PocketPlaybackLook>) -> MonitorOperatorPlaybackOperations<MediaFile, PocketPlaybackLook> {
+        let model = model
         let cache: (@MainActor (MonitorMediaRecord<MediaFile>) async -> Void)?
         let delete: (@MainActor (MonitorMediaRecord<MediaFile>) async -> Bool)?
         if model.session.canReachCameraMedia {
@@ -233,24 +206,18 @@ struct PocketPlaybackLook: Equatable, Sendable {
                     cameraName: value.cameraName ?? model.assist.monitorCameraName))
         })
     }
-    func values(record: MonitorMediaRecord<MediaFile>, model: AppModel) -> MonitorPlaybackSourceValues {
+    func values(record: MonitorMediaRecord<MediaFile>,
+        owner: MonitorOperatorMediaModel<MediaFile, PocketPlaybackLook>) -> MonitorPlaybackSourceValues {
         let file = record.payload
         let grade = model.session.cacheGrade(for: file)
-        let availability: MonitorPlaybackAvailability
-        #if targetEnvironment(simulator)
-        if MonitorMediaReview.clipURL(for: file) != nil { availability = .original }
-        else { availability = grade == .original ? .original : grade.isProxyOnly ? .proxy : .camera }
-        #else
-        availability = grade == .original ? .original : grade.isProxyOnly ? .proxy : .camera
-        #endif
+        let availability: MonitorPlaybackAvailability =
+            grade == .original ? .original : grade.isProxyOnly ? .proxy : .camera
         let transfer = model.monitorTransfer ?? model.assist.monitorColorMode.map(MonitorTransfer.init)
-        let buffered = currentNative?.player.currentItem?.loadedTimeRanges.map {
-            CMTimeGetSeconds(CMTimeRangeGetEnd($0.timeRangeValue))
-        }.filter(\.isFinite).max()
         return .init(availability: availability,
-            progress: model.session.mediaDownloadProgress[file.path], buffered: buffered,
+            progress: model.session.mediaDownloadProgress[file.path],
             colorLabel: model.session.shotColor(for: file)?.label,
             transfer: transfer,
-            clipByte: transfer.map { model.frameSamples.exposureCeiling.clipByte(transfer: $0) })
+            clipByte: transfer.map { model.frameSamples.exposureCeiling.clipByte(transfer: $0) },
+            bufferedThroughSeconds: presentation.bufferedThroughSeconds(record: record, owner: owner))
     }
 }

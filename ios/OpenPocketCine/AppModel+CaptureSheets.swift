@@ -18,17 +18,16 @@ extension CaptureLists {
 
 extension CaptureQuickSnapshot {
     @MainActor static func primary(_ sheet: CaptureSheet, model: AppModel) -> Self? {
-        let layout = OsmoMonitorPresentation.capabilities(model.session)
+        let controls = model.controlCapabilities
         switch sheet {
-        case .aperture where !layout.iris, .audio where !layout.audio: return nil
+        case .aperture where !controls.iris.isOffered, .audio where !OsmoMonitorPresentation.capabilities(model.session).audio: return nil
         default: break
         }
         // WB shows the pending request over the reported value; other kinds read the same
         // reported status (only WB fields differ).
         var result = primary(
             sheet, status: model.session.whiteBalanceDisplayStatus,
-            cameraModel: model.session.connectedCamera?.model,
-            supportsFocusMode: layout.focus, supportsAperture: layout.iris,
+            controls: controls, cameraModel: model.session.connectedCamera?.model,
             facePriorityExposureEnabled: model.facePriorityExposureEnabled,
             shutterUsesAngle: OperatorPrefs.shutterUsesAngle,
             shutterAngleDegrees: OperatorPrefs.shutterAngleDegrees,
@@ -109,13 +108,15 @@ extension AppModel: CaptureSheetHost {
     var autoExposureLocked: Bool { session.autoExposureLock != nil }
     var autoWhiteBalanceLocked: Bool { session.autoWhiteBalanceLock != nil }
     var canLockAutoWhiteBalance: Bool { session.canLockAutoWhiteBalance }
-    var captureCapabilities: CaptureSheetCapabilities {
-        let layout = OsmoMonitorPresentation.capabilities(session)
-        return CaptureSheetCapabilities(
-            focusMode: layout.focus, aperture: layout.iris, nativeIsoHop: true, isoLimit: true,
-            commonExposureCompensation: true, commonFocusMode: true, audio: audioService != nil,
-            faceMetering: false)
+    var captureRouting: CaptureSheetRouting {
+        .init(commonExposureCompensation: true, commonFocusMode: true)
     }
+    /// The DJI integration's model of the connected body (focus, iris, native ISO extensions,
+    /// audio, face metering), never app literals.
+    var controlCapabilities: ControlCapabilities {
+        OsmoMonitorPresentation.controls(session, codecColor: recordingCodecColor)
+    }
+    var captureCapabilities: CaptureSheetCapabilities { CaptureSheetCapabilities(controls: controlCapabilities) }
     var focusOptions: [FocusOption] { FocusOption.allCases }
     var shutterUsesAngle: Bool {
         get { OperatorPrefs.shutterUsesAngle }

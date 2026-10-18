@@ -70,7 +70,7 @@ used directly for follow-up issues; recording a candidate does not accept it.
 [LiveViewScreen](../../Apps/Android/app/src/main/kotlin/com/opencapture/openpocketcine/LiveViewScreen.kt)
 lines 490–522 invokes `syncAssists` from a Compose `LaunchedEffect`; overlay
 dismissal also calls `redrawLast` at line 851.
-[LiveVulkanSession](../../Apps/Android/app/src/main/kotlin/com/opencapture/openpocketcine/feed/LiveVulkanSession.kt)
+[LiveVulkanSession](../../../OpenCine/Android/native-runtime/src/main/kotlin/com/opencapture/opencine/runtime/NativeVulkanFeedSession.kt)
 lines 170–179 and 224–288 call JNI directly, ending in `nativeRedraw`.
 [opc_vulkan.cpp](../../../OpenCine/Android/vulkan/src/main/cpp/opc_vulkan.cpp) lines 2344–2362
 shares the frame-submit mutex; `renderFrame` at 1733–1759 waits on fences, can
@@ -119,7 +119,7 @@ playing and paused, with LUT-on as a control. Do not lower all playback to 24/30
 [MediaLibraryController](../../Apps/Android/app/src/main/kotlin/com/opencapture/openpocketcine/media/MediaLibraryController.kt)
 lines 313–317 falls back to an original when a proxy is absent.
 [MediaPlaybackScreens](../../Apps/Android/app/src/main/kotlin/com/opencapture/openpocketcine/media/MediaPlaybackScreens.kt)
-lines 453/489 and [PlaybackFeedView](../../Apps/Android/app/src/main/kotlin/com/opencapture/openpocketcine/media/PlaybackFeedView.kt)
+lines 453/489 and [PlaybackFeedView](../../../OpenCine/Android/appkit-native/src/main/kotlin/com/opencapture/opencine/appkitnative/MonitorPlaybackFeedView.kt)
 line 70 propagate actual dimensions. `LiveFeedEffectsSession` lines 116,
 328–329 and 356–363 allocate source and grade targets at those dimensions.
 [FeedPresentPolicy.MAX_WORKING_WIDTH](../../../OpenCine/Android/media/src/main/kotlin/com/opencapture/opencine/media/FeedPresentPolicy.kt)
@@ -179,7 +179,7 @@ and forced live GLES. Shader-cache-dependent duration remains unmeasured.
 
 ### R6: Android scope inspector admission loses its 5 Hz flag
 
-[FeedEffectsRenderPlan](../../Apps/Android/app/src/main/kotlin/com/opencapture/openpocketcine/feed/FeedEffectsRenderPlan.kt)
+[FeedEffectsRenderPlan](../../../OpenCine/Android/appkit/src/main/kotlin/com/opencapture/opencine/appkit/MonitorAssistRenderPlan.kt)
 lines 133–135 creates `inspectorOnly` scope demand.
 [LiveScopeSampleBus](../../../OpenCine/Android/media/src/main/kotlin/com/opencapture/opencine/media/ScopeSampling.kt)
 line 90 encodes its 200 ms interval. However, `LiveFeedEffectsSession` line 193
@@ -246,7 +246,7 @@ lines 70–112 makes four distinct blur/saturation products for seven surface ro
 That is five image-production calls per uncached single-source job, not five
 full-resolution captures. `createCGImage` alone does not prove CPU readback.
 
-Android [MonitorBackdropFeed](../../Apps/Android/app/src/main/kotlin/com/opencapture/openpocketcine/feed/MonitorBackdropFeed.kt)
+Android [MonitorBackdropFeed](../../../OpenCine/Android/native-runtime/src/main/kotlin/com/opencapture/opencine/runtime/NativeBackdropFeed.kt)
 and [InspectorPreviewRenderer](../../Apps/Android/app/src/main/kotlin/com/opencapture/openpocketcine/feed/InspectorPreviewRenderer.kt)
 use the small raw tap, GLES look, readback and bitmap, followed by panel RenderNode
 blurs. Admission, thermal backoff and hidden-source gates already bound work.
@@ -271,7 +271,8 @@ the trail as the prior sampled bundle. Bound pending builds and reuse the prior
 current product when revision/options match, retaining GPU resource lifetime.
 No sustained backlog was measured.
 
-Android [PocketScopeSampler](../../Apps/Android/app/src/main/kotlin/com/opencapture/openpocketcine/feed/PocketScopeSampler.kt)
+Android `PocketScopeSampler` (historical private file; now the shared
+[ScopeSampler](../../../OpenCine/Android/media/src/main/kotlin/com/opencapture/opencine/media/ScopeSampling.kt))
 and scope rasters deserve allocation profiling: a 213×120 tap sampled every two
 pixels yields 6,420 raw point objects, with another mapped list possible for
 VECTOR. That is arithmetic, not observed allocation rate. Preserve the existing

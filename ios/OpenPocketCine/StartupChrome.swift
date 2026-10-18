@@ -132,7 +132,7 @@ extension AppModel {
                 "Leave the camera on. It brings up its own Wi-Fi",
                 "On 5.8 GHz that can take about a minute; we keep trying",
             ],
-            choosing: session.scanLooksEmpty && cameras.nearby.isEmpty
+            choosing: cameras.scanLooksEmpty
                 ? .init(
                     title: StartupConnectionCopy.scanEmptyTitle, icon: .camera,
                     lines: [StartupConnectionCopy.scanEmptyHint])

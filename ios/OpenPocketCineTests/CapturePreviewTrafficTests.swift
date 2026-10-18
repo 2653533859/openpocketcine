@@ -3,6 +3,7 @@ import Network
 import OpenCineCameraControls
 import OpenPocketViewCore
 import SwiftUI
+import OpenCineHostedTestSupport
 import XCTest
 import OpenCineDJIApple
 
@@ -42,11 +43,10 @@ final class CapturePreviewTrafficTests: XCTestCase {
         status.whiteBalanceKelvin = 5600
         status.whiteBalanceTint = 17
         // A body that meters audio: the AUDIO drum comes from its capability projection.
-        model.session.updateMultiview(
-            camera: DjiAppleSighting(
+        let camera = DjiAppleSighting(
                 id: UUID(), name: "OsmoPocket4P-Test",
-                model: .resolve(modelId: 0x22, name: "OsmoPocket4P-Test"), modelId: 0x22),
-            driver: driver, status: status)
+                model: .resolve(modelId: 0x22, name: "OsmoPocket4P-Test"), modelId: 0x22)
+        model.session.updateMultiview(camera: camera, driver: driver, status: status)
 
         for sheet in [CaptureSheet.iso, .audio, .wb] {
             let snapshot = try XCTUnwrap(CaptureQuickSnapshot.primary(sheet, model: model))
@@ -68,19 +68,36 @@ final class CapturePreviewTrafficTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(30))
         }
 
+        // A camera report during a held gesture still reaches the session and the
+        // next readout. Dismissing the frozen preview must not echo that report.
+        let held = try XCTUnwrap(CaptureQuickSnapshot.primary(.wb, model: model))
+        model.captureDrum = CaptureDrumPresentation(
+            id: UUID(), sheet: .wb, snapshot: held, position: Double(held.index))
+        status.whiteBalance = .custom(kelvin: 6500, tint: -8)
+        status.whiteBalanceKelvin = 6500
+        status.whiteBalanceTint = -8
+        model.session.updateMultiview(camera: camera, driver: driver, status: status)
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(model.session.status, status)
+        XCTAssertEqual(CaptureQuickSnapshot.primary(.wb, model: model)?.selection, "6500K")
+        XCTAssertEqual(model.captureDrum?.snapshot.selection, "5600K", "The original gesture owns its frozen preview")
+        XCTAssertEqual(peer.cameraCommands, baseline, "An external report is not a UI command")
+        model.captureDrum = nil
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(peer.cameraCommands, baseline, "Cancel/dismiss must not commit the preview")
+
         // Positive control: the same connected transport must observe an
         // explicit commit, so the zero-traffic assertions cannot pass on a dead sink.
         let snapshot = try XCTUnwrap(CaptureQuickSnapshot.primary(.wb, model: model))
         let value = try XCTUnwrap(snapshot.changedValue(translation: -56, current: snapshot))
         snapshot.apply(value, host: model)
-        let deadline = ContinuousClock.now.advanced(by: .seconds(1))
-        while peer.cameraCommands == baseline, ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        _ = await HostedCondition.wait { peer.cameraCommands != baseline }
         XCTAssertGreaterThan(peer.cameraCommands, baseline)
         // The commit is a pending request; reported status waits for the camera.
-        XCTAssertEqual(model.session.pendingWhiteBalance, .custom(kelvin: 5700, tint: 17))
-        XCTAssertEqual(model.session.status.whiteBalanceKelvin, 5600)
+        XCTAssertEqual(model.session.pendingWhiteBalance, .custom(kelvin: 6600, tint: -8))
+        XCTAssertEqual(model.session.status.whiteBalanceKelvin, 6500)
     }
 }
 

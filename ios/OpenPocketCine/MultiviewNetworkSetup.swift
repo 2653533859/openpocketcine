@@ -1,4 +1,5 @@
 import MonitorUI
+import OpenCineAppKitApple
 import SwiftUI
 
 /// Multiview supplies session ownership to the same wizard used by Add setup.
@@ -32,13 +33,14 @@ struct MultiviewNetworkSetup: View {
                 }
             } else {
                 StationNetworkSetupView(
-                    context: .multiview,
+                    context: .multiview, brand: PocketStationNetwork.brand,
+                    services: PocketStationNetwork.services,
                     cameraSSIDs: Set(model.savedCameras.compactMap(\.lastSSID)),
                     scan: { try await session.scanNetworks(onFound: $0) },
-                    save: { setup, ssid, password in
-                        session.selectNetworkSource(hotspot: setup == .phoneHotspot)
-                        session.selectNetwork(ssid)
-                        session.password = password
+                    save: { network in
+                        session.selectNetworkSource(hotspot: network.hotspot)
+                        session.selectNetwork(network.ssid)
+                        session.password = network.password
                         return await session.configureNetwork()
                     }, errorMessage: session.networkSetupError,
                     close: { if session.networkConfigured { complete() } else { cancel() } })

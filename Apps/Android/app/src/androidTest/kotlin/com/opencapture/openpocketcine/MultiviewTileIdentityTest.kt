@@ -36,6 +36,7 @@ import com.opencapture.monitorui.MultiviewArrangement
 import com.opencapture.monitorui.MultiviewPresentationLayout
 import com.opencapture.monitorui.MultiviewSafeArea
 import com.opencapture.openpocketcine.multiview.MultiviewSession
+import com.opencapture.opencine.appkit.MultiviewStageVisibility
 import com.opencapture.monitorui.MultiviewTileCanvas
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -66,6 +67,7 @@ class MultiviewTileIdentityTest {
         var shownGeneration = -1
         var arrangement by mutableStateOf(MultiviewArrangement.GRID)
         var selected by mutableStateOf(0)
+        var stageVisible by mutableStateOf(true)
         // A small landscape phone: its Center stage strip holds more feeds than it shows, so it scrolls.
         var viewport by mutableStateOf(667f to 375f)
         var safe by mutableStateOf(MultiviewSafeArea())
@@ -76,11 +78,17 @@ class MultiviewTileIdentityTest {
                     stage = MultiviewSession(activity, saveStage = { true })
                     activity.setContent {
                         BoxWithConstraints(Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }) {
+                            // Read the generation here, in the scope whose SideEffect records it: a
+                            // change that only the inner scopes read (the stage visibility) would
+                            // otherwise never re-run that SideEffect, and the wait below could never
+                            // see the composed generation.
+                            val composedGeneration = generation
                             val (width, height) = viewport
                             val scale = constraints.maxWidth / width
                             val layout = MultiviewPresentationLayout.compute(width, height, safe, arrangement, selected)
                             CompositionLocalProvider(LocalDensity provides Density(scale, 1f)) {
                                 Box(Modifier.requiredSize(width.dp, height.dp).background(Color(background))) {
+                                    MultiviewStageVisibility(stageVisible) {
                                     MultiviewTileCanvas(stage.tiles.map { it.id }, layout) { index, _ ->
                                         Box(Modifier.fillMaxSize().semantics {
                                             contentDescription = "Fixture camera ${'A' + index}"
@@ -112,8 +120,9 @@ class MultiviewTileIdentityTest {
                                     }
                                 }
                             }
+                            }
                             SideEffect {
-                                shownGeneration = generation
+                                shownGeneration = composedGeneration
                                 shownLayout = layout
                                 shownScale = scale
                                 expectedSizes = layout.tiles.mapIndexed { index, frame ->
@@ -127,6 +136,14 @@ class MultiviewTileIdentityTest {
                 val originalViews = views.toMap()
                 val originalTextures = textures.toMap()
                 val owners = stage.tiles.map { it.decoder }
+                scenario.onActivity { stageVisible = false; generation++ }
+                await { shownGeneration == generation }
+                instrumentation.waitForIdleSync()
+                scenario.onActivity {
+                    assertEquals(4, created)
+                    assertEquals(0, destroyed, "Covering the stage must retain each native output surface")
+                }
+                scenario.onActivity { stageVisible = true; generation++ }
                 fun verifyPictures() {
                     await { shownGeneration == generation && views.all { (index, view) ->
                         val (width, height) = expectedSizes.getValue(index)

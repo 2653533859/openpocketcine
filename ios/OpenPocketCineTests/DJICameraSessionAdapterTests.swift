@@ -2,6 +2,7 @@ import Foundation
 import Network
 import OpenCineCore
 import OpenPocketViewCore
+import OpenCineHostedTestSupport
 import XCTest
 import OpenCineDJIApple
 
@@ -36,11 +37,38 @@ final class DJICameraSessionAdapterTests: XCTestCase {
         }
     }
 
+    func testAnglePreferenceIsDescribedAsEmulatedInTheCommonSnapshot() throws {
+        let usesAngle = OperatorPrefs.shutterUsesAngle
+        defer { OperatorPrefs.shutterUsesAngle = usesAngle }
+        OperatorPrefs.shutterUsesAngle = true
+        let session = OpenPocketCine.CameraSession(borrowing: HevcDecoder())
+        defer { session.disconnect() }
+        let model = CameraModel.resolve(modelId: 0x22, name: "SIMULATED-Angle")
+        var status = CameraStatus()
+        status.shootingMode = Int(ShootingMode.video.rawValue)
+        status.expoMode = .manual
+        status.shutterDenom = 50
+        status.fps = 25
+        status.availableShutterDenoms = [25, 50, 100]
+        session.updateMultiview(
+            camera: DjiAppleSighting(
+                id: UUID(), name: "SIMULATED-Angle", model: model, modelId: 0x22),
+            driver: nil, status: status)
+        let angle = session.control.current
+        XCTAssertEqual(angle.capabilities[.shutter]?.semantics.implementation, .emulated)
+        XCTAssertEqual(angle.value(of: .shutter).value, .shutter(.angle(180)))
+        XCTAssertEqual(angle.value(of: .shutter).origin, .protocolDerived)
+        OperatorPrefs.shutterUsesAngle = false
+        let duration = session.control.current
+        XCTAssertEqual(duration.capabilities[.shutter]?.semantics.implementation, .native)
+        XCTAssertEqual(duration.value(of: .shutter).value, .shutter(.duration(Rational(1, 50))))
+    }
+
     // MARK: Layout (SHELL-01)
 
     /// The monitor lays out the integration's projection of the connected body; the app adds
-    /// clip delete, clip star and the internet hop, and single view shows the timecode and audio on
-    /// every body, as Pocket main did (Nano included; Multi View reads the declaration).
+    /// clip delete, clip star and the internet hop. Camera capability follows the source;
+    /// the shared single-camera chrome separately reserves its clock slot, including without a counter.
     func testMonitorLayoutIsTheIntegrationProjectionOfTheBody() {
         for (id, name) in [(0x22, "OsmoPocket4P-Test"), (0x19, "OsmoNano-Test")] {
             let session = OpenPocketCine.CameraSession(borrowing: HevcDecoder())
@@ -52,19 +80,18 @@ final class DJICameraSessionAdapterTests: XCTestCase {
             let layout = OsmoMonitorPresentation.capabilities(session)
             var expected = session.control.layout()
             (expected.clipDelete, expected.clipStar, expected.requiresInternetHop) = (true, true, true)
-            expected.timecode = true
             XCTAssertEqual(layout, expected, name)
             XCTAssertEqual(session.control.layout().timecode, id != 0x19, "\(name) declaration")
             XCTAssertEqual(layout.gimbal, model.hasGimbal, name)
             XCTAssertEqual(layout.headTracking, model.hasGimbal, name)
             XCTAssertEqual(layout.focus, model.supportsFocusMode, name)
-            XCTAssertTrue(layout.timecode, name)
+            XCTAssertEqual(layout.timecode, id != 0x19, "\(name) keeps its declared counter capability")
             XCTAssertTrue(layout.audio, name)
         }
         let unknown = OpenPocketCine.CameraSession(borrowing: HevcDecoder())
         XCTAssertFalse(OsmoMonitorPresentation.capabilities(unknown).focus, "no body, no claim")
-        XCTAssertTrue(OsmoMonitorPresentation.capabilities(unknown).timecode)
-        XCTAssertTrue(OsmoMonitorPresentation.capabilities(unknown).audio)
+        XCTAssertFalse(OsmoMonitorPresentation.capabilities(unknown).timecode, "no body, no counter claim")
+        XCTAssertFalse(OsmoMonitorPresentation.capabilities(unknown).audio, "no body, no camera-dependent control")
     }
 
     func testUndeclaredSettingStaysUnknownInsteadOfPretending() {
@@ -276,11 +303,9 @@ final class DJICameraSessionAdapterTests: XCTestCase {
         of operation: OperationID, in session: OpenPocketCine.CameraSession,
         until done: (CommandStage) -> Bool
     ) async throws -> CommandStage? {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
-        while let stage = session.control.receipt(of: operation)?.stage, !done(stage),
-            ContinuousClock.now < deadline
-        {
-            try await Task.sleep(for: .milliseconds(10))
+        _ = await HostedCondition.wait {
+            guard let stage = session.control.receipt(of: operation)?.stage else { return true }
+            return done(stage)
         }
         return session.control.receipt(of: operation)?.stage
     }

@@ -1,6 +1,7 @@
 import Foundation
 import OpenCineAppKit
 import OpenCineCore
+import OpenCineHostedTestSupport
 import OpenCineDJI
 import XCTest
 import OpenCineDJIApple
@@ -32,10 +33,13 @@ final class DJISavedCamerasMigrationTests: XCTestCase {
         defaults.removePersistentDomain(forName: suite)
     }
 
+    /// The golden fixtures ship in the test bundle's resources: a device bundle has no
+    /// source tree, so the `#filePath`-relative lookup only works where the sources do.
     private func fixture(_ name: String) throws -> Data {
-        try Data(
-            contentsOf: URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-                .appending(path: "DJIFixtures/saved-cameras/\(name).json"))
+        let url = try XCTUnwrap(
+            Bundle(for: Self.self).url(forResource: name, withExtension: "json"),
+            "The \(name) fixture must ship in the test bundle")
+        return try Data(contentsOf: url)
     }
 
     private func loaded(_ legacy: String) throws -> SavedCamerasStore {
@@ -335,9 +339,9 @@ final class DJISavedCamerasMigrationTests: XCTestCase {
         XCTAssertEqual(OpenPocketCine.CameraSession.sighting(nameless).modelId, 0x19)
     }
 
-    private func until(_ condition: () -> Bool) async throws {
-        for _ in 0..<500 where !condition() { try await Task.sleep(for: .milliseconds(10)) }
-        XCTAssertTrue(condition())
+    private func until(_ condition: @MainActor @Sendable () -> Bool) async throws {
+        let held = await HostedCondition.wait(until: condition)
+        XCTAssertTrue(held)
     }
 }
 

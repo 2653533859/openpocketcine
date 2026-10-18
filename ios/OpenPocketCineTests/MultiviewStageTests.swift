@@ -1,3 +1,5 @@
+import OpenCineCore
+import OpenCineHostedTestSupport
 import OpenPocketViewCore
 import XCTest
 import OpenCineDJIApple
@@ -33,9 +35,10 @@ import OpenCineDJIApple
             tile.camera = DjiAppleSighting(
                 id: UUID(), name: name,
                 model: .resolve(modelId: nil, name: name), modelId: nil)
-            tile.settings.timecode = nil
+            tile.settings.timecodeValue = nil
             XCTAssertNil(tile.timecodeReadout)
-            tile.settings.timecode = "01:02:03:04"
+            tile.settings.timecodeValue =
+                CameraTimecode(hours: 1, minutes: 2, seconds: 3, frames: 4)
             XCTAssertEqual(tile.timecodeReadout, name.contains("Nano") ? nil : "01:02:03")
         }
     }
@@ -165,10 +168,7 @@ import OpenCineDJIApple
             decoder.reset()
         }
         decoder.handleDecodedFrame(ScopeTestBuffers.makeEdgeBuffer())
-        let deadline = Date().addingTimeInterval(2)
-        while Date() < deadline, decoder.lastPresentedAt == nil {
-            try await Task.sleep(for: .milliseconds(20))
-        }
+        _ = await HostedCondition.wait { decoder.lastPresentedAt != nil }
         XCTAssertNotNil(decoder.lastPresentedAt)
         let camera = DjiAppleSighting(
             id: UUID(), name: "OsmoPocket4P-Test",

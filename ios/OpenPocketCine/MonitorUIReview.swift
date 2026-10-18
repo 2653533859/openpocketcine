@@ -1,9 +1,12 @@
+import OpenCineCore
 import OpenCineDJIApple
 
 #if targetEnvironment(simulator)
     import Foundation
     import MonitorPresentation
+    import OpenCineApple
     import OpenCineCameraControls
+    import OpenCineDJIApple
     import OpenPocketViewCore
 
     /// Deterministic simulator-only presentation fixture. Opt-in environment values
@@ -11,17 +14,16 @@ import OpenCineDJIApple
     /// identities, and never advance the actual connection state machine.
     @MainActor
     enum MonitorUIReview {
-        static var screen: String? { ProcessInfo.processInfo.environment["OPV_UI_REVIEW_SCREEN"] }
-        static var isActive: Bool { screen != nil }
+        /// The shared typed review every app decodes (`ReviewLaunch`). Other switches (body, fit,
+        /// zoom controls, motion) stay raw `OPV_UI_REVIEW_*` keys read below.
+        static var launch: ReviewLaunch? { .current }
+        static var screen: ReviewLaunch.Screen? { launch?.screen }
+        static var isActive: Bool { launch != nil }
         /// The connection state the cameras and pair pages show: `empty`, `saved-nearby`,
         /// `connecting`, `failure`, `add-setup`, `multiview`, `pair-choose`, `pair-approve`,
         /// `pair-join`, `pair-video`, `pair-failure`, `pair-bluetooth`; none is the two saved
         /// cameras, idle.
-        static var state: String {
-            let environment = ProcessInfo.processInfo.environment
-            return environment["OPV_UI_REVIEW_STATE"]
-                ?? (environment["OPV_UI_REVIEW_CONNECTING"] == "1" ? "connecting" : "")
-        }
+        static var state: String { launch?.state ?? "" }
         static let studioID = "00000000-0000-0000-0000-000000000001"
         static let newID = "00000000-0000-0000-0000-000000000003"
 
@@ -71,7 +73,7 @@ import OpenCineDJIApple
 
         #if DEBUG
             static var zoomControls: Bool {
-                screen == "live"
+                screen == .live
                     && ProcessInfo.processInfo.environment["OPV_UI_REVIEW_ZOOM_CONTROLS"]
                         == "1"
             }
@@ -130,21 +132,24 @@ import OpenCineDJIApple
             model.recordConfirmationEnabled = true
             model.portraitFeedAspect =
                 ProcessInfo.processInfo.environment["OPV_UI_REVIEW_FIT"] == "1" ? .fit16x9 : .fill
+            // The one SIMULATED live fixture every app stages (Fixtures/review-live-values.tsv).
+            let live = ReviewLiveValues.simulated
             var status = CameraStatus()
-            status.iso = 1600
+            status.iso = live.iso
             status.isoIndex = .iso1600
-            status.shutterDenom = 50
+            status.shutterDenom = live.shutterDenominator
             status.expoMode = .manual
-            status.whiteBalance = .custom(kelvin: 5600, tint: 0)
-            status.whiteBalanceKelvin = 5600
+            status.whiteBalance = .custom(kelvin: live.whiteBalanceKelvin, tint: 0)
+            status.whiteBalanceKelvin = live.whiteBalanceKelvin
             status.focusMode = .continuous
             status.audioChannel = .stereo
-            status.timecode = "15:39:50:00"
+            status.timecodeValue = CameraTimecode(
+                hours: live.timecodeHours, minutes: live.timecodeMinutes, seconds: live.timecodeSeconds, frames: 0)
             status.colorMode = .dLog2
-            if let raw = ProcessInfo.processInfo.environment["OPV_UI_REVIEW_METERED_EV"],
-                let value = UInt8(raw)
-            {
-                status.meteredEv = EvComp(rawValue: value)
+            if let ev = launch?.meteredEV {
+                // The camera meters in thirds of a stop: the nearest one it could report.
+                status.meteredEv = EvComp(
+                    thirds: min(max(Int((ev * 3).rounded()), EvComp.minThirds), EvComp.maxThirds))
             }
             #if DEBUG
                 if zoomControls {
@@ -156,12 +161,14 @@ import OpenCineDJIApple
                     status.zoomLens = CamFov.lens1x
                 }
             #endif
-            status.batteryPercent = 68
-            status.storageFreeMb = 107 * 1024
-            status.storageTotalMb = 128 * 1024
+            status.batteryPercent = live.batteryPercent
+            status.storageFreeMb = Int(live.storageFreeMebibytes)
+            status.storageTotalMb = Int(live.storageTotalMebibytes)
             status.shootingMode = 1
             status.videoResolution = VideoResolution(rawValue: 0x10)
-            status.fps = 25
+            status.fps = live.framesPerSecond
+            // 4K 25p in the camera's own format codes (live.recordWidth x live.recordHeight).
+            status.videoFormat = VideoFormat(resolution: .p4K, frameRate: .fps25)
             // A real body lists several rates, so reviews show the frame-rate drum
             // with neighbours on both sides of the current 25p.
             status.availableVideoFormats = [
@@ -213,23 +220,85 @@ import OpenCineDJIApple
                 model.session.phase = .failed(StartupConnectionCopy.bluetoothDenied)
             default: break
             }
-            model.isPairingNewCamera = screen == "pair"
-            if screen != "cameras", screen != "pair" {
-                #if DEBUG
-                    if ProcessInfo.processInfo.environment["OPV_UI_REVIEW_COMMON_CONTROLS"] == "1",
-                        let body
-                    {
-                        model.presentSimulatedControls(status: status, body: body)
-                    } else {
-                        model.presentSimulatorPreview()
-                    }
-                #else
+            model.isPairingNewCamera = screen == .pair
+            guard let launch, launch.screen != .cameras, launch.screen != .pair else { return }
+            #if DEBUG
+                if launch.commonControls, let body {
+                    model.presentSimulatedControls(status: status, body: body)
+                } else {
                     model.presentSimulatorPreview()
+                }
+            #else
+                model.presentSimulatorPreview()
+            #endif
+            switch launch.screen {
+            case .settings:
+                if let tab = launch.settingsTab { model.operatorSettingsTab = tab }
+                model.shell.open(.settings)
+            case .chromeEdit: model.beginChromeEditing(model.currentDispMode)
+            case .media, .playback:
+                #if DEBUG
+                    if launch.source == .camera, launch.connected { connectCameraMedia(model.session) }
+                    opensFirstClip = launch.screen == .playback
+                    Task {
+                        do { try await stageMedia(launch, in: model.session) } catch {
+                            assertionFailure("Could not stage the review clips: \(error)")
+                        }
+                        model.shell.open(.media)
+                    }
                 #endif
+            case .cameras, .pair, .live: break
             }
-            if screen == "settings" { model.shell.open(.settings) }
-            if screen == "media" { model.shell.open(.media) }
         }
+
+        #if DEBUG
+            /// `ReviewLaunch(screen: .playback)`: the Media page opens its first clip once, as a tap would.
+            static var opensFirstClip = false
+
+            /// `mediaCount` generated clips (`ReviewClip`) written through the library's own cache
+            /// and catalog, exactly as finished downloads leave them.
+            static func stageMedia(_ launch: ReviewLaunch, in session: CameraSession) async throws {
+                let cache = session.mediaLibrary.cache
+                try await cache.directory.clear(preserving: [])
+                let clip = FileManager.default.temporaryDirectory.appendingPathComponent("ReviewClip.mp4")
+                try await ReviewClip.write(to: clip)
+                let bytes = try Data(contentsOf: clip)
+                // One clip a minute from 2026-09-12 12:00 UTC, named as the camera names them.
+                let names = DateFormatter()
+                names.locale = Locale(identifier: "en_US_POSIX")
+                names.timeZone = TimeZone(identifier: "UTC")
+                names.dateFormat = "'DJI_'yyyyMMddHHmmss"
+                let files = (0..<launch.mediaCount).map { index in
+                    let name = names.string(from: Date(timeIntervalSince1970: 1_789_214_400 + Double(index) * 60))
+                        + String(format: "_%04d_D", index + 1)
+                    return MediaFile(
+                        path: "DCIM/DJI_001/\(name).MP4", thumbPath: "MISC/THM/DJI_001/\(name).scr",
+                        handle: UInt32(index + 1), sizeBytes: UInt64(bytes.count),
+                        durationSeconds: ReviewClip.seconds, resolution: "640x360", fps: 24)
+                }
+                let records = try cache.codec.decode(JSONEncoder().encode(files))
+                for record in records {
+                    for representation in record.asset.representations where representation.role == .original {
+                        if let address = record.address.representations[representation.id] {
+                            try cache.directory.write(bytes, at: address)
+                        }
+                    }
+                }
+                try cache.save(records)
+                // The library loads its catalog once; the next read builds one over the staged clips.
+                session.mediaLibraryOwner?.close()
+                session.mediaLibraryOwner = nil
+                session.mediaLibrary.layout = launch.layout
+            }
+
+            /// A connected camera's media page: the session is live over a datalink that is never
+            /// opened, so the production gallery and player offer camera actions (delete, download)
+            /// while no command reaches a network.
+            static func connectCameraMedia(_ session: CameraSession) {
+                session.datalink = DjiAppleDatalink(port: 0, tcpPoke: false, pairingToken: "")
+                session.phase = .live
+            }
+        #endif
     }
 
     /// Simulator review only: a scripted DJI pipeline, so the shared pages show each connection

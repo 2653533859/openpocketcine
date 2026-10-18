@@ -1,6 +1,9 @@
 import MonitorPresentation
 import MonitorUI
 import OpenCineAppKit
+import Observation
+import OpenCineCore
+import OpenCineHostedTestSupport
 import OpenPocketViewCore
 import SwiftUI
 import XCTest
@@ -10,7 +13,7 @@ import OpenCineDJIApple
 
 @MainActor final class MultiviewPresentationTests: XCTestCase {
     func testUnknownTelemetryDoesNotInventReadings() {
-        let values = MultiviewTelemetryPresentation(settings: CameraStatus())
+        let values = MultiviewTelemetryPresentation(settings: CameraStatus(), power: .unknown)
         XCTAssertEqual(values.iso, "—")
         XCTAssertEqual(values.shutter, "—")
         XCTAssertEqual(values.whiteBalance, "—")
@@ -22,12 +25,30 @@ import OpenCineDJIApple
 
     func testFullStorageAndZeroBatteryRemainRealReadings() {
         var status = CameraStatus()
-        status.batteryPercent = 0
         status.storageTotalMb = 128 * 1024
         status.storageFreeMb = 0
-        let values = MultiviewTelemetryPresentation(settings: status)
+        let values = MultiviewTelemetryPresentation(
+            settings: status, power: PowerStatus(battery: .init(0, origin: .cameraReported, at: nil)))
         XCTAssertEqual(values.battery, "0%")
-        XCTAssertEqual(values.storage, "0 GB")
+        XCTAssertEqual(values.storage, "0 B")
+    }
+
+    /// A5-11: 60e9 free of 128e9 bytes, as the DJI wire carries them (MiB), reads as every surface.
+    func testSharedStorageCaseReadsSixtyGigabytes() {
+        var status = CameraStatus()
+        status.storageFreeMb = 57_220
+        status.storageTotalMb = 122_070
+        XCTAssertEqual(MultiviewTelemetryPresentation(settings: status, power: .unknown).storage, "60 GB")
+    }
+
+    func testCommonPowerOverridesRetainedLegacyBatteryWithoutInventingUnknown() {
+        var status = CameraStatus()
+        status.batteryPercent = 99
+        let gauge = PowerStatus(battery: .init(0.25, origin: .cameraReported, at: nil, precision: .quantized(step: 0.25)))
+        XCTAssertEqual(MultiviewTelemetryPresentation(settings: status, power: gauge).battery, "1/4")
+        XCTAssertEqual(MultiviewTelemetryPresentation(settings: status, power: .unknown).battery, "\u{2014}")
+        let zero = PowerStatus(battery: .init(0, origin: .cameraReported, at: nil))
+        XCTAssertEqual(MultiviewTelemetryPresentation(settings: status, power: zero).battery, "0%")
     }
 
     func testGroupResultAndRecoveryAreVisibleWithoutInventingConnectedCameras() {
@@ -111,8 +132,10 @@ import OpenCineDJIApple
             window.isHidden = true
             window.rootViewController = nil
         }
-        controller.view.layoutIfNeeded()
-        try await Task.sleep(for: .milliseconds(300))
+        _ = await HostedCondition.wait {
+            controller.view.layoutIfNeeded()
+            return displayHosts(in: controller.view).count == 4
+        }
         let originalHosts = displayHosts(in: controller.view)
         XCTAssertEqual(originalHosts.count, 4)
         let identities = Set(originalHosts.map(ObjectIdentifier.init))
@@ -121,6 +144,7 @@ import OpenCineDJIApple
             session.focusedIndex = selected
             controller.view.setNeedsLayout()
             controller.view.layoutIfNeeded()
+            // Negative window: no display host may be replaced within it.
             try await Task.sleep(for: .milliseconds(150))
             XCTAssertEqual(
                 Set(displayHosts(in: controller.view).map(ObjectIdentifier.init)), identities)
@@ -156,8 +180,12 @@ import OpenCineDJIApple
             safeArea: .init(leading: 59, bottom: 21),
             arrangement: .centerStage, selected: 0)
         controller.update(layout: first, roots: roots)
-        controller.view.layoutIfNeeded()
-        try await Task.sleep(for: .milliseconds(150))
+        _ = await HostedCondition.wait {
+            controller.view.layoutIfNeeded()
+            return controller.view.subviews.compactMap { $0 as? UIScrollView }.first.map {
+                $0.contentSize.height > $0.bounds.height
+            } == true
+        }
         let original = try owners()
         let strip = try XCTUnwrap(controller.view.subviews.compactMap { $0 as? UIScrollView }.first)
         XCTAssertGreaterThan(strip.contentSize.height, strip.bounds.height)
@@ -179,10 +207,64 @@ import OpenCineDJIApple
                 arrangement: arrangement, selected: selected)
             controller.update(layout: layout, roots: roots)
             controller.view.layoutIfNeeded()
+            // Negative window: no camera host may change owner within it.
             try await Task.sleep(for: .milliseconds(100))
             XCTAssertEqual(try owners(), original)
             XCTAssertEqual(displayHosts(in: controller.view).count, 4)
             XCTAssertEqual(strip.contentOffset.y, 0, accuracy: 0.01)
+        }
+    }
+
+    /// SIMULATED cameras, actual session constructors and retained UIKit video owners.
+    func testRepeatedViewConstructionCreatesOneActualSessionAndKeepsNativeHosts() async throws {
+        let revision = ConstructorRevision()
+        let recorder = ConstructorRecorder()
+        let model = AppModel()
+        let controller = UIHostingController(rootView:
+            ConstructorHost(revision: revision, recorder: recorder).environment(model))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        func settle(_ predicate: @escaping @MainActor () -> Bool) async {
+            let expected = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                MainActor.assumeIsolated {
+                    controller.view.layoutIfNeeded()
+                    return predicate()
+                }
+            }, object: nil)
+            let result = await XCTWaiter.fulfillment(of: [expected], timeout: 5)
+            XCTAssertEqual(result, .completed)
+        }
+        await settle { recorder.rendered == 0 && displayHosts(in: controller.view).count == 4 }
+        let hosts = Set(displayHosts(in: controller.view).map(ObjectIdentifier.init))
+        XCTAssertEqual(recorder.constructions, 1)
+        for next in 1...3 {
+            revision.value = next
+            await settle { recorder.rendered == next }
+            XCTAssertEqual(recorder.constructions, 1, "Transient View initializers cannot allocate discarded camera owners")
+            XCTAssertEqual(Set(displayHosts(in: controller.view).map(ObjectIdentifier.init)), hosts)
+        }
+    }
+
+    @Observable final class ConstructorRevision { var value = 0 }
+    private final class ConstructorRecorder {
+        var constructions = 0
+        var rendered = -1
+    }
+    private struct ConstructorHost: View {
+        let revision: ConstructorRevision
+        let recorder: ConstructorRecorder
+        var body: some View {
+            MultiviewView(startsSession: false, reviewPictures: true, makeSession: {
+                recorder.constructions += 1
+                return MultiviewUIReview.makeSession(count: 4)
+            })
+            .onAppear { recorder.rendered = revision.value }
+            .onChange(of: revision.value) { _, value in recorder.rendered = value }
         }
     }
 

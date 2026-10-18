@@ -47,6 +47,8 @@ import com.opencapture.opencine.cameracontrols.LiveControlSheet
 import com.opencapture.opencine.cameracontrols.LivePickerHost
 import com.opencapture.opencine.cameracontrols.LiveSheet
 import com.opencapture.opencine.cameracontrols.LockButton
+import com.opencapture.opencine.cameracontrols.MonitorChromeButton
+import com.opencapture.monitorui.LiveChromeMetrics
 import com.opencapture.opencine.vocabulary.CameraStatus
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -58,24 +60,29 @@ import com.opencapture.monitorui.MonitorIcon
 /** Reuses the existing native activity/instrumentation harness; no Compose test dependency. */
 @RunWith(AndroidJUnit4::class)
 class MonitorCaptureInputTest {
-    @Test fun recordHasOnlyShutterActionAndRespectsLock() {
+    @Test fun captureHasOnlyShutterActionAndRespectsLock() {
         ActivityScenario.launch(BackdropRenderActivity::class.java).use { scenario ->
             var shutters = 0
             var enabled by mutableStateOf(true)
             scenario.onActivity { activity ->
                 activity.setContent {
                     Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
-                        RecordButton(recording = false, enabled = enabled, confirm = false, onClick = { shutters++ })
+                        val scope = androidx.compose.runtime.rememberCoroutineScope()
+                        val control = remember(scope) { com.opencapture.opencine.appkit.MonitorControlModel(scope) }
+                        com.opencapture.opencine.appkit.MonitorCaptureButton(control, diameter = LiveChromeMetrics.RECORD,
+                            enabled = enabled, photo = true, confirm = false, takePhoto = { shutters++ })
                     }
                 }
             }
             settle()
-            val target = nativeControlRect(scenario, "Start recording")
-            fun hold() {
+            fun hold(requireAcceptance: Boolean = true) {
+                // Resolve the control immediately before each dispatch: one cached
+                // accessibility rect can go stale while the window settles.
+                val target = nativeControlRect(scenario, "Take photo")
                 val down = SystemClock.uptimeMillis()
-                event(scenario, MotionEvent.ACTION_DOWN, target.center.x, target.center.y, down)
+                event(scenario, MotionEvent.ACTION_DOWN, target.center.x, target.center.y, down, requireAcceptance)
                 SystemClock.sleep(750)
-                event(scenario, MotionEvent.ACTION_UP, target.center.x, target.center.y, down)
+                event(scenario, MotionEvent.ACTION_UP, target.center.x, target.center.y, down, requireAcceptance)
                 settle()
             }
             hold()
@@ -83,13 +90,15 @@ class MonitorCaptureInputTest {
                 assertEquals(1, shutters, "Release uses only the shutter action; no mode shortcut")
             }
             settle()
-            tap(scenario, target)
+            tap(scenario, nativeControlRect(scenario, "Take photo"))
             scenario.onActivity {
                 assertEquals(2, shutters, "Tap still operates shutter")
                 enabled = false
             }
             settle()
-            hold()
+            // Locked: the control retires its pointer-input node entirely, so the host may
+            // drop the events; the outcome is the invariant, not the dispatch acceptance.
+            hold(requireAcceptance = false)
             scenario.onActivity {
                 assertEquals(2, shutters, "Locked or busy control cannot operate shutter")
             }
@@ -108,7 +117,7 @@ class MonitorCaptureInputTest {
                         activity.setContent { NavigationFixture(checkNotNull(model), probe, layoutProbe, tablet) }
                     }
                     awaitReady(scenario, layoutProbe)
-                    for ((label, destination) in listOf("Settings" to ShellModel.Cover.SETTINGS,
+                    for ((label, destination) in listOf("Operator Setup" to ShellModel.Cover.SETTINGS,
                         "Media" to ShellModel.Cover.MEDIA)) {
                         val target = nativeControlRect(scenario, label)
                         val down = SystemClock.uptimeMillis()
@@ -127,7 +136,7 @@ class MonitorCaptureInputTest {
                         // Disabling a mounted control retires its hole without requiring relayout.
                         scenario.onActivity { probe.navigationEnabled = false }
                         settle()
-                        tap(scenario, target)
+                        tap(scenario, nativeControlRect(scenario, label))
                         scenario.onActivity {
                             assertNull(model?.shellState?.cover, "Disabled navigation cannot bypass the backdrop")
                             assertNull(probe.sheet, "The disabled target becomes an outside-dismiss region")
@@ -136,7 +145,7 @@ class MonitorCaptureInputTest {
                         }
                         settle()
                     }
-                    val oldSettings = nativeControlRect(scenario, "Settings")
+                    val oldSettings = nativeControlRect(scenario, "Operator Setup")
                     scenario.onActivity { probe.showsNavigation = false }
                     settle()
                     tap(scenario, oldSettings)
@@ -238,6 +247,8 @@ class MonitorCaptureInputTest {
 
     private fun nativeControlRect(scenario: ActivityScenario<BackdropRenderActivity>, label: String): Rect {
         fun find(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+            // Scope to this app's tree so another window's node cannot satisfy the lookup.
+            if (node.packageName?.toString() != TEST_PACKAGE) return null
             if (node.contentDescription?.toString() == label) return node
             for (index in 0 until node.childCount) {
                 node.getChild(index)?.let { find(it)?.let { found -> return found } }
@@ -281,14 +292,14 @@ class MonitorCaptureInputTest {
     }
 
     private fun event(scenario: ActivityScenario<BackdropRenderActivity>, action: Int,
-        x: Float, y: Float, down: Long) {
+        x: Float, y: Float, down: Long, requireAcceptance: Boolean = true) {
         scenario.onActivity { activity ->
-            dispatchOnHost(activity, action, x, y, down, SystemClock.uptimeMillis())
+            dispatchOnHost(activity, action, x, y, down, SystemClock.uptimeMillis(), requireAcceptance)
         }
     }
 
     private fun dispatchOnHost(activity: BackdropRenderActivity, action: Int, x: Float, y: Float,
-        down: Long, eventTime: Long) {
+        down: Long, eventTime: Long, requireAcceptance: Boolean = true) {
         assertTrue(activity.hasWindowFocus(), "Window must have focus")
         val host = composeHost(activity)
         val windowOrigin = IntArray(2)
@@ -302,8 +313,9 @@ class MonitorCaptureInputTest {
         val event = obtainTouch(down, eventTime, action, screenOrigin[0] + localX, screenOrigin[1] + localY)
         event.offsetLocation(-screenOrigin[0].toFloat(), -screenOrigin[1].toFloat())
         try {
-            assertTrue(host.dispatchTouchEvent(event),
+            if (requireAcceptance) assertTrue(host.dispatchTouchEvent(event),
                 "Compose host must accept $action at $localX,$localY")
+            else host.dispatchTouchEvent(event)
         } finally { event.recycle() }
     }
 
@@ -364,6 +376,14 @@ class MonitorCaptureInputTest {
         Thread.sleep(180)
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
     }
+
+    private companion object {
+        // The app under test, read rather than spelled out: the debug build carries an
+        // applicationIdSuffix, so a literal would stop matching every node.
+        val TEST_PACKAGE: String by lazy {
+            InstrumentationRegistry.getInstrumentation().targetContext.packageName
+        }
+    }
 }
 
 private class InputProbe {
@@ -414,15 +434,16 @@ private fun NavigationFixture(model: AppModel, probe: NavigationProbe, layoutPro
                         // its quick-edit gesture still hides it in the production composition.
                         capturePresented = true, navigationHidden = false, interactive = probe.navigationEnabled,
                         lock = { enabled -> LockButton(false, enabled = enabled, onClick = {}) },
-                        settings = { enabled -> AuxCircleButton(Modifier.monitorPickerPassthrough(enabled), enabled = enabled,
-                            onClick = { model.shell.open(com.opencapture.opencine.appkit.ShellModel.Cover.SETTINGS) }) {
-                            MonitorIcon(MonitorIcon.SETTINGS, "Settings", Modifier.fillMaxSize(), it)
+                        settings = { enabled -> MonitorChromeButton(MonitorIcon.SETTINGS, "Operator Setup",
+                            Modifier.monitorPickerPassthrough(enabled), enabled = enabled) {
+                            model.shell.open(com.opencapture.opencine.appkit.ShellModel.Cover.SETTINGS)
                         } },
-                        media = { enabled -> AuxCircleButton(Modifier.monitorPickerPassthrough(enabled), enabled = enabled,
-                            onClick = { model.shell.open(com.opencapture.opencine.appkit.ShellModel.Cover.MEDIA) }) {
-                            MonitorIcon(MonitorIcon.FILM, "Media", Modifier.fillMaxSize(), it)
+                        media = { enabled -> MonitorChromeButton(MonitorIcon.FILM, "Media",
+                            Modifier.monitorPickerPassthrough(enabled), enabled = enabled) {
+                            model.shell.open(com.opencapture.opencine.appkit.ShellModel.Cover.MEDIA)
                         } },
-                        record = { enabled -> LiveCaptureButton(model, enabled, field.record.width, openMode = {}) },
+                        record = { enabled -> com.opencapture.opencine.appkit.MonitorCaptureButton(model.control,
+                            field.record.width, enabled, openMode = {}) },
                         display = { enabled -> com.opencapture.monitorui.MonitorDisplayButton(false,
                             field.display.width, field.display.height, enabled = enabled, onClick = {}) })
                 }

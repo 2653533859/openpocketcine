@@ -1,1 +1,2 @@
-Fixed an Android live-view crash caused by release shrinking removing ML Kit initialization. Playback pause and buffering fixes are retained. Please reconnect your camera, keep live view running, try face tracking, then test pausing and switching media clips.
+Exposure, shutter angle, storage and recording duration follow camera reports. ISO controls use the camera's declared choices. Please compare readings with your camera, record a short clip, reconnect and return from Media to Live View. Missing measurements are marked unavailable.
+Fixed an Android live-view crash caused by release shrinking removing ML Kit initialization. Playback pause and buffering fixes are retained. Try face tracking, then pause and switch media clips.

@@ -1,24 +1,26 @@
 package com.opencapture.openpocketcine.multiview
 
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import com.opencapture.opencine.vocabulary.CameraStatus
 import com.opencapture.openpocketcine.pairing.lastSSID
+import com.opencapture.openpocketcine.pairing.POCKET_STATION_BRAND
+import com.opencapture.openpocketcine.pairing.asStationNetworks
+import com.opencapture.openpocketcine.pairing.rememberWifiNameAccess
+import com.opencapture.opencine.appkit.StationNetwork
+import com.opencapture.opencine.appkit.StationNetworkSetup
 
 import android.graphics.SurfaceTexture
 import android.view.Surface
 import android.view.TextureView
-import android.view.WindowManager
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -41,7 +43,6 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -57,10 +58,16 @@ import com.opencapture.opencine.appkit.LocalOperatorHaptics
 import com.opencapture.opencine.appkit.MultiviewCameraPicker
 import com.opencapture.opencine.appkit.MultiviewPickerRow
 import com.opencapture.opencine.appkit.MultiviewStage
+import com.opencapture.opencine.appkit.MultiviewStageSurface
+import com.opencapture.opencine.appkit.MultiviewStageStateProvider
+import com.opencapture.opencine.appkit.MultiviewStageServices
+import com.opencapture.opencine.appkit.MultiviewStageServicesProvider
+import com.opencapture.opencine.appkit.MultiviewToolAvailability
+import com.opencapture.opencine.appkit.MultiviewStageVisibility
+import com.opencapture.opencine.appkit.MultiviewNetworkRestore
 import com.opencapture.opencine.appkit.MultiviewStageActions
 import com.opencapture.opencine.appkit.MultiviewStageButton
 import com.opencapture.opencine.appkit.MultiviewTool
-import com.opencapture.opencine.dji.MultiviewNetworkStore
 import com.opencapture.opencine.dji.appearsInMultiview
 import com.opencapture.opencine.dji.hasMultiviewPreview
 import com.opencapture.openpocketcine.AppModel
@@ -79,9 +86,8 @@ private val StageCanvas = MonitorPalette.backgroundDeep
  * persistent tile per camera, the network popup, the camera picker and borrowed Live View.
  */
 @Composable
-fun MultiviewScreen(model: AppModel, onClose: () -> Unit) {
+fun MultiviewScreen(model: AppModel, session: MultiviewSession, onClose: () -> Unit) {
     val context = LocalContext.current
-    val session = remember { MultiviewSession(context) }
     val scope = rememberCoroutineScope()
     var adding by remember { mutableStateOf<MultiviewSession.Tile?>(null) }
     var showNetwork by remember { mutableStateOf(false) }
@@ -94,16 +100,8 @@ fun MultiviewScreen(model: AppModel, onClose: () -> Unit) {
         scope.launch { if (session.closeStage()) close.value() }
     }
 
-    val activity = LocalActivity.current
-    DisposableEffect(session) {
-        session.start()
-        showNetwork = !session.networkConfigured
-        activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        onDispose {
-            if (!model.keepScreenAwake) activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            session.dispose()
-        }
-    }
+    // The stage lives in the model (started by openMultiview, disposed by closeMultiview).
+    LaunchedEffect(session) { showNetwork = !session.networkConfigured }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle, session) {
         val observer = LifecycleEventObserver { _, event ->
@@ -127,12 +125,9 @@ fun MultiviewScreen(model: AppModel, onClose: () -> Unit) {
             borrowed.multiviewExit = { borrowed.shell.close(); liveTile = null }
             onDispose { session.closeLiveView() }
         }
-        BackHandler { liveTile = null }
-        LiveViewScreen(borrowed)
-        return
     }
 
-    BackHandler {
+    BackHandler(enabled = borrowed == null) {
         when {
             session.closing -> Unit
             cameraSettings -> cameraSettings = false
@@ -148,25 +143,14 @@ fun MultiviewScreen(model: AppModel, onClose: () -> Unit) {
         }
     }
 
-    val density = LocalDensity.current
-    val direction = LocalLayoutDirection.current
-    val insets = WindowInsets.safeDrawing
-    val safe = with(density) {
-        MultiviewSafeArea(
-            top = insets.getTop(this).toDp().value,
-            leading = insets.getLeft(this, direction).toDp().value,
-            bottom = insets.getBottom(this).toDp().value,
-            trailing = insets.getRight(this, direction).toDp().value,
-        )
-    }
     val overlayOpen = showNetwork || adding != null || session.closing || cameraSettings
     val haptics = LocalOperatorHaptics.current
 
-    BoxWithConstraints(Modifier.fillMaxSize().background(StageCanvas)) {
-        val layout = MultiviewPresentationLayout.compute(
-            width = maxWidth.value, height = maxHeight.value, safeArea = safe,
-            arrangement = session.layout.arrangement, selected = session.focusedIndex,
-        )
+    // Drawn over the shell: no touch falls through to the camera home underneath.
+    MultiviewStageVisibility(borrowed == null) {
+    MultiviewStageSurface(session.layout.arrangement, session.focusedIndex,
+        Modifier.fillMaxSize().background(StageCanvas).pointerInput(Unit) { detectTapGestures {} }) { viewport ->
+        val layout = viewport.layout
         MultiviewStageContent(
             session, layout, confirmsRecord = model.recordConfirmationEnabled, interactive = !overlayOpen,
             onAdd = { empty -> if (session.networkConfigured) adding = empty else showNetwork = true },
@@ -180,7 +164,7 @@ fun MultiviewScreen(model: AppModel, onClose: () -> Unit) {
             scope = scope,
         ) { tile -> if (tile.liveModel == null) TileFeed(session, tile, session.fill) }
         if (cameraSettings) {
-            MultiviewCameraSettings(session, session.focusedIndex, maxWidth.value, maxHeight.value, safe) {
+            MultiviewCameraSettings(session, session.focusedIndex, viewport.width, viewport.height, viewport.safeArea) {
                 cameraSettings = false
             }
         }
@@ -232,6 +216,12 @@ fun MultiviewScreen(model: AppModel, onClose: () -> Unit) {
         }
     }
 
+    }
+    if (borrowed != null) {
+        BackHandler { liveTile = null }
+        LiveViewScreen(borrowed)
+    }
+
     session.error?.let { message ->
         AlertDialog(
             onDismissRequest = { session.error = null },
@@ -246,12 +236,12 @@ fun MultiviewScreen(model: AppModel, onClose: () -> Unit) {
     if (showLeave) {
         AlertDialog(
             onDismissRequest = { showLeave = false },
-            text = { Text("Close Multiview and return cameras to their own Wi-Fi? Recording continues.") },
+            text = { Text(MultiviewNetworkRestore.CAMERA_NETWORKS.closeQuestion) },
             confirmButton = {
                 TextButton(onClick = {
                     showLeave = false
                     closeStage()
-                }) { Text("Close monitoring") }
+                }) { Text(MultiviewNetworkRestore.CLOSE_ACTION) }
             },
             dismissButton = { TextButton(onClick = { showLeave = false }) { Text("Cancel") } },
         )
@@ -276,6 +266,15 @@ internal fun MultiviewStageContent(
 ) {
     val haptics = LocalOperatorHaptics.current
     val assigned = session.tiles.filter { it.camera != null }
+    // Every assigned tile has both working adapters: the settings panel (which opens that tile's
+    // controls once its link is available and says so otherwise) and its own decoder's Auto LUT plan.
+    val assignedSlots = assigned.map { it.index }.toSet()
+    val services = MultiviewStageServices(
+        MultiviewToolAvailability(cameraSettingsSlots = assignedSlots, pictureLUTSlots = assignedSlots),
+        automaticLUT = true,
+    )
+    MultiviewStageStateProvider(session.presentation) {
+    MultiviewStageServicesProvider(services) {
     MultiviewStage(
         tiles = session.tiles.indices.map { session.stageTile(it) },
         layout = layout, arrangement = session.layout.arrangement, selected = session.focusedIndex,
@@ -324,6 +323,8 @@ internal fun MultiviewStageContent(
             identifier = "multiview.network", action = onNetwork,
         ),
     ) { slot -> picture(session.tiles[slot]) }
+    }
+    }
 }
 
 /** HEVC/AVC → OES → optional Auto LUT → TextureView. Fit/Fill sizes the view, never the decoder. */
@@ -444,8 +445,10 @@ private fun MultiviewNetworkSetup(
     cancel: () -> Unit,
     complete: () -> Unit,
 ) {
-    val saved = remember { session.savedNetworks() }
-    com.opencapture.openpocketcine.pairing.StationNetworkSetup(
+    val saved = remember { session.savedNetworks().asStationNetworks() }
+    StationNetworkSetup(
+        brand = POCKET_STATION_BRAND,
+        wifiNameAccess = rememberWifiNameAccess(),
         savedNetworks = saved,
         currentSsid = session.path::currentSsid,
         hotspotActive = { session.path.address(true) != null },
@@ -457,7 +460,7 @@ private fun MultiviewNetworkSetup(
             if (session.configureNetwork()) null else session.networkSetupError ?: "Could not connect. Try again."
         }, cancel = cancel, complete = complete,
         lockedNetwork = if (session.tiles.any { it.camera != null }) {
-            MultiviewNetworkStore.Network(session.ssid, "", session.usePhoneHotspot)
+            StationNetwork(session.ssid, "", session.usePhoneHotspot)
         } else null,
         warning = session.networkSetupError,
         cameraSsids = cameraSsids,

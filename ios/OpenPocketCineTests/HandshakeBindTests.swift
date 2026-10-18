@@ -2,11 +2,16 @@ import Foundation
 import Network
 import Observation
 import OpenCineDJIApple
+import OpenCineHostedTestSupport
 import UIKit
 import OpenPocketViewCore
 import XCTest
 
 @testable import OpenPocketCine
+
+// Waits in this file end on the loopback peer's or the decoder's own events (HostedCondition or
+// an expectation); every 30 s bound is a hang guard. Fixed sleeps that remain are negative
+// windows ("nothing reaches the peer within it").
 
 /// SIMULATED OS services establish a real public ConnectionRun and bind the actual
 /// loopback native endpoint. The DEBUG registered label supplies host phase only;
@@ -36,7 +41,9 @@ private func establishAdmittedLiveView(_ session: CameraSession, driver: DjiAppl
     let camera = DjiAppleSighting(id: UUID(), name: "SIMULATED admitted live-view",
         model: .resolve(modelId: modelID, name: "SIMULATED admitted live-view"), modelId: modelID)
     session.connect(camera)
-    let registered = ContinuousClock.now.advanced(by: .seconds(2))
+    // Yield, not sleep: the caller's next step must run right after registration, before a
+    // network-driven enable can land (a sleeping poll let one in). The deadline is a hang guard.
+    let registered = ContinuousClock.now.advanced(by: HostedCondition.hangLimit)
     while session.phase != .live, ContinuousClock.now < registered { await Task.yield() }
     XCTAssertEqual(session.phase, .live, "Actual public connection must reach registered before measured recipe")
     XCTAssertTrue(policy.current === driver)
@@ -78,20 +85,15 @@ final class HandshakeBindTests: XCTestCase {
             driver.close()
             peer.stop()
         }
-        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
-        while peer.snapshot.handshakes == 0, ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        _ = await HostedCondition.wait { peer.snapshot.handshakes > 0 }
         XCTAssertGreaterThan(peer.snapshot.handshakes, 0)
+        // Negative window: a short ACK must not register within it.
         try await Task.sleep(for: .milliseconds(150))
         XCTAssertEqual(
             peer.snapshot.registrations, 0, "A short ACK cannot seed registration at sequence 9")
         peer.releaseInitialWindow()
         try await opening.value
-        let registeredDeadline = ContinuousClock.now.advanced(by: .seconds(1))
-        while peer.snapshot.registrations == 0, ContinuousClock.now < registeredDeadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        _ = await HostedCondition.wait { peer.snapshot.registrations > 0 }
         XCTAssertEqual(peer.snapshot.registrationSequences, [0x6008])
     }
 
@@ -111,18 +113,17 @@ final class HandshakeBindTests: XCTestCase {
             await session.refreshAudioState()
             refreshFinished = true
         }
-        let initialDeadline = ContinuousClock.now.advanced(by: .seconds(1))
-        while peer.snapshot.cameraSettings == 0, ContinuousClock.now < initialDeadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        _ = await HostedCondition.wait { peer.snapshot.cameraSettings > 0 }
         XCTAssertGreaterThan(peer.snapshot.cameraSettings, 0)
         let queuedRefresh = Task { await session.refreshAudioState() }
         for _ in 0..<10 { await Task.yield() }
         peer.rejectNewHandshakes()
         let repair = Task { await performEndpointRepair(session, reason: "audio ownership regression") }
+        // Negative window for commands on the unnegotiated endpoint; the retirement itself is awaited.
         try await Task.sleep(for: .milliseconds(350))
         XCTAssertEqual(peer.snapshot.unnegotiatedCommands, 0)
-        XCTAssertTrue(refreshFinished, "Retired audio work must not install another request waiter")
+        let retired = await HostedCondition.wait { refreshFinished }
+        XCTAssertTrue(retired, "Retired audio work must not install another request waiter")
         driver.close()
         repair.cancel()
         refresh.cancel()
@@ -157,15 +158,14 @@ final class HandshakeBindTests: XCTestCase {
         while !waiterInstalled { await Task.yield() }
         peer.rejectNewHandshakes()
         let repair = Task { await performEndpointRepair(session, reason: "command ownership regression") }
-        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
-        while peer.snapshot.handshakes < 2, ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        _ = await HostedCondition.wait { peer.snapshot.handshakes >= 2 }
+        // Negative window for retries on the unnegotiated endpoint; the retirement itself is awaited.
         try await Task.sleep(for: .milliseconds(350))
         XCTAssertEqual(
             peer.snapshot.unnegotiatedCommands, 0,
             "A pre-repair SET must not retry on a new endpoint before negotiation")
-        XCTAssertTrue(waiterFinished, "Old request waiters cannot outlive their wire session")
+        let retired = await HostedCondition.wait { waiterFinished }
+        XCTAssertTrue(retired, "Old request waiters cannot outlive their wire session")
         driver.close()
         repair.cancel()
         waiter.cancel()
@@ -187,10 +187,7 @@ final class HandshakeBindTests: XCTestCase {
         _ = session.pictureRecovery.requestLiveView(
             .initial(pathProven: true, displayAttached: session.decoder.isDisplayReady),
             reason: "first picture")
-        let initialDeadline = ContinuousClock.now.advanced(by: .seconds(1))
-        while peer.snapshot.enables < 1, ContinuousClock.now < initialDeadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        _ = await HostedCondition.wait { peer.snapshot.enables >= 1 }
         XCTAssertEqual(peer.snapshot.enables, 1)
         await performEndpointRepair(session,
             reason: "picture regression", pictureDeadline: .milliseconds(40))
@@ -210,21 +207,16 @@ final class HandshakeBindTests: XCTestCase {
         }
         try await driver.open()
         driver.startLiveView()
-        let initialDeadline = ContinuousClock.now.advanced(by: .seconds(1))
-        while peer.snapshot.enables < 1, ContinuousClock.now < initialDeadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        _ = await HostedCondition.wait { peer.snapshot.enables >= 1 }
         XCTAssertEqual(peer.snapshot.enables, 1)
         peer.rejectNewHandshakes()
         let repair = Task { try await driver.rebuildUDP(reason: "cancel regression") }
-        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
-        while peer.snapshot.handshakes < 2, ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        _ = await HostedCondition.wait { peer.snapshot.handshakes >= 2 }
         XCTAssertGreaterThanOrEqual(peer.snapshot.handshakes, 2)
         driver.keepalive()
         driver.send(Commands.setWhiteBalanceCustom(kelvin: 5600, tint: 0))
         driver.sendUntracked(Commands.setGimbalSpeed(.fast))
+        // Negative window: nothing may reach the peer before negotiation completes.
         try await Task.sleep(for: .milliseconds(40))
         driver.close()
         repair.cancel()
@@ -250,23 +242,13 @@ final class HandshakeBindTests: XCTestCase {
         }
         try await driver.open()
         driver.startLiveView()
-        let firstDeadline = ContinuousClock.now.advanced(by: .seconds(2))
-        while driver.lastStatusAt == nil || peer.snapshot.enables < 1,
-            ContinuousClock.now < firstDeadline
-        {
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        _ = await HostedCondition.wait { driver.lastStatusAt != nil && peer.snapshot.enables >= 1 }
         XCTAssertNotNil(driver.lastStatusAt, "Initial negotiated endpoint receives the peer")
         XCTAssertEqual(peer.snapshot.handshakes, 1)
 
         try await driver.rebuildUDP(reason: "endpoint regression")
         driver.startLiveView()  // the shell owns exactly one enable after repair
-        let repairedDeadline = ContinuousClock.now.advanced(by: .seconds(1))
-        while driver.lastStatusAt == nil || peer.snapshot.enables < 2,
-            ContinuousClock.now < repairedDeadline
-        {
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        _ = await HostedCondition.wait { driver.lastStatusAt != nil && peer.snapshot.enables >= 2 }
         let result = peer.snapshot
         XCTAssertEqual(result.handshakes, 2, "A new local endpoint must renegotiate")
         XCTAssertEqual(result.registrations, 2)
@@ -326,7 +308,7 @@ final class LiveEnableDonorTests: XCTestCase {
         let arrived = expectation(description: "SIMULATED explicit UDP read fence")
         peer.observeNext(probe) { arrived.fulfill() }
         XCTAssertNotEqual(driver.send(probe), 0)
-        await fulfillment(of: [arrived], timeout: 2)
+        await fulfillment(of: [arrived], timeout: 30)
     }
 
     private func recipe(_ frames: [Duml.Frame]) -> [String] {
@@ -507,7 +489,8 @@ final class LiveEnableDonorTests: XCTestCase {
         XCTAssertFalse(session.liveViewDonorHistory.gateInFlight)
         XCTAssertTrue(recipe(oldPeer.snapshot.commands).isEmpty)
         XCTAssertTrue(recipe(newPeer.snapshot.commands).isEmpty)
-        let registered = ContinuousClock.now.advanced(by: .seconds(2))
+        // Yield, not sleep, so B's admission is observed before network-driven work; hang guard only.
+        let registered = ContinuousClock.now.advanced(by: HostedCondition.hangLimit)
         while session.phase != .live, ContinuousClock.now < registered { await Task.yield() }
         XCTAssertEqual(session.phase, .live, "B must finish the same real public admission spine")
         XCTAssertTrue(policy.current === newDriver)
@@ -538,7 +521,7 @@ final class LiveEnableDonorTests: XCTestCase {
         XCTAssertTrue(session.startFeedRecovery { attempt in
             await session.repairDatalink(reason: "SIMULATED initial timing donor", attempt: attempt)
         })
-        await fulfillment(of: [enabled], timeout: 2)
+        await fulfillment(of: [enabled], timeout: 30)
         await clock.settle()
         XCTAssertTrue(session.liveViewDonorHistory.initialAccepted)
         XCTAssertEqual(session.liveViewDonorHistory.locallyAcceptedEnables, 1)
@@ -698,7 +681,7 @@ final class LiveEnableDonorTests: XCTestCase {
         XCTAssertTrue(peer.sendVideo([
             HevcFixture.packet(0, HevcFixture.keyframe),
             HevcFixture.packet(1, HevcFixture.pFrame)]))
-        await fulfillment(of: [output, presented], timeout: 3)
+        await fulfillment(of: [output, presented], timeout: 30)
         XCTAssertGreaterThan(driver.accessUnits, 0)
         XCTAssertNotNil(driver.lastVideoPacketAt)
         XCTAssertNotNil(driver.lastAccessUnitAt)
@@ -741,7 +724,7 @@ final class LiveEnableDonorTests: XCTestCase {
         XCTAssertTrue(peer.sendVideo([
             skippedFragment, HevcFixture.packet(2, HevcFixture.pFrame),
             HevcFixture.packet(3, HevcFixture.pFrame)]))
-        await fulfillment(of: [lost], timeout: 2)
+        await fulfillment(of: [lost], timeout: 30)
         XCTAssertTrue(session.decoder.referenceRecoveryNeeded)
         XCTAssertTrue(session.decoder.awaitingIDR)
         XCTAssertFalse(session.decoder.canReleaseIDRHold)
@@ -845,7 +828,7 @@ final class LiveEnableDonorTests: XCTestCase {
         guard session.liveViewDonorHistory.watchdogStage == .rebuildVT,
             session.pictureRecovery.isBusy else { throw NativeDonorFixtureError.repairNotAdmitted }
         session.sessionHeartbeat.stop()
-        await fulfillment(of: [first], timeout: 2)
+        await fulfillment(of: [first], timeout: 30)
         await clock.settle()
         XCTAssertEqual(session.liveViewDonorHistory.locallyAcceptedEnables, 1)
         XCTAssertEqual(peer.snapshot.enables, 1)
@@ -862,7 +845,7 @@ final class LiveEnableDonorTests: XCTestCase {
         XCTAssertEqual(peer.snapshot.enables, 1)
         let resent = await clock.drive { session.liveViewDonorHistory.locallyAcceptedEnables == 2 }
         XCTAssertTrue(resent)
-        await fulfillment(of: [second], timeout: 2)
+        await fulfillment(of: [second], timeout: 30)
         let secondAt = clock.time
         XCTAssertEqual(secondAt, FeedWatchdog.keyframeResendInterval, accuracy: 1e-6)
         XCTAssertEqual(session.liveViewDonorHistory.lastEnableWallTime.timeIntervalSinceReferenceDate,
@@ -892,7 +875,7 @@ final class LiveEnableDonorTests: XCTestCase {
         let repairPauses = nativeWaits
         XCTAssertEqual(endpointAt, 2 * FeedWatchdog.keyframeResendInterval, accuracy: 1e-6)
         XCTAssertEqual(repairPauses, Array(repeating: .milliseconds(100), count: 40))
-        await fulfillment(of: [replacement], timeout: 2)
+        await fulfillment(of: [replacement], timeout: 30)
         XCTAssertEqual(peer.snapshot.handshakes, handshakesBeforeRepair + 1,
             "Actual native negotiation, not an injected callback label")
         XCTAssertEqual(peer.snapshot.enables, 3)

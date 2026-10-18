@@ -3,6 +3,7 @@ import OpenCineCore
 import OpenCineMulticam
 import OpenPocketViewCore
 import SwiftUI
+import OpenCineHostedTestSupport
 import XCTest
 import OpenCineDJIApple
 
@@ -41,6 +42,7 @@ import OpenCineDJIApple
             session.layout = step % 3 == 0 ? .grid : .centerStage
             controller.view.setNeedsLayout()
             controller.view.layoutIfNeeded()
+            // Negative window: no tile identity may be replaced within it.
             try await Task.sleep(for: .milliseconds(100))
             XCTAssertEqual(identities(), before, "step \(step)")
             XCTAssertEqual(session.multicamGroup, group, "step \(step)")
@@ -110,7 +112,8 @@ import OpenCineDJIApple
         for tile in session.recordingTiles {
             tile.settings.batteryPercent -= 3
             tile.settings.storageFreeMb -= 512
-            tile.settings.timecode = "14:32:09:00"
+            tile.settings.timecodeValue =
+                CameraTimecode(hours: 14, minutes: 32, seconds: 9, frames: 0)
             tile.settings.recordElapsedSec += 1
             tile.settings.whiteBalanceKelvin = 5_200
             tile.latestSettings = tile.settings
@@ -164,7 +167,8 @@ import OpenCineDJIApple
         XCTAssertEqual(plan.direction, .start)
         XCTAssertEqual(plan.targets.count, 3)
         let run = Task { await session.record(plan, together: true) }
-        try await Task.sleep(for: .milliseconds(150))
+        // Answer once every start is on the wire, not after a guessed delay.
+        _ = await HostedCondition.wait { frames.count == 3 && session.groupRecordingBusy }
         XCTAssertTrue(session.groupRecordingBusy)
         // a ACKs then reports recording; b only reports; c stays silent.
         a.responses[1] = Duml.Frame(
@@ -178,6 +182,7 @@ import OpenCineDJIApple
         XCTAssertEqual(c.recordingNote, "No confirmation · check camera")
         XCTAssertEqual(session.groupRecordingNote, "2 of 3 confirmed · check camera tiles")
         XCTAssertFalse(session.groupRecordingBusy)
+        // Negative window: no rollback stop may follow within it.
         try await Task.sleep(for: .milliseconds(300))
         // Only the three starts went out: no stop for a or b because c timed out.
         XCTAssertEqual(frames.count, 3)
@@ -193,7 +198,7 @@ import OpenCineDJIApple
         let plan = session.recordPlan(for: tile)
         XCTAssertEqual(plan.direction, .start)
         let run = Task { await session.record(plan, together: false) }
-        try await Task.sleep(for: .milliseconds(150))
+        _ = await HostedCondition.wait { tile.recordingBusy }
         tile.responses[7] = Duml.Frame(
             sender: 0, receiver: 0, seq: 7, flags: 0x80, cmdSet: 2, cmdId: 2, payload: [1])
         await run.value

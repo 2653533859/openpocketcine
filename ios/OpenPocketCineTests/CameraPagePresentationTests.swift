@@ -22,7 +22,7 @@ final class CameraPagePresentationTests: XCTestCase {
             "Turn the camera on and keep the phone nearby. Pocket and Nano both appear. Choose the one you want.")
         XCTAssertEqual(
             page.instructions.first?.lines, ["Before pairing, turn off DJI Frame Tap and force quit DJI Mimo."])
-        model.session.scanLooksEmpty = true
+        model.cameras.scanLooksEmpty = true
         page = CamerasMapping.wizard(model.cameras, model.pairingWizard())
         XCTAssertEqual(page.instructions.count, 1)
         XCTAssertEqual(

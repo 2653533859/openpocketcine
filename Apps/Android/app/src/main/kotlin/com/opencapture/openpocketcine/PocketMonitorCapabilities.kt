@@ -6,18 +6,22 @@ import com.opencapture.opencine.vocabulary.CaptureShutterPolicy
 
 /**
  * The app's part of the layout: clip delete, clip star and the internet hop, until media and
- * connection routes carry them (SHELL-02). Audio stays on before the body is known, as main
- * offered the AUDIO tile and Clean view pin on every body. Everything else is what the camera
- * declares.
+ * connection routes carry them (SHELL-02). Everything else is what the camera declares; before the
+ * body is known nothing camera-dependent (audio included) is laid out, the shared pre-connection rule.
  */
 internal val appLayoutBase =
-    MonitorLayoutCapabilities(audio = true, clipDelete = true, clipStar = true, requiresInternetHop = true)
+    MonitorLayoutCapabilities(clipDelete = true, clipStar = true, requiresInternetHop = true)
 
 /** What the monitor lays out: the DJI integration's projection of the connected body (iOS `OsmoMonitorPresentation.capabilities`). */
-internal fun AppModel.monitorLayout(): MonitorLayoutCapabilities = singleViewLayout(session.control.layout(appLayoutBase))
+internal fun AppModel.monitorLayout(): MonitorLayoutCapabilities = session.control.layout(appLayoutBase)
 
-/** Single view shows the timecode on every body, Nano included, as main did; Multi View reads the body's declaration. */
-internal fun singleViewLayout(declared: MonitorLayoutCapabilities): MonitorLayoutCapabilities = declared.copy(timecode = true)
+/**
+ * The DJI integration's one control model of the connected body (iOS
+ * `OsmoMonitorPresentation.controls`). The adapter knows the identified body; before identification
+ * its model has no profile, so nothing camera-dependent is offered (the shared pre-connection rule).
+ */
+internal fun AppModel.controlCapabilities(): com.opencapture.opencine.vocabulary.ControlCapabilities =
+    session.control.controlCapabilities()
 
 /** AUDIO tile, assist, live meter and drum: a body that reports audio levels, in a video mode. */
 internal fun AppModel.showsAudio(status: CameraStatus): Boolean =

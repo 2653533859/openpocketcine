@@ -9,12 +9,16 @@ incomplete.
 
 Both shells use OpenCine's cameras model and camera/pair pages. Nearby selection
 requires Continue; connection cards and the pair rail show the integration's
-reported progress, approval prompt, failure and recovery actions. The station
-wizard remains an app slot, and Multiview keeps its existing entry. Android
+reported progress, approval prompt, failure and recovery actions. Add setup uses
+the shared typed capability chooser; the station-network scan, password and
+hotspot steps remain app destinations, and Multiview keeps its existing entry. Android
 retains its current appearance; the optional iOS-style switch is unchanged.
 Forgetting a camera now removes its Android Wi-Fi credentials too, matching iOS.
 Saved IDs and media favorites stay unchanged; the new document mirrors legacy
 records and merges edits made by an older build after a downgrade.
+The same chooser also renders the station wizard's choice page. Existing failed Wi-Fi setups
+reopen their password step and failed hotspot setups reopen their hotspot step. Unsupported or
+removed routes cannot preselect a destination; secure credential storage remains app-owned.
 
 Android credential reads, migration, writes and explicit Forget run away from
 Main. One cooperative transaction gate on the session's existing credential cache
@@ -48,6 +52,15 @@ change on the lane simulator (the palette rail is not a scroll view there).
 The Android instrumentation tests drive the shared stage; on the lane emulator
 the same 9 of 19 pass before and after. Physical Multiview remains untested
 for this change on both platforms.
+
+### Multiview AUDIO admission continuation
+
+Android's Multiview settings categories now require the tile's typed AUDIO control to be
+supported and writable, as well as the existing video-mode rule. Losing the borrowed session's
+known camera removes AUDIO even while the tile retains its last identity. Unknown, unsupported
+and read-only controls never admit this editor. Actual Android borrowed-session regressions and
+the paired iOS typed sheet projection pass on the task candidate. The existing iOS category
+policy stays unchanged in this Android-only continuation. Physical behavior remains untested.
 
 ## Shared operator settings ownership (P2)
 
@@ -1984,9 +1997,36 @@ goldens are retained unchanged.23 new manual-gate shared scenarios and4 actual n
 native scenarios are proposed, uncompiled/unexecuted. Android preserves its existing
 integration behavior. Physical format/zoom/color/ISO behavior remains untested.
 
+## All-camera Storage cache scope
+
+Settings on iOS and Android count and clear every camera bucket through the shared
+cache owners. Valid interrupted Clear roots remain counted and prepared deletions
+can be retried. Live child symlinks do not redirect cache ownership. Clear removes
+cached clips, thumbnails and camera indexes; the current gallery retains its
+operation fencing and cache revision, and reloads from the camera when connected.
+Favorites, preference keys and existing on-disk namespace spellings stay unchanged.
+Physical verification of this adoption remains untested.
+
 ## Android release initialization
 
 Android keeps the ML Kit component registrar constructors that its release
 shrinker otherwise removes. Every release bundle runs the shared OpenCine dex
 check, and pull requests build that bundle. This is Android SDK packaging; iOS
 uses Vision and needs no corresponding runtime change.
+
+## Validated custom LUT replacement on Android
+
+The Android shared picker uses the supplied custom library for bounded document
+imports and deletion. A rejected, oversized or truncated replacement keeps the
+valid original, selected identity and prepared look. An accepted same-name
+replacement refreshes the existing live, playback and inspector plan. Custom
+filenames, list order, categories and displayed copy keep their current policy.
+Explicit imports select and arm the stored look; Auto and official Auto retain
+their current selection and arm. Deleting the selected custom look returns to
+Auto and arms, as before.
+
+The Swift picker already uses its validated, locked atomic store and refreshes
+prepared and inspector payloads after import. Its source is unchanged for this
+Android adoption repair. Automated source qualification and integration are
+tracked in the existing LOOK-7 task handoff. Physical Android verification
+remains untested; this is the recorded qualification exception for this change.

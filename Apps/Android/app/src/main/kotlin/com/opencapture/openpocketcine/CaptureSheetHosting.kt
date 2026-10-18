@@ -6,7 +6,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import com.opencapture.opencine.appkit.MonitorCaptureDrum
 import com.opencapture.opencine.appkit.MonitorCaptureField
 import com.opencapture.opencine.appkit.captureField
 import com.opencapture.opencine.appkit.commit
@@ -15,7 +14,6 @@ import com.opencapture.opencine.cameracontrols.CaptureRefresh
 import com.opencapture.opencine.cameracontrols.LiveSheet
 import com.opencapture.opencine.cameracontrols.applyCaptureShootingMode
 import com.opencapture.opencine.core.ISOValue
-import com.opencapture.opencine.core.MonitorLayoutCapabilities
 import com.opencapture.opencine.core.SettingValue
 import com.opencapture.opencine.core.ShutterValue
 import com.opencapture.opencine.core.WhiteBalanceValue
@@ -25,8 +23,15 @@ import com.opencapture.opencine.vocabulary.CaptureSetting
 import com.opencapture.opencine.vocabulary.FocusTrackMode
 
 /**
+ * Pocket's capture strip reads the camera's report until it confirms an edit, never the pending
+ * selection (iOS `AppModel.captureStripShowsPendingEdits` is `false`).
+ */
+internal val pocketCaptureReadoutSelection = com.opencapture.opencine.appkit.MonitorCaptureSelection.REPORTED
+
+/**
  * Pocket's capture session state: the DJI session's AE/AWB locks and format pin, and the DJI
- * integration's layout for focus and iris. Every DJI body hops native ISO, so the toggle always shows.
+ * integration's required control model ([controls]), including its pre-connection declaration.
+ * Native ISO support stays unknown without a source declaration.
  * Values are read when the sheet reads them (the format pin expires on time).
  */
 internal fun pocketCaptureSessionState(
@@ -34,15 +39,13 @@ internal fun pocketCaptureSessionState(
     awbLockKelvin: () -> Int?,
     awbLockOffered: () -> Boolean,
     formatPinned: () -> Boolean,
-    layout: () -> MonitorLayoutCapabilities,
+    controls: () -> com.opencapture.opencine.vocabulary.ControlCapabilities,
 ): CaptureSessionState = object : CaptureSessionState {
     override val aeLocked get() = aeLock() != null
     override val awbLockKelvin get() = awbLockKelvin()
     override val awbLockOffered get() = awbLockOffered()
     override val formatPinned get() = formatPinned()
-    override val focusModeSupported get() = layout().focus
-    override val irisSupported get() = layout().iris
-    override val nativeIsoHopSupported get() = true
+    override val controlCapabilities get() = controls()
 }
 
 @Composable
@@ -50,7 +53,7 @@ internal fun AppModel.observedCaptureSessionState(status: CameraStatus): Capture
     val aeLock by session.aeLock.collectAsState()
     val awbLock by session.awbLockKelvin.collectAsState()
     return pocketCaptureSessionState({ aeLock }, { awbLock }, { session.autoWhiteBalanceLock(status) != null },
-        { session.isFormatPinActive }, { monitorLayout() })
+        { session.isFormatPinActive }, { controlCapabilities() })
 }
 
 /** ISO, shutter and white balance Kelvin through the captured Core field; EV through Core too. */
@@ -67,9 +70,14 @@ internal fun AppModel.PocketCommonDrum(sheet: LiveSheet, status: CameraStatus, f
             is SettingValue.ExposureCompensation -> true
             else -> false
         } }
-        MonitorCaptureDrum(control, retained,
+        LadderSheet(
+            presentation = com.opencapture.opencine.vocabulary.LadderSheetPresentation("", "", listOf(
+                com.opencapture.opencine.vocabulary.LadderTab("", sheet,
+                    com.opencapture.opencine.vocabulary.CaptureLadder(retained.label, choices.map { it.label }),
+                    applyOnActivate = false))),
             enabled = enabled && (!CaptureLists.isEvSheet(sheet, status.expoMode) || !facePriorityExposureEnabled),
-            choices = choices)
+            onWrite = {}, onClose = {}, control = control, chromeless = true,
+            host = LadderSheetHost(0, retained.label, LadderSheetDrum.Field(retained, choices), onSelectTab = {}))
     }
 }
 

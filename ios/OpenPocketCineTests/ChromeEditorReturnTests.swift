@@ -7,9 +7,8 @@ import XCTest
 /// OpenZCine `ChromeEditorReturnTests` — Edit view entry, exit, and force-mount.
 final class ChromeEditorReturnTests: XCTestCase {
     @MainActor
-    func testBecomingLiveDismissesSettingsAndHomePanels() {
+    func testBecomingLiveDismissesSettings() {
         let model = AppModel()
-        model.homePanel = .settings
         model.shell.open(.settings)
         model.operatorSettingsTab = .display
         model.chromeEditorMode = .live
@@ -18,7 +17,6 @@ final class ChromeEditorReturnTests: XCTestCase {
         present(model)
         model.noteBecameLive()
 
-        XCTAssertNil(model.homePanel)
         XCTAssertNil(model.shell.cover)
         XCTAssertNil(model.chromeEditorMode)
         XCTAssertNil(model.chromeEditorReturnMode)

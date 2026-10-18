@@ -17,7 +17,7 @@ internal class LiveFeedEffectsSession(context: Context, scopeBus: ScopeSampleBus
     preview: InspectorPreviewPipeline, onDecoderSurface: (Surface) -> Unit,
     onGpuFailed: () -> Unit, onFirstFrame: () -> Unit = {}, letterboxSource: Boolean = true,
     notifySurfaceOnMain: Boolean = false, onFramePresented: (Long) -> Unit = {},
-    playback: Boolean = false, backdrop: MonitorBackdropFeed? = null,
+    playback: Boolean = false, backdrop: com.opencapture.opencine.appkitnative.MonitorBackdropFeed? = null,
 ) {
     private val runtime = com.opencapture.opencine.runtime.NativeGlesFeedSession(context, scopeBus,
         preview, { com.opencapture.opencine.runtime.NativeGlBackend.create(it) }, clipProfile = ScopeExposureCeiling.PROFILE,

@@ -1,5 +1,6 @@
 import MonitorUI
 import OpenCineAppKit
+import OpenCineCameraControls
 import SwiftUI
 
 @main
@@ -9,12 +10,15 @@ struct OpenPocketCineApp: App {
             MultiviewUIReview.prepareIfRequested()
             AppDiagnostics.verification.prepareIfRequested()
         #endif
+        AppDiagnostics.reporting.noteFeedUpscaler(FeedUpscaleSwitch.shared.upscaler.rawValue)
         AppDiagnostics.reporting.install()
         #if DEBUG
             AppDiagnostics.verification.runIfRequested()
         #endif
         MonitorTheme.prepareResources()
-        FeedStressAutomation.installIfRequested()
+        FeedStressAutomation.installIfRequested(
+            host: { AppModelDiagnosticsAnchor.model },
+            onInjectionActivated: { AppDiagnostics.reporting.noteCurrentTestSource(.faultInjection) })
     }
 
     var body: some Scene {

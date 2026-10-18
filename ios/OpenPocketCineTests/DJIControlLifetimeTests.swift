@@ -1,5 +1,6 @@
 import OpenCineAppKit
 import OpenCineCore
+import OpenCineHostedTestSupport
 import OpenPocketViewCore
 import XCTest
 import OpenCineDJIApple
@@ -33,7 +34,7 @@ final class DJIControlLifetimeTests: XCTestCase {
 
         shell.close()
         shell.close()
-        for _ in 0..<200 where !driver.isClosed { await Task.yield() }
+        _ = await HostedCondition.wait { driver.isClosed }
         XCTAssertTrue(driver.isClosed)
         XCTAssertNil(session.datalink)
         XCTAssertEqual(session.phase, .idle)
@@ -98,7 +99,6 @@ final class DJIControlLifetimeTests: XCTestCase {
         let monitor = model.shell.monitor?.id
         model.shell.open(.settings)
         XCTAssertEqual(model.shell.cover, .settings)
-        XCTAssertNil(model.homePanel)
         model.shell.open(.media)
         XCTAssertEqual(model.shell.cover, .media)
         XCTAssertEqual(model.shell.monitor?.id, monitor)
@@ -162,7 +162,7 @@ final class DJIControlLifetimeTests: XCTestCase {
             XCTAssertNotEqual(model.session.captureControlState?.reported.iso, 800,
                 "Rendering a simulated report cannot approve or report native camera state")
             model.shell.close()
-            for _ in 0..<200 where common.current.connection == .ready { await Task.yield() }
+            _ = await HostedCondition.wait { common.current.connection != .ready }
             XCTAssertEqual(common.current.connection, .disconnected(.requested))
             XCTAssertNil(model.session.datalink)
         }

@@ -1,6 +1,7 @@
 import Foundation
 import OpenCineAppKit
 import OpenCineDJIApple
+import OpenCineHostedTestSupport
 import OpenCineMedia
 import OpenPocketViewCore
 import XCTest
@@ -312,7 +313,7 @@ private final class LibraryOwnerFileManager: FileManager, @unchecked Sendable {
                 return true
             } catch { return false }
         }
-        for _ in 0..<2000 { if gate.pending != nil { break }; await Task.yield() }
+        _ = await HostedCondition.wait { gate.pending != nil }
         guard gate.pending != nil else { old.cancel(); XCTFail("Actual host download did not reach manual gate"); return }
         owner.begin()
         let prefix = operation.directory.root.path + "/"

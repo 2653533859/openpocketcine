@@ -1,3 +1,4 @@
+import OpenCineHostedTestSupport
 import OpenPocketViewCore
 import SwiftUI
 import XCTest
@@ -283,7 +284,9 @@ final class ConnectionLifecycleRegressionTests: XCTestCase {
             model.session.disconnect()
         }
 
-        try await settle(host.view)
+        try await settle(host.view) {
+            displayHosts(in: host.view).count == 1 && decoder.isDisplayReady
+        }
         decoder.stopSimulatorSample()
         let original = try XCTUnwrap(displayHosts(in: host.view).first)
         XCTAssertEqual(displayHosts(in: host.view).count, 1)
@@ -302,7 +305,9 @@ final class ConnectionLifecycleRegressionTests: XCTestCase {
             if index.isMultiple(of: 2) { model.shell.open(.settings) } else { model.shell.dismissCover() }
             window.frame.size = size
             host.view.frame = window.bounds
-            try await settle(host.view)
+            try await settle(host.view) {
+                displayHosts(in: host.view).count == 1 && decoder.isDisplayReady
+            }
             decoder.stopSimulatorSample()
 
             let displays = displayHosts(in: host.view)
@@ -341,7 +346,8 @@ final class ConnectionLifecycleRegressionTests: XCTestCase {
         // Submission is not completion: assist work and display backpressure
         // can discard early frames while the hosted view starts. Keep feeding
         // at 25 Hz until the real pipeline produces the required intervals.
-        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        // The 25 Hz feed is the frame source; the deadline is only a hang guard.
+        let deadline = ContinuousClock.now.advanced(by: HostedCondition.hangLimit)
         while completedPresentations < requiredPresentations, ContinuousClock.now < deadline {
             decoder.handleDecodedFrame(ScopeTestBuffers.makeEdgeBuffer())
             try await Task.sleep(for: .milliseconds(40))
@@ -354,10 +360,15 @@ final class ConnectionLifecycleRegressionTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(try XCTUnwrap(decoder.lastPresentedAt), first)
     }
 
-    private func settle(_ view: UIView) async throws {
+    /// Lets the cover or rotation transition run (the 150 ms floor is the window in which the
+    /// native host must survive), then waits for the state the next step reads.
+    private func settle(_ view: UIView, until ready: @MainActor @Sendable () -> Bool) async throws {
         view.setNeedsLayout()
         view.layoutIfNeeded()
         try await Task.sleep(for: .milliseconds(150))
-        view.layoutIfNeeded()
+        _ = await HostedCondition.wait {
+            view.layoutIfNeeded()
+            return ready()
+        }
     }
 }

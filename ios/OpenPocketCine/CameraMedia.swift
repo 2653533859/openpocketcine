@@ -31,10 +31,6 @@ final class CameraMedia {
     private lazy var cacheOwner = MonitorMediaCacheRoot(
         root: applicationSupport.appendingPathComponent("OpenPocketCine/media", isDirectory: true),
         fileManager: fileManager, accountLegacyUnpreparedRoots: true)
-    #if DEBUG && targetEnvironment(simulator)
-        private lazy var reviewDirectory = MonitorMediaCacheDirectory(
-            root: MonitorMediaReview.cacheRoot, fileManager: fileManager, accountLegacyUnpreparedRoots: true)
-    #endif
 
     private lazy var applicationSupport = fileManager.urls(
         for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -96,9 +92,6 @@ final class CameraMedia {
     }
 
     func cacheDirectory(cameraID: String) -> MonitorMediaCacheDirectory {
-        #if DEBUG && targetEnvironment(simulator)
-            if MonitorMediaReview.isActive { return reviewDirectory }
-        #endif
         if let directory = try? cacheOwner.directory(namespace: cameraID) { return directory }
         // The factory performs only namespace validation. This fixed legacy fallback is valid,
         // so the second lookup returns the same shared directory without IO or another owner.
@@ -262,16 +255,23 @@ final class CameraMedia {
         try await directory.clear(preserving: preservingCatalog ? ["index.json", "color.json"] : [])
     }
 
+    /// The settings cache scope is every camera bucket under the shared root (A2-33), not only
+    /// the last connected one. Clear removes the camera indexes too, so a formatted card cannot
+    /// leave thumbnail-less rows behind; the camera re-enumerates the truth on the next pass.
+    var mediaCacheRootPath: String { cacheOwner.root.path }
+
+    func cacheByteCountAllCameras() async -> UInt64 {
+        var total: UInt64 = 0
+        for directory in cacheOwner.cachedDirectories() { total += await directory.totalByteCount() }
+        return total
+    }
+
+    func clearAllCamerasCache() async throws {
+        for directory in cacheOwner.cachedDirectories() { try await directory.clear(preserving: []) }
+    }
+
     func writeAtomically(_ data: Data, to dest: URL) throws {
         // Retained compatibility/native IO accepts only one of the actual composed cache roots.
-        #if DEBUG && targetEnvironment(simulator)
-            if MonitorMediaReview.isActive {
-                let prefix = reviewDirectory.root.path + "/"
-                guard dest.path.hasPrefix(prefix) else { throw MonitorMediaCacheError.invalidAddress }
-                try reviewDirectory.write(data, at: String(dest.path.dropFirst(prefix.count)))
-                return
-            }
-        #endif
         let root = cacheOwner.root.path + "/"
         guard dest.path.hasPrefix(root) else { throw MonitorMediaCacheError.invalidAddress }
         let relative = String(dest.path.dropFirst(root.count))

@@ -1,5 +1,6 @@
 import MonitorPresentation
 import OpenCineCameraControls
+import OpenCineHostedTestSupport
 import OpenPocketViewCore
 import SwiftUI
 import XCTest
@@ -9,6 +10,25 @@ import OpenCineDJIApple
 
 @MainActor
 final class CapturePanelRenderComparisonTests: XCTestCase {
+    func testUndeclaredNativeIsoServicesAreNotOfferedByTheCaptureHost() {
+        let session = OpenPocketCine.CameraSession(borrowing: HevcDecoder())
+        let model = AppModel(session: session)
+        XCTAssertFalse(model.captureCapabilities.nativeIsoHop, "No native ISO pair was declared")
+        XCTAssertFalse(
+            model.captureCapabilities.isoLimit, "No writable Auto ISO ceiling was declared")
+        session.updateMultiview(
+            camera: DjiAppleSighting(
+                id: UUID(), name: "SIMULATED",
+                model: .resolve(modelId: 0x22, name: "SIMULATED"), modelId: 0x22),
+            driver: nil, status: CameraStatus())
+        XCTAssertFalse(
+            model.captureCapabilities.nativeIsoHop,
+            "A body identity does not declare its native ISO pair")
+        XCTAssertFalse(
+            model.captureCapabilities.isoLimit,
+            "A body identity does not declare a writable ceiling")
+    }
+
     /// main's strip held ISO and shutter at the camera's report until it answered.
     func testStripShowsTheReportedValueWhileARequestIsPending() {
         XCTAssertFalse(AppModel().captureStripShowsPendingEdits)
@@ -105,13 +125,24 @@ final class CapturePanelRenderComparisonTests: XCTestCase {
     private func render(_ view: UIView) async -> UIImage {
         view.setNeedsLayout()
         view.layoutIfNeeded()
-        // UIKit material, font registration and SwiftUI content-height discovery
-        // must finish before comparing the settled production views.
+        // UIKit material and font registration have no completion to observe, so a short floor
+        // stays; SwiftUI content-height discovery is awaited: the view is settled once two
+        // consecutive renders agree, however long a loaded machine takes to get there.
         try? await Task.sleep(for: .milliseconds(400))
-        view.layoutIfNeeded()
-        return UIGraphicsImageRenderer(size: view.bounds.size, format: renderFormat).image { _ in
-            XCTAssertTrue(view.drawHierarchy(in: view.bounds, afterScreenUpdates: true))
+        var image = UIImage()
+        var drawn = false
+        var previous: Data?
+        _ = await HostedCondition.wait {
+            view.layoutIfNeeded()
+            image = UIGraphicsImageRenderer(size: view.bounds.size, format: renderFormat).image { _ in
+                drawn = view.drawHierarchy(in: view.bounds, afterScreenUpdates: true)
+            }
+            let pixels = image.pngData()
+            defer { previous = pixels }
+            return drawn && pixels != nil && pixels == previous
         }
+        XCTAssertTrue(drawn)
+        return image
     }
 
     private func attach(_ image: UIImage, name: String) {

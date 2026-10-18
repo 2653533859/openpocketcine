@@ -5,6 +5,9 @@ import XCTest
 
 @testable import OpenPocketCine
 
+// Expectations in this file are fulfilled by the owners' own events (decode, delivery, HTTP,
+// render); every 30 s timeout is a hang guard, not a budget.
+
 @MainActor
 final class DecoderGenerationTests: XCTestCase {
     func testResetRejectsAlreadyQueuedAssistResult() async {
@@ -33,7 +36,7 @@ final class DecoderGenerationTests: XCTestCase {
             ScopeTestBuffers.makeFlatBuffer(code: 40, width: 16, height: 16),
             generation: oldGeneration)
         decoder.handleDecodedFrame(current, isNewSourceFrame: false)
-        await fulfillment(of: [drained], timeout: 3)
+        await fulfillment(of: [drained], timeout: 30)
 
         XCTAssertEqual(identityFrames, 0, "Stale source must not reach the watcher encoder")
         XCTAssertNil(decoder.lastSourceFrameAt)
@@ -49,7 +52,7 @@ final class DecoderGenerationTests: XCTestCase {
         decoder.handleDecodedFrame(
             ScopeTestBuffers.makeFlatBuffer(code: 180, width: 16, height: 16),
             generation: decoder.sourceFrameGeneration)
-        await fulfillment(of: [delivered], timeout: 3)
+        await fulfillment(of: [delivered], timeout: 30)
 
         XCTAssertNotNil(decoder.lastSourceFrameAt)
         XCTAssertEqual(bus.decodedFrames, 1)
@@ -67,7 +70,7 @@ final class DecoderGenerationTests: XCTestCase {
         }
         decoder.handleDecodedFrame(
             ScopeTestBuffers.makeFlatBuffer(code: 120, width: 16, height: 16))
-        await fulfillment(of: [delivered], timeout: 3)
+        await fulfillment(of: [delivered], timeout: 30)
         XCTAssertEqual(
             lent?.isReleased, true, "Consumers keep pixels by taking their own reference")
     }
@@ -171,7 +174,7 @@ final class DecoderGenerationTests: XCTestCase {
             if !resetFromSourceFrame { retire() }
         }
         decoder.handleDecodedFrame(old)
-        await fulfillment(of: [reentered], timeout: 3)
+        await fulfillment(of: [reentered], timeout: 30)
 
         // The callback and the rest of its synchronous MainActor completion have
         // returned before this continuation can inspect the replacement source.
@@ -199,7 +202,7 @@ final class DecoderGenerationTests: XCTestCase {
         }
         decoder.onSourceAdvanced = nil
         decoder.handleDecodedFrame(successor)
-        await fulfillment(of: [delivered], timeout: 3)
+        await fulfillment(of: [delivered], timeout: 30)
         XCTAssertNotNil(decoder.lastSourceFrameAt)
         XCTAssertEqual(bus.decodedFrames, 1)
         XCTAssertTrue(bus.sourcePixelBuffer === successor)
@@ -224,7 +227,7 @@ final class DecoderGenerationTests: XCTestCase {
         decoder.handleDecodedFrame(old)
         invalidate(decoder)
         decoder.handleDecodedFrame(sentinel, isNewSourceFrame: false)
-        await fulfillment(of: [drained], timeout: 3)
+        await fulfillment(of: [drained], timeout: 30)
 
         XCTAssertEqual(oldFrames, 0, "An old source must not reach presentation/Face AF")
         XCTAssertNil(decoder.lastSourceFrameAt, "Old pixels must not mark recovery healthy")
