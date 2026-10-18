@@ -741,7 +741,7 @@ final class LiveEnableDonorTests: XCTestCase {
         var nativeWaits: [Duration] = []
         let (session, policy) = timedSession(clock, wallNow: { wallOrigin + clock.time },
             recordWait: { nativeWaits.append($0) })
-        let peer = try EndpointPinnedCamera()
+        let peer = try EndpointPinnedCamera(initialHandshakesToIgnore: 1)
         let driver = DjiAppleDatalink.loopbackForTesting(port: try await peer.start())
         await bind(0x0022, session: session, driver: driver, policy: policy)
         let display = DisplayLayerView(session.decoder.displayLayer)
@@ -755,6 +755,8 @@ final class LiveEnableDonorTests: XCTestCase {
         // Wall samples remain wall time. Native AU/output/presentation times
         // are untouched; known loss, not artificial output aging, admits repair.
         wallOrigin = Date.timeIntervalSinceReferenceDate
+        let handshakesBeforeRepair = peer.snapshot.handshakes
+        XCTAssertEqual(handshakesBeforeRepair, 2, "SIMULATED initial handshake retry is established")
         session.startKeepalive(ssid: "SIMULATED actual native readiness donor")
         clock.advance(to: 0)
         XCTAssertEqual(session.liveViewDonorHistory.watchdogStage, .rebuildVT)
@@ -788,11 +790,13 @@ final class LiveEnableDonorTests: XCTestCase {
         XCTAssertEqual(session.liveViewDonorHistory.watchdogStage, .rebuildVT)
         XCTAssertEqual(session.decoder.lastPresentedAt, heldPicture)
         XCTAssertFalse(session.decoder.displayedImageRemoved)
-        XCTAssertEqual(peer.snapshot.handshakes, 1)
+        XCTAssertEqual(peer.snapshot.handshakes, handshakesBeforeRepair,
+            "Detached-display repair must not renegotiate the established endpoint")
         XCTAssertTrue(recipe(peer.snapshot.commands).isEmpty)
         XCTAssertEqual(peer.snapshot.enables, 0)
         print("SIMULATED NATIVE REPAIR readiness: waits=\(nativeWaits) "
-            + "elapsed=\(clock.time) localEnables=0 peerEnables=0 endpointHandshakes=1")
+            + "elapsed=\(clock.time) localEnables=0 peerEnables=0 "
+            + "endpointHandshakes=\(peer.snapshot.handshakes) initialHandshakes=\(handshakesBeforeRepair)")
     }
 
     func testNativeRepairPollsEvery100msThenRenegotiatesAfterTwoUnansweredRequests() async throws {
@@ -801,7 +805,7 @@ final class LiveEnableDonorTests: XCTestCase {
         var nativeWaits: [Duration] = []
         let (session, policy) = timedSession(clock, wallNow: { wallOrigin + clock.time },
             recordWait: { nativeWaits.append($0) })
-        let peer = try EndpointPinnedCamera()
+        let peer = try EndpointPinnedCamera(initialHandshakesToIgnore: 1)
         let driver = DjiAppleDatalink.loopbackForTesting(port: try await peer.start())
         await bind(0x0022, session: session, driver: driver, policy: policy)
         let display = DisplayLayerView(session.decoder.displayLayer)
@@ -812,6 +816,8 @@ final class LiveEnableDonorTests: XCTestCase {
         }
         _ = try await establishNativePicture(session, driver: driver, peer: peer)
         try await deliverNativeReferenceLoss(session, driver: driver, peer: peer)
+        let handshakesBeforeRepair = peer.snapshot.handshakes
+        XCTAssertEqual(handshakesBeforeRepair, 2, "SIMULATED initial handshake retry is established")
         wallOrigin = Date.timeIntervalSinceReferenceDate
         let first = expectation(description: "SIMULATED native repair first actual enable")
         peer.observeNext(Commands.liveViewEnable(seq: 0, receiver: 0x08)) { first.fulfill() }
@@ -844,7 +850,7 @@ final class LiveEnableDonorTests: XCTestCase {
         XCTAssertEqual(secondAt, FeedWatchdog.keyframeResendInterval, accuracy: 1e-6)
         XCTAssertEqual(session.liveViewDonorHistory.lastEnableWallTime.timeIntervalSinceReferenceDate,
             wallOrigin + secondAt, accuracy: 1e-6)
-        XCTAssertEqual(peer.snapshot.handshakes, 1)
+        XCTAssertEqual(peer.snapshot.handshakes, handshakesBeforeRepair)
         XCTAssertEqual(peer.snapshot.enables, 2)
         XCTAssertEqual(recipe(peer.snapshot.commands), recipe([
             Commands.liveViewPrepare(), Commands.liveViewEnable(seq: 0, receiver: 0x08),
@@ -858,7 +864,7 @@ final class LiveEnableDonorTests: XCTestCase {
         XCTAssertTrue(beforeEndpoint)
         XCTAssertEqual(clock.time, 2 * FeedWatchdog.keyframeResendInterval - 0.1, accuracy: 1e-6)
         XCTAssertEqual(session.liveViewDonorHistory.locallyAcceptedEnables, 2)
-        XCTAssertEqual(peer.snapshot.handshakes, 1)
+        XCTAssertEqual(peer.snapshot.handshakes, handshakesBeforeRepair)
         // Real native preparation clears the old count before negotiation;
         // observe that durable boundary rather than racing isRebuilding's lifetime.
         let preparedEndpoint = await clock.drive {
@@ -870,7 +876,8 @@ final class LiveEnableDonorTests: XCTestCase {
         XCTAssertEqual(endpointAt, 2 * FeedWatchdog.keyframeResendInterval, accuracy: 1e-6)
         XCTAssertEqual(repairPauses, Array(repeating: .milliseconds(100), count: 40))
         await fulfillment(of: [replacement], timeout: 30)
-        XCTAssertEqual(peer.snapshot.handshakes, 2, "Actual native negotiation, not an injected callback label")
+        XCTAssertEqual(peer.snapshot.handshakes, handshakesBeforeRepair + 1,
+            "Actual native negotiation, not an injected callback label")
         XCTAssertEqual(peer.snapshot.enables, 3)
         XCTAssertEqual(recipe(peer.snapshot.commands), recipe([
             Commands.liveViewPrepare(), Commands.liveViewEnable(seq: 0, receiver: 0x08),
@@ -884,7 +891,8 @@ final class LiveEnableDonorTests: XCTestCase {
         await clock.settle()
         XCTAssertFalse(session.pictureRecovery.isBusy)
         print("SIMULATED NATIVE REPAIR keyframe: waits=\(repairPauses) secondAt=\(secondAt) "
-            + "endpointAt=\(endpointAt) peerEnables=3 endpointHandshakes=2")
+            + "endpointAt=\(endpointAt) peerEnables=3 "
+            + "endpointHandshakes=\(peer.snapshot.handshakes) initialHandshakes=\(handshakesBeforeRepair)")
     }
 
     /// Intended owner contract whose original donor red is archived separately:
@@ -925,11 +933,13 @@ private final class EndpointPinnedCamera: @unchecked Sendable {
     private var subscribed = false
     private var counts = Snapshot()
     private var rejectingHandshakes = false
+    private let initialHandshakesToIgnore: Int
     private var holdInitialWindow: Bool
     private var nextObservedCommand: (Duml.Frame, @Sendable () -> Void)?
 
-    init(holdInitialWindow: Bool = false) throws {
+    init(holdInitialWindow: Bool = false, initialHandshakesToIgnore: Int = 0) throws {
         self.holdInitialWindow = holdInitialWindow
+        self.initialHandshakesToIgnore = initialHandshakesToIgnore
         listener = try NWListener(using: .udp)
     }
 
@@ -1006,6 +1016,7 @@ private final class EndpointPinnedCamera: @unchecked Sendable {
     private func consume(_ bytes: [UInt8], from connection: NWConnection) {
         if DumlTransport.isHandshake(bytes) {
             counts.handshakes += 1
+            if counts.handshakes <= initialHandshakesToIgnore { return }
             if rejectingHandshakes { return }
             peer = connection
             registered = false
