@@ -1,12 +1,14 @@
 New and changed
 
-- The live top bar readouts (storage, format, mode, REC and timecode) get their dark glow back, so they stay readable over bright pictures.
+- The ISO drum stars the native ISO of the current color profile (for example 400 in D-Log M).
+- The live top bar readouts get their dark glow back, so they stay readable over bright pictures.
 
 Fixes
 
-- No other Android-visible changes in this build; the earlier Media playback, storage and portrait readout fixes stay in place.
+- Osmo Pocket and Action cameras offer Auto ISO ceiling, the ISO limit and the native ISO hop again.
 
 What to test
 
-- Point the camera at a bright or white scene and check that every top bar readout stays readable in portrait and landscape.
-- Connect your camera, record a short clip, open Media and return to Live View; report crashes or controls that stop responding.
+- Open the ISO drum in D-Log M and in D-Log2 and check that the native ISO carries a star.
+- Set ISO to Auto and check that the ISO ceiling and native ISO options are offered.
+- Point the camera at a bright scene and check that every top bar readout stays readable.

@@ -1,14 +1,16 @@
 New and changed
 
+- Osmo Pocket and Action cameras offer Auto ISO ceiling, the ISO limit and the native ISO hop again.
 - In portrait, the large format readout now lines up exactly with the clock at the top of the screen.
 
 Fixes
 
+- On a Pocket 3 that reports no shutter list, Speed offers the standard shutter speeds and sets them.
 - After the landscape assist palette collapses, its hidden buttons are no longer reachable with VoiceOver.
 - Using a volume button as the remote shutter is protected against a rare unexpected quit.
 
 What to test
 
-- Rotate to portrait and check that the format readout and the clock share the same top edge, and that every status readout is visible.
-- In landscape, open and collapse the assist palette. With VoiceOver on, check that only the visible buttons are announced.
+- On a Pocket 3 in manual exposure, open Speed, pick a few shutter speeds and confirm the camera follows.
+- Set ISO to Auto and check that the ISO ceiling and native ISO options are offered.
 - Use a volume button as the remote shutter to start and stop a recording; report any unexpected quit.
