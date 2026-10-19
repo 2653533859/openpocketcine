@@ -1,15 +1,15 @@
 New and changed
 
-- In portrait, the large format readout now lines up exactly with the clock at the top of the screen.
+- Media shows a short note when the camera's own playback screen is open, instead of an empty gallery.
 
 Fixes
 
-- After the landscape assist palette collapses, its hidden buttons are no longer reachable with VoiceOver.
-- Using a volume button as the remote shutter is protected against a rare unexpected quit.
-- After a long Media visit, the live picture comes back instead of the camera disconnecting.
+- If the camera does not enter playback, Media now says so instead of naming the clip list.
+- With filters on and the camera disconnected, an empty gallery names the filters instead of the cache.
+- In portrait, the large format readout lines up exactly with the clock at the top of the screen.
 
 What to test
 
-- Rotate to portrait and check that the format readout and the clock share the same top edge, and that every status readout is visible.
-- In landscape, open and collapse the assist palette. With VoiceOver on, check that only the visible buttons are announced.
-- Use a volume button as the remote shutter to start and stop a recording. Then stay in Media for 30 minutes or more and return; the live picture should come back.
+- Open playback on the camera itself, then open Media in the app. Check the note, close camera playback and refresh.
+- Disconnect, open Media, turn on a filter that matches nothing and check the message names the filters.
+- Use a volume button as the remote shutter to start and stop a recording; report any unexpected quit.

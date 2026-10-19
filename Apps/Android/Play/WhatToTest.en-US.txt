@@ -1,12 +1,15 @@
 New and changed
 
-- The live top bar readouts (storage, format, mode, REC and timecode) get their dark glow back, so they stay readable over bright pictures.
+- Share several cached clips at once from Media; they reach the share sheet together.
 
 Fixes
 
+- Media shows its notes again, including when the camera's own playback screen is open.
+- With Full Resolution Caching on, playing a clip from the connected camera caches its original again.
 - After a long Media visit, the live picture comes back instead of the camera disconnecting.
 
 What to test
 
-- Point the camera at a bright or white scene and check that every top bar readout stays readable in portrait and landscape.
-- Record a short clip, stay in Media for 30 minutes or more and return to Live View; the picture should come back. Report crashes or controls that stop responding.
+- Cache two or more clips, select them in Media and share. Check that all of them reach the app you pick.
+- Open playback on the camera itself, then open Media in the app and check the note. Close camera playback and refresh.
+- Turn on Full Resolution Caching, play a clip that is not cached yet and check that it shows as cached afterwards.
