@@ -2,9 +2,6 @@ package com.opencapture.openpocketcine.media
 
 import com.opencapture.opencine.media.QuickTimeKeys
 import android.content.Context
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import com.opencapture.opencine.vocabulary.ConnectionPhase
 import com.opencapture.opencine.vocabulary.ClipColorProfile
 import com.opencapture.opencine.dji.colorModeFromMp4
@@ -64,23 +61,21 @@ class MediaLibraryController(
         scope = scope, cacheScanning = MonitorMediaCacheScanning.BACKGROUND,
         initialCatalog = MediaCatalog(),
         initialRecords = cache.loadCatalog(cameraId).map { codec.record(it, cachedShotColor(it)) },
-        copy = MonitorMediaLibraryCopy(openFailed = MediaOperatorCopy.LIST_FAILED,
-            listFailed = MediaOperatorCopy.LIST_FAILED, downloadFailed = MediaOperatorCopy.DOWNLOAD_FAILED,
-            listing = MediaOperatorCopy.LISTING, empty = MediaOperatorCopy.NO_CLIPS),
+        copy = pocketMediaLibraryCopy,
         catalogBase = MonitorMediaCatalogBase.FRESH_LISTING)
     private var galleryCover: DjiAndroidMediaGalleryCover? = null
     private val httpSource = DJIMediaHTTPSource()
     private var released = false
-    private var actionNote by mutableStateOf<String?>(null)
     val downloadProgress: Map<String, Double> get() = library.state.value.hostProgress.mapKeys { it.key.rawValue }
 
     val files: List<MediaFile> get() = library.state.value.records.map(::file)
     val fetchInProgress: Boolean get() = library.state.value.acquiringSource || library.state.value.fetching ||
         (library.state.value.browsing && sourceOwner != null && library.binding == null)
     val listedCount: Int get() = library.state.value.records.size
+    /** Host operation notes share the gallery's note line (PAB-M-14/15). */
     var note: String?
-        get() = actionNote ?: library.state.value.note
-        set(value) { actionNote = value }
+        get() = library.state.value.note
+        set(value) { library.showNote(value) }
     val isLive: Boolean get() = session.phaseFlow.value == ConnectionPhase.LIVE
     private val browsing: Boolean get() = library.state.value.browsing
 
@@ -94,7 +89,6 @@ class MediaLibraryController(
         galleryCover = session.claimMediaGalleryCover()
         sourceOwner = null
         library.visibility(if (isLive) MonitorMediaLibraryVisibility.ALL_RECORDS else MonitorMediaLibraryVisibility.CACHED_ONLY)
-        actionNote = if (!isLive && files.isEmpty()) MediaOperatorCopy.NOT_CONNECTED else null
         if (!isLive) { library.bind(null); library.begin(); return }
         val captured = session.mediaConnectionIdentity
         val camera = session.connectedCamera?.id
@@ -108,7 +102,6 @@ class MediaLibraryController(
     fun endBrowse() {
         library.close()
         galleryCover?.close(); galleryCover = null
-        actionNote = null
     }
     fun release() {
         if (released) return
@@ -124,10 +117,11 @@ class MediaLibraryController(
     }
     fun refresh() {
         if (released) return
-        if (!isLive) { actionNote = MediaOperatorCopy.NOT_CONNECTED; visibilityChanged(); return }
+        // Offline, the shared empty state names the link, the cache or the filters (ZIB-413).
+        if (!isLive) { visibilityChanged(); return }
         if (!browsing || library.binding == null || mediaService() !== sourceOwner) { beginBrowse(); return }
         if (fetchInProgress) return
-        actionNote = null; library.refresh()
+        library.refresh()
     }
 
     override fun isDownloaded(file: MediaFile): Boolean = cache.isDownloaded(file, cameraId)
@@ -406,3 +400,12 @@ class MediaLibraryController(
             session.connectedCamera?.id?.takeIf { it.isNotEmpty() } ?: cache.lastCameraId() ?: "unknown"
     }
 }
+
+/**
+ * The gallery's copy: a failed entry names playback (PIB-083) and the camera's own open gallery
+ * is named instead of an empty card (PAB-M-14).
+ */
+internal val pocketMediaLibraryCopy = MonitorMediaLibraryCopy(openFailed = MediaOperatorCopy.PLAYBACK_FAILED,
+    listFailed = MediaOperatorCopy.LIST_FAILED, downloadFailed = MediaOperatorCopy.DOWNLOAD_FAILED,
+    listing = MediaOperatorCopy.LISTING, empty = MediaOperatorCopy.NO_CLIPS,
+    sourceHeld = MediaOperatorCopy.BROWSING_ON_CAMERA)
