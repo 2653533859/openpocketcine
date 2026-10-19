@@ -321,10 +321,10 @@ final class CameraSession {
     }
     var mediaFetchInProgress: Bool { mediaLibraryOwner.map { $0.acquiringSource || $0.fetching } ?? false }
     var mediaFetchListedCount: Int { mediaLibraryOwner?.fetchedCount ?? 0 }
-    var mediaOperationNote: String?
+    /// Host operation notes share the gallery's note line, the one the shared catalog shows (PIB-082).
     var mediaNote: String? {
-        get { mediaOperationNote ?? mediaLibraryOwner?.note }
-        set { mediaOperationNote = newValue }
+        get { mediaLibraryOwner?.note }
+        set { mediaLibraryOwner?.showNote(newValue) }
     }
     /// While true, keepalive must not re-enable live view or recover the feed.
     var isBrowsingMedia: Bool {
@@ -4699,8 +4699,6 @@ final class CameraSession {
         mediaLibraryOwner?.bind(nil)
         guard ifCurrent() else { return }
         mediaLibraryOwner?.close()
-        guard ifCurrent() else { return }
-        mediaOperationNote = nil
         guard ifCurrent() else { return }
         mediaLibraryOwner?.visibility = .cachedOnly
     }
