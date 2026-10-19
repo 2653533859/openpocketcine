@@ -1,2 +1,1 @@
-Camera controls and Media use the shared OpenCine screens. Readouts and recording duration follow camera reports; ISO uses the camera's choices. Compare readings with your camera, record a short clip and return from Media to Live View.
-Media scrolls to the newest clip, and portrait status readouts use a three-column grid. Record a clip, open Media, then rotate to portrait and check every readout.
+The live top bar readouts get their dark glow back, so they stay readable over bright pictures. Point the camera at a bright scene and check every top bar readout in portrait and landscape, then record a short clip, open Media and return to Live View.
