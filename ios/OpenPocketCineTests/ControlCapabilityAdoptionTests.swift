@@ -49,7 +49,9 @@ final class ControlCapabilityAdoptionTests: XCTestCase {
     }
 
     /// The tiles each body shows today: focus on the Pocket family, the iris strategy on Action 6,
-    /// audio on every known body, never face metering or a native ISO extension (none declared).
+    /// audio on every known body, never face metering. Behavior audit PIA-202/203/240: every
+    /// identified body offers the Auto ISO ceiling and Auto Native ISO, as the standalone app did;
+    /// with no body both stay unknown, so not offered.
     func testEachBodyShowsTodaysCaptureStrip() {
         let common: [CaptureSheet] = [.iso, .shutter, .exposure, .wb]
         let expected: [(Int?, String, [CaptureSheet])] = [
@@ -66,8 +68,8 @@ final class ControlCapabilityAdoptionTests: XCTestCase {
                 .captureSheetHost(model)
             XCTAssertEqual(input.readouts.map(\.id), tiles, name)
             XCTAssertFalse(model.captureCapabilities.faceMetering, name)
-            XCTAssertFalse(model.captureCapabilities.nativeIsoHop, name)
-            XCTAssertFalse(model.captureCapabilities.isoLimit, name)
+            XCTAssertEqual(model.captureCapabilities.nativeIsoHop, id != nil, name)
+            XCTAssertEqual(model.captureCapabilities.isoLimit, id != nil, name)
             // The shared pre-connection rule: no identified body, no AUDIO pin or tile.
             if id == nil { XCTAssertFalse(OsmoMonitorPresentation.capabilities(model.session).audio) }
         }
