@@ -1,6 +1,6 @@
 New and changed
 
-- Osmo Pocket and Action cameras offer Auto ISO ceiling, the ISO limit and the native ISO hop again.
+- Osmo Pocket 3, Pocket 4, Pocket 4 Pro, Nano and Action 6 offer Auto ISO ceiling, the ISO limit and the native ISO hop again.
 - In portrait, the large format readout now lines up exactly with the clock at the top of the screen.
 
 Fixes

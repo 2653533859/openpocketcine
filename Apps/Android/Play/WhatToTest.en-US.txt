@@ -5,7 +5,7 @@ New and changed
 
 Fixes
 
-- Osmo Pocket and Action cameras offer Auto ISO ceiling, the ISO limit and the native ISO hop again.
+- Osmo Pocket 3, Pocket 4, Pocket 4 Pro, Nano and Action 6 offer Auto ISO ceiling, the ISO limit and the native ISO hop again.
 - After a long Media visit, the live picture comes back instead of the camera disconnecting.
 
 What to test
