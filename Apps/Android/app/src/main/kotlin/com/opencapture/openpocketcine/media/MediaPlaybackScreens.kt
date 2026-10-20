@@ -232,7 +232,7 @@ fun MediaPlayerScreen(files: List<MediaFile>, startingAt: MediaFile, controller:
         com.opencapture.openpocketcine.assists.AssistInspectorImagePreview(tool, model.assist, model, model.lutSelection, resolvedColor, true)
     })
     val operations = com.opencapture.opencine.appkit.MonitorOperatorPlaybackOperations<MediaFile, PocketPlaybackLook>(
-        cacheOriginal = if (controller.isLive && controller.library.canTransfer) { { record -> controller.download(record.payload) } } else null,
+        cacheOriginal = playbackOriginalCache(controller.isLive) { file -> controller.download(file) },
         delete = if (controller.canDelete(active)) { { record -> controller.delete(record.payload) == record.asset.id } } else null,
         favorite = { record -> controller.toggleFavorite(record.payload) })
     val backdrop = rememberMonitorBackdropFeed(active.id, enabled = state?.ready == true)
@@ -270,3 +270,11 @@ fun MediaPlayerScreen(files: List<MediaFile>, startingAt: MediaFile, controller:
         }
     }
 }
+
+/**
+ * Full Resolution Caching pulls the original while a live clip plays (PAB-M-54). The DJI browse
+ * offers no source transfer service; the controller downloads over the camera's HTTP host.
+ */
+internal fun playbackOriginalCache(isLive: Boolean, download: suspend (MediaFile) -> Unit):
+    (suspend (com.opencapture.opencine.appkit.MonitorMediaRecord<MediaFile>) -> Unit)? =
+    if (isLive) { { record -> download(record.payload) } } else null
