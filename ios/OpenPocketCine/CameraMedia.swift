@@ -323,13 +323,12 @@ extension CameraSession {
         guard !library.browsing else { return }
         cameraMedia.cancelResumeLive()
         retireLivePictureRecoveryForMedia()
-        mediaOperationNote = nil
         library.visibility = isLivePhase ? .allRecords : .cachedOnly
         guard hasMediaDatalink, isLivePhase else {
             library.bind(nil)
             library.begin()
+            // Offline, the shared empty state names the link, the cache or the filters (ZIB-413).
             datalink?.setMediaBrowsing(false)
-            mediaOperationNote = library.records.isEmpty ? MediaOperatorCopy.notConnected : nil
             return
         }
         let seam = control, target = control.target, camera = connectedCamera?.id, driver = datalink
@@ -351,7 +350,6 @@ extension CameraSession {
         if returning == nil {
             let hadBrowse = mediaLibraryOwner?.binding != nil
             mediaLibraryOwner?.close()
-            mediaOperationNote = nil
             if hadBrowse { return }
         }
         let connection = control.id, camera = connectedCamera?.id
@@ -426,15 +424,12 @@ extension CameraSession {
 
     func refreshMedia() { Task { await self.refreshMedia() } }
     func refreshMedia() async {
-        guard hasMediaDatalink, isLivePhase else {
-            mediaOperationNote = MediaOperatorCopy.notConnected; return
-        }
+        guard hasMediaDatalink, isLivePhase else { return }
         if !isBrowsingMedia { beginMediaBrowse(); return }
         if !mediaLibrary.canRefresh, !mediaLibrary.acquiringSource {
             mediaLibrary.close(); beginMediaBrowse(); return
         }
         guard !mediaLibrary.fetching else { return }
-        mediaOperationNote = nil
         mediaLibrary.refresh()
     }
 
@@ -826,7 +821,7 @@ extension CameraSession {
             mediaLibrary.isCurrent(token) else { return }
         do { try await mediaLibrary.reconcileCatalog(producer.newestCatalog(binding: binding),
             binding: binding, token: token) }
-        catch { if mediaLibrary.isCurrent(token) { mediaOperationNote = MediaOperatorCopy.listFailed } }
+        catch { if mediaLibrary.isCurrent(token) { mediaNote = MediaOperatorCopy.listFailed } }
     }
 
     private static let lastMediaCameraKey = "opc.media.lastCameraID"

@@ -16,14 +16,19 @@ extension CameraSession {
         let next = MonitorMediaLibraryModel(cache: cache,
             favorites: PocketMediaFavoritesStore(cameraID: cameraID), cacheScanning: .background, catalogBase: .freshListing,
             initialCatalog: .init(), initialRecords: cache.load().map { codec.record($0.payload) },
-            copy: .init(openFailed: MediaOperatorCopy.listFailed,
-                listFailed: MediaOperatorCopy.listFailed, downloadFailed: MediaOperatorCopy.downloadFailed,
-                listing: MediaOperatorCopy.listing, empty: MediaOperatorCopy.noClips))
+            copy: Self.mediaLibraryCopy)
         mediaLibraryCameraID = cameraID
         mediaLibraryOwner = next
         old?.close()
         return next
     }
+
+    /// A failed entry names playback (PIB-083); the camera's own open gallery is named instead of
+    /// an empty card (PIB-082).
+    static let mediaLibraryCopy = MonitorMediaLibraryCopy(openFailed: MediaOperatorCopy.playbackFailed,
+        listFailed: MediaOperatorCopy.listFailed, downloadFailed: MediaOperatorCopy.downloadFailed,
+        listing: MediaOperatorCopy.listing, empty: MediaOperatorCopy.noClips,
+        sourceHeld: MediaOperatorCopy.browsingOnCamera)
 
     func mediaRecord(for file: MediaFile) -> MonitorMediaRecord<MediaFile>? {
         mediaLibrary.record(DjiAppleMediaAssets.asset(for: file).id)
