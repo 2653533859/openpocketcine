@@ -48,6 +48,53 @@ final class WatcherConnectionTests: XCTestCase {
         XCTAssertTrue(stopped, "Explicit host stop is terminal, not a reconnect loop")
     }
 
+    /// PIB-130: a host hello from another relay version must teach the baseline fix ("update on
+    /// both devices"), not read as a property of this build alone.
+    @MainActor
+    func testWatcherVersionMismatchTeachesUpdatingBothDevices() async throws {
+        let listener = try NWListener(using: WatcherRelayNetwork.parameters())
+        let queue = DispatchQueue(label: "SIMULATED-version-mismatch-listener")
+        // A newer host keeps the link open after its hello; closing at once races the hello
+        // against the drop, and the watcher may read the drop first and reconnect.
+        let held = VersionMismatchHostConnections()
+        listener.newConnectionHandler = { connection in
+            held.connections.append(connection)
+            connection.stateUpdateHandler = { state in
+                guard case .ready = state else { return }
+                let hello = WatcherRelayHello(
+                    version: WatcherRelayProtocol.version + 1, hostName: "Future relay")
+                guard let payload = try? JSONEncoder().encode(hello) else { return }
+                connection.send(
+                    content: WatcherRelayFraming.encode(kind: .hello, payload: payload),
+                    completion: .contentProcessed { _ in })
+            }
+            connection.start(queue: queue)
+        }
+        listener.start(queue: queue)
+        defer {
+            listener.cancel()
+            queue.sync { held.connections.forEach { $0.cancel() } }
+        }
+        // Like the real host's listeningPort: a port is dialable only once the listener is ready
+        // and has bound a nonzero port (port 0 fails with EADDRNOTAVAIL).
+        let ready = await waitUntil {
+            guard case .ready = listener.state, let port = listener.port else { return false }
+            return port.rawValue != 0
+        }
+        XCTAssertTrue(ready)
+        let port = try XCTUnwrap(listener.port)
+        let client = WatcherRelayClient()
+        defer { client.leave() }
+        client.join(
+            endpoint: .hostPort(host: "127.0.0.1", port: port), hostName: "Future relay",
+            passcode: "", watcherID: "test-watcher", deviceName: "Test watcher")
+        let failed = await waitUntil {
+            client.status == .failed(
+                "Update OpenPocketCine on both devices to watch this feed.")
+        }
+        XCTAssertTrue(failed, "unexpected watcher status \(client.status)")
+    }
+
     @MainActor
     func testIncomingFramePreservesLocalAssistsAndMirror() async throws {
         let host = host()
@@ -129,4 +176,9 @@ final class WatcherConnectionTests: XCTestCase {
         XCTAssertEqual(client.status, .idle)
         XCTAssertEqual(resolutions, 0)
     }
+}
+
+/// The simulated newer host's open connections, touched only on its listener queue.
+private final class VersionMismatchHostConnections: @unchecked Sendable {
+    var connections: [NWConnection] = []
 }
