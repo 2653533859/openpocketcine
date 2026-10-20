@@ -73,13 +73,18 @@ internal fun AppModel.PocketCommonDrum(sheet: LiveSheet, status: CameraStatus, f
         LadderSheet(
             presentation = com.opencapture.opencine.vocabulary.LadderSheetPresentation("", "", listOf(
                 com.opencapture.opencine.vocabulary.LadderTab("", sheet,
-                    com.opencapture.opencine.vocabulary.CaptureLadder(retained.label, choices.map { it.label }),
+                    com.opencapture.opencine.vocabulary.CaptureLadder(retained.label, choices.map { it.label },
+                        pocketCommonDrumMarks(sheet, status)),
                     applyOnActivate = false))),
             enabled = enabled && (!CaptureLists.isEvSheet(sheet, status.expoMode) || !facePriorityExposureEnabled),
             onWrite = {}, onClose = {}, control = control, chromeless = true,
             host = LadderSheetHost(0, retained.label, LadderSheetDrum.Field(retained, choices), onSelectTab = {}))
     }
 }
+
+/** The popup drum stars the curve's native ISO (400 in D-Log and D-Log M, 1600 in D-Log2). */
+internal fun pocketCommonDrumMarks(sheet: LiveSheet, status: CameraStatus): Set<String> =
+    if (sheet == LiveSheet.ISO) CaptureLists.isoMarkedLabels(status) else emptySet()
 
 /** Pocket's sheet commits: the typed DJI setters, and focus through the captured Core editor. */
 internal fun AppModel.routeCaptureSetting(setting: CaptureSetting, field: MonitorCaptureField?, status: CameraStatus) {

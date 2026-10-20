@@ -10,23 +10,22 @@ import OpenCineDJIApple
 
 @MainActor
 final class CapturePanelRenderComparisonTests: XCTestCase {
-    func testUndeclaredNativeIsoServicesAreNotOfferedByTheCaptureHost() {
+    /// Behavior audit PIA-202/203/240: no body leaves the native ISO services unknown; an
+    /// identified Osmo body offers the Auto ISO ceiling and Auto Native ISO as the standalone app did.
+    func testNativeIsoServicesFollowTheIdentifiedBody() {
         let session = OpenPocketCine.CameraSession(borrowing: HevcDecoder())
         let model = AppModel(session: session)
-        XCTAssertFalse(model.captureCapabilities.nativeIsoHop, "No native ISO pair was declared")
-        XCTAssertFalse(
-            model.captureCapabilities.isoLimit, "No writable Auto ISO ceiling was declared")
+        XCTAssertFalse(model.captureCapabilities.nativeIsoHop, "No body, no native ISO pair")
+        XCTAssertFalse(model.captureCapabilities.isoLimit, "No body, no writable Auto ISO ceiling")
         session.updateMultiview(
             camera: DjiAppleSighting(
                 id: UUID(), name: "SIMULATED",
                 model: .resolve(modelId: 0x22, name: "SIMULATED"), modelId: 0x22),
             driver: nil, status: CameraStatus())
-        XCTAssertFalse(
-            model.captureCapabilities.nativeIsoHop,
-            "A body identity does not declare its native ISO pair")
-        XCTAssertFalse(
-            model.captureCapabilities.isoLimit,
-            "A body identity does not declare a writable ceiling")
+        XCTAssertTrue(
+            model.captureCapabilities.nativeIsoHop, "An Osmo body declares its native ISO hop")
+        XCTAssertTrue(
+            model.captureCapabilities.isoLimit, "An Osmo body declares a writable Auto ISO ceiling")
     }
 
     /// main's strip held ISO and shutter at the camera's report until it answered.
