@@ -30,6 +30,17 @@ import kotlin.test.assertTrue
 
 /** Pocket's capture sheet host values, as on main. */
 class CaptureSheetHostTest {
+    /** Behavior audit PAA-204: the ISO popup drum starred the curve's native ISO in the standalone app. */
+    @Test
+    fun isoPopupDrumStarsTheNativeIso() {
+        val dLogM = com.opencapture.opencine.vocabulary.CameraStatus(colorMode = CameraCommands.COLOR_DLOG_M,
+            shootingMode = CameraCommands.SHOOT_VIDEO)
+        assertEquals(setOf("400"), pocketCommonDrumMarks(LiveSheet.ISO, dLogM))
+        assertEquals(setOf("1600"), pocketCommonDrumMarks(LiveSheet.ISO,
+            dLogM.copy(colorMode = CameraCommands.COLOR_DLOG2)))
+        assertEquals(emptySet(), pocketCommonDrumMarks(LiveSheet.SHUTTER, dLogM))
+    }
+
     @Test fun typedModelControlsEveryHostProjectionAndKeepsUnknown() {
         var model = ControlCapabilities()
         val state = pocketCaptureSessionState({ null }, { null }, { false }, { false },
