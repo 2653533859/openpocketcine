@@ -17,7 +17,7 @@ class StartupConnectionCopyTest {
         assertTrue(StartupConnectionCopy.PAIRING_PRECHECK.contains("DJI Frame Tap") && StartupConnectionCopy.PAIRING_PRECHECK.contains("DJI Mimo"))
         assertTrue(StartupConnectionCopy.STILL_LOOKING.startsWith(tip))
         val card = DjiFailures.classify(null, ConnectionPhase.OPENING_DATALINK, "camera never answered the datalink handshake")
-        assertEquals("Camera never answered the datalink handshake. $tip", card.message)
+        assertEquals("The camera never answered the video link. $tip", card.message, "OpenCine #122 friendly connect copy")
         assertTrue(DjiFailures.classify(null, ConnectionPhase.AWAITING_APPROVAL, "pairing timed out").message.endsWith(tip))
     }
 
