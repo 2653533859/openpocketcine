@@ -1,15 +1,17 @@
 New and changed
 
 - Media shows a short note when the camera's own playback screen is open, instead of an empty gallery.
+- In portrait, the large format readout now lines up exactly with the clock at the top of the screen.
 
 Fixes
 
-- If the camera does not enter playback, Media now says so instead of naming the clip list.
-- With filters on and the camera disconnected, an empty gallery names the filters instead of the cache.
-- In portrait, the large format readout lines up exactly with the clock at the top of the screen.
+- With Shutter Angle on, picking an angle now sets the shutter, and the shutter list is no longer stuck at 1/60.
+- Media names the real cause of an empty gallery: a camera that did not enter playback, or filters while disconnected.
+- After the landscape assist palette collapses, its hidden buttons are no longer reachable with VoiceOver, and a volume-button remote shutter is protected against a rare quit.
+- After a long Media visit, the live picture comes back instead of the camera disconnecting.
 
 What to test
 
-- Open playback on the camera itself, then open Media in the app. Check the note, close camera playback and refresh.
-- Disconnect, open Media, turn on a filter that matches nothing and check the message names the filters.
-- Use a volume button as the remote shutter to start and stop a recording; report any unexpected quit.
+- Turn on Shutter Angle, pick 180 degrees at 25p, then switch EXPOSURE to Auto and back to Manual; check the shutter follows and other speeds are offered.
+- Open playback on the camera, then Media in the app, and check the note. Disconnected, a filter that matches nothing should name the filters.
+- Use a volume button as the remote shutter to start and stop a recording, stay in Media for 30 minutes and return; the live picture should come back.
