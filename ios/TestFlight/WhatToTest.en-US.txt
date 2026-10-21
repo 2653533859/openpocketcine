@@ -1,16 +1,15 @@
 New and changed
 
-- Osmo Pocket 3, Pocket 4, Pocket 4 Pro, Nano and Action 6 offer Auto ISO ceiling, the ISO limit and the native ISO hop again.
-- In portrait, the large format readout now lines up exactly with the clock at the top of the screen.
+- In landscape, the colour profile now appears beside the codec in the top bar.
 
 Fixes
 
-- On a Pocket 3 that reports no shutter list, Speed offers the standard shutter speeds and sets them.
-- With Shutter Angle on, picking an angle now sets the shutter, and the shutter list is no longer stuck at 1/60.
-- After a long Media visit, the live picture comes back instead of the camera disconnecting.
+- Portrait card-space labels keep their full rounded value near the screen cutout.
+- A refused camera Wi-Fi join now gives clearer guidance and a way to open Wi-Fi settings.
+- Media playback and deletion stay tied to the current clip after switching pages.
 
 What to test
 
-- On a Pocket 3 in manual exposure, open Speed, pick a few shutter speeds and confirm the camera follows.
-- Set ISO to Auto and check that the ISO ceiling and native ISO options are offered.
-- Stay in Media for 30 minutes or more and return; the live picture should come back.
+- Rotate between portrait and landscape while connected. Check the codec, colour profile and free card space stay readable.
+- Open Media, change clips and cancel a deletion. Visit another page, return to Media and check that selection and playback match.
+- Refuse a camera Wi-Fi join, follow the Wi-Fi settings guidance and retry.
