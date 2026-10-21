@@ -11,5 +11,5 @@ Fixes
 What to test
 
 - Rotate between portrait and landscape while connected. Check the codec, colour profile and free card space stay readable.
-- Open Media, change the selected clip and cancel a deletion. Check the selection and playback still match.
+- Open Media, change clips and cancel a deletion. Visit another page, return to Media and check that selection and playback match.
 - Refuse a camera Wi-Fi join, follow the Wi-Fi settings guidance and retry.
