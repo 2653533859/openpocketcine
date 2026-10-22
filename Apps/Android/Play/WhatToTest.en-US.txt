@@ -13,6 +13,6 @@ Fixes
 
 What to test
 
-- Check Shutter Angle at 180 degrees across Auto, Manual and frame-rate changes. Inspect native ISO, ISO limits and portrait/landscape readouts.
+- Select 180 degrees at 25p, switch Auto to Manual, then 50p. Keep 180 selected as shutter time changes from 1/50 to 1/100; check native ISO, ISO limits and portrait/landscape readouts.
 - In Media, pause and scrub a clip, switch clips, cancel a deletion and share cached clips. Return to Live View and check that the live picture resumes.
 - If the live picture drops out, use Share Diagnostics and report the time, what you were doing and whether camera controls still responded.

@@ -17,7 +17,7 @@ while keeping DJI camera capabilities and Pocket's familiar operating layout.
   aligned across iOS and Android; camera-specific capabilities remain available.
 - Landscape places colour beside codec. Portrait preserves readable rounded
   card-space values and cutout clearance, and Android restores the readout glow.
-- Shutter Angle follows angle, exposure-mode and frame-rate changes. Supported
+- Shutter Angle applies angle picks and follows exposure-mode and frame-rate changes. Supported
   native ISO, Auto ISO limits and native ISO selection are restored.
 - A long Media visit hands the live picture back correctly. Playback preserves
   Pause while buffering, seeking and scrubbing, and on app return.
