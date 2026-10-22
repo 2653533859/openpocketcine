@@ -1,15 +1,18 @@
 New and changed
 
-- In landscape, the colour profile now appears beside the codec in the top bar.
+- A more consistent OpenCine interface brings camera setup, settings, View Assist and media controls closer together across the apps.
+- In landscape, the colour profile sits beside the codec. Portrait readouts keep their rounded card-space values clear of the screen cutout.
+- Connection diagnostics separate incoming video, decoding and display activity to help investigate live-picture interruptions.
 
 Fixes
 
-- Portrait card-space labels keep their full rounded value near the screen cutout.
-- A refused camera Wi-Fi join now gives clearer guidance and a way to open Wi-Fi settings.
-- Media playback and deletion stay tied to the current clip after switching pages.
+- Shutter Angle follows exposure changes and frame rate again, and the ISO controls restore the camera's supported native ISO and Auto ISO limits.
+- Returning from a long Media visit restores the live picture. Playback keeps Pause through buffering, seeking and returning to the app.
+- Media selection, deletion, full-resolution caching and sharing stay tied to the current clips, with clearer camera-playback and filter messages.
+- Refused camera Wi-Fi joins show clear guidance and a way to open Wi-Fi settings. A mismatched watcher is asked to update the app.
 
 What to test
 
-- Rotate between portrait and landscape while connected. Check the codec, colour profile and free card space stay readable.
-- Open Media, change clips and cancel a deletion. Visit another page, return to Media and check that selection and playback match.
-- Refuse a camera Wi-Fi join, follow the Wi-Fi settings guidance and retry.
+- With Shutter Angle at 180 degrees, switch Auto to Manual and change frame rate. Check the shutter follows, then rotate and inspect the top bar.
+- In Media, pause and scrub a clip, switch clips, cancel a deletion and share cached clips. Return to Live View and check that the live picture resumes.
+- If the live picture drops out, use Share Diagnostics and report the time, what you were doing and whether camera controls still responded.
