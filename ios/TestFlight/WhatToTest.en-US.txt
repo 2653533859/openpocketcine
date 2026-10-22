@@ -13,6 +13,6 @@ Fixes
 
 What to test
 
-- Select 180 degrees at 25p, switch Auto to Manual, then change to 50p. Keep 180 selected while shutter time updates from 1/50 to 1/100. Rotate and inspect the top bar.
+- At 180 degrees/25p, check supported native ISO and Auto ISO limits in Auto. Select Manual, then 50p: 180 stays selected as 1/50 becomes 1/100. Rotate; codec, colour and card space stay readable.
 - In Media, pause and scrub a clip, switch clips, cancel a deletion and share cached clips. Return to Live View and check that the live picture resumes.
 - If the live picture drops out, use Share Diagnostics and report the time, what you were doing and whether camera controls still responded.
