@@ -6,6 +6,35 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+This beta is a parity and reliability update built on the shared OpenCine
+foundation. Camera setup, the monitor, settings, View Assist, media and playback
+use more of the same components and behavior as the other OpenCapture apps,
+while keeping DJI camera capabilities and Pocket's familiar operating layout.
+
+### Parity and reliability update
+
+- Shared monitoring controls, camera setup, settings and media behavior are
+  aligned across iOS and Android; camera-specific capabilities remain available.
+- Landscape places colour beside codec. Portrait preserves readable rounded
+  card-space values and cutout clearance, and Android restores the readout glow.
+- Shutter Angle applies angle picks and follows exposure-mode and frame-rate changes. Supported
+  native ISO, Auto ISO limits and native ISO selection are restored.
+- A long Media visit hands the live picture back correctly. Playback preserves
+  Pause while buffering, seeking and scrubbing, and on app return.
+- Camera-clip deletion, full-resolution caching and multi-clip sharing use the
+  current selection. Camera playback and empty-filter states have clearer copy.
+- Refused camera Wi-Fi joins offer practical recovery guidance. Android opens
+  Wi-Fi settings for Wi-Fi failures and explains pairing timeouts.
+- Watch and relay commands retain their camera/session ownership checks;
+  mismatched watcher versions are told to update, and Watch capture works while
+  the phone is locked.
+- Shared diagnostics distinguish transport, decode and presentation incidents.
+  This improves investigation; it is not a claim that every dropout is fixed.
+
+The final camera/device walkthrough remains required before the next external
+beta. The full release covers both platforms; platform-only details are called
+out in the tester notes.
+
 ### Added
 
 - Feed incident reports on iOS and Android separate incoming video, decode
