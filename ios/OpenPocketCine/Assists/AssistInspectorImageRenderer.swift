@@ -9,12 +9,13 @@ import OpenPocketViewCore
 extension MonitorInspectorImageRenderer {
     convenience init(
         now: @escaping Clock = { DispatchTime.now().uptimeNanoseconds },
-        operation: RenderOperation? = nil
+        operation: RenderOperation? = nil,
+        workerQoS: DispatchQoS = MonitorInspectorImageRenderer.defaultWorkerQoS
     ) {
         let curves = Dictionary(
             uniqueKeysWithValues: MonitorTransfer.allCases.compactMap { transfer in
                 DJILook.rec709LookCurve(transfer).map { (transfer, $0) }
             })
-        self.init(lookCurves: curves, now: now, operation: operation)
+        self.init(lookCurves: curves, now: now, operation: operation, workerQoS: workerQoS)
     }
 }
