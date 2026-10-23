@@ -167,6 +167,9 @@ targets:
       # The shared hosted-test wait; dependency-free, so no second copy of a host module.
       - package: OpenCine
         product: OpenCineHostedTestSupport
+      # The shared manual clock (HostClock seams); depends on OpenCineCore only.
+      - package: OpenCine
+        product: OpenCineCoreTestSupport
       # OpenCineAppKit comes from the host app: linking it here too would make it a framework
       # with a second MonitorUI (a second theme accent) inside.
       - target: OpenPocketCine

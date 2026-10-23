@@ -19,6 +19,8 @@ import OpenCineDJIApple
     }
     /// Pocket's record confirmation window: a reply or a matching `0x02/0x80` report within 8 s.
     var confirmationWindow: Duration = .seconds(8)
+    /// The window's clock and its 100 ms poll. Tests advance a manual clock instead of waiting.
+    var clock: HostClock = .live
 
     var status: CameraStatus {
         guard let tile else { return CameraStatus() }
@@ -80,7 +82,8 @@ import OpenCineDJIApple
             return
         }
         let sent = Date()
-        let deadline = ContinuousClock.now + confirmationWindow
+        let clock = clock
+        let deadline = clock.now() + confirmationWindow
         tile.recordingBusy = true
         tile.recordingNote = "Waiting for camera confirmation"
         onStage?(.sent)
@@ -91,8 +94,8 @@ import OpenCineDJIApple
                 tile?.recordingBusy = false
                 onStage?(event)
             }
-            while ContinuousClock.now < deadline {
-                try? await Task.sleep(for: .milliseconds(100))
+            while clock.now() < deadline {
+                try? await clock.sleep(.milliseconds(100))
                 guard let tile, tile.driver === driver else { return }
                 if let reply = tile.responses[seq], reply.cmdSet == 2, reply.cmdId == 2 {
                     if reply.payload != [0] {

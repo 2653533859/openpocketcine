@@ -1,3 +1,4 @@
+import OpenCineAppKit
 import OpenCineCore
 import OpenCineDJIApple
 
@@ -143,6 +144,8 @@ import OpenCineDJIApple
             status.whiteBalanceKelvin = live.whiteBalanceKelvin
             status.focusMode = .continuous
             status.audioChannel = .stereo
+            // A connected body reports its meters; a quiet room reads as silence.
+            status.audioMeters = .silent
             status.timecodeValue = CameraTimecode(
                 hours: live.timecodeHours, minutes: live.timecodeMinutes, seconds: live.timecodeSeconds, frames: 0)
             status.colorMode = .dLog2
@@ -191,10 +194,13 @@ import OpenCineDJIApple
                     model.session.status.zoomLens = CamFov.lens1x
                 }
                 if ProcessInfo.processInfo.environment["OPV_UI_REVIEW_MOTION_RUNNING"] == "1" {
-                    model.session.gimbalMoveRunning = true
-                    model.session.gimbalMoveCanPause = true
-                    model.session.gimbalMovePaused =
-                        ProcessInfo.processInfo.environment["OPV_UI_REVIEW_MOTION_PAUSED"] == "1"
+                    let paused = ProcessInfo.processInfo.environment["OPV_UI_REVIEW_MOTION_PAUSED"] == "1"
+                    let session = model.session
+                    ShellModel.applyThroughLaunch {
+                        session.gimbalMoveRunning = true
+                        session.gimbalMoveCanPause = true
+                        session.gimbalMovePaused = paused
+                    }
                 }
             }
             model.session.liveSignalBars = 4
