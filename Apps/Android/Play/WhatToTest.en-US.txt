@@ -6,13 +6,13 @@ New and changed
 
 Fixes
 
+- The app no longer freezes or shows App not responding while the live picture rebuilds, for example after rotating or returning to the app.
 - Shutter Angle follows exposure and frame-rate changes. The ISO drum marks native ISO and restores supported Auto ISO limits and native ISO choices.
-- Returning from a long Media visit restores the live picture. Playback keeps Pause through buffering and scrubbing.
-- Camera-clip deletion, full-resolution caching and sharing several cached clips work together, with clearer camera-playback messages.
-- Connection failures offer the relevant Wi-Fi settings and clearer pairing-timeout guidance. Top-bar readouts stay readable over bright pictures.
+- Returning from a long Media visit restores the live picture. Playback keeps Pause through buffering, scrubbing and Share.
+- Clip deletion, caching and sharing work together. Connection failures offer the relevant Wi-Fi settings and clearer pairing-timeout guidance.
 
 What to test
 
-- Select 180 degrees at 25p, switch Auto to Manual, then 50p. Keep 180 selected as shutter time changes from 1/50 to 1/100; check native ISO, ISO limits and portrait/landscape readouts.
-- In Media, pause and scrub a clip, switch clips, cancel a deletion and share cached clips. Return to Live View and check that the live picture resumes.
-- If the live picture drops out, use Share Diagnostics and report the time, what you were doing and whether camera controls still responded.
+- Rotate the phone repeatedly and leave and return to the app during Live View. Check the app stays responsive and the live picture returns.
+- Select 180 degrees at 25p, switch Auto to Manual, then 50p: 180 stays as 1/50 becomes 1/100. Check the ISO drum still marks native ISO and offers native ISO choices.
+- In Media, pause a clip, scrub it and tap Share: it stays paused, even after the sheet closes. Back in Live View, check the picture resumes. Report dropouts with Share Diagnostics.
