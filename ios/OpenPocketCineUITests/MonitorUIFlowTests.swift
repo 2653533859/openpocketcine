@@ -25,11 +25,15 @@ final class MonitorUIFlowTests: SharedAppUITestCase {
         launch(ReviewLaunch(screen: .live, commonControls: false))
         let record = app.buttons["monitor.system.record"]
         XCTAssertTrue(record.waitForExistence(timeout: 10))
-        XCTAssertFalse(record.isEnabled)
+        // The control stays enabled for the Shooting mode hold, which no longer waits for the
+        // recording state (OpenCine MonitorCapturePolicy, #101); a press still cannot record.
         XCTAssertEqual(record.label, "Recording state unknown")
         record.press(forDuration: 0.6)
         XCTAssertFalse(app.staticTexts["Shooting mode"].exists)
         XCTAssertFalse(app.buttons["Start"].exists)
+        record.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertFalse(app.buttons["Start"].exists)
+        XCTAssertEqual(record.label, "Recording state unknown")
         capture("native-preview-recording-unknown")
     }
 
@@ -67,9 +71,11 @@ final class MonitorUIFlowTests: SharedAppUITestCase {
             let tally = app.descendants(matching: .any)["monitor.recording.readout"].firstMatch
             XCTAssertTrue(tally.exists)
             if orientation == .portrait {
-                // Portrait stacks the format over its detail in one trailing column, so the
-                // header aligns component tops (OpenCine docs/ui, MonitorScreenshotLayoutTests).
-                XCTAssertEqual(format.frame.minY, tally.frame.minY, accuracy: 1)
+                // Portrait stacks the format over its detail in one trailing column. Only its
+                // invisible 44 pt target expands above the painted row; the painted tops stay
+                // aligned (OpenCine MonitorScreenshotLayoutTests checks the ink).
+                XCTAssertLessThanOrEqual(format.frame.minY, tally.frame.minY + 1)
+                XCTAssertGreaterThanOrEqual(format.frame.height, 44 - 0.5)
             } else {
                 XCTAssertEqual(format.frame.midY, tally.frame.midY, accuracy: 1)
             }
@@ -568,7 +574,11 @@ final class MonitorUIFlowTests: SharedAppUITestCase {
                 XCTAssertEqual(panel.frame.midX, app.frame.midX, accuracy: 1, id)
                 XCTAssertLessThanOrEqual(panel.frame.maxY, app.frame.maxY + 1, id)
                 if ["format", "color", "mode"].contains(id), orientation == .landscapeLeft {
-                    XCTAssertEqual(panel.frame.minY, app.frame.minY, accuracy: 1, id)
+                    // The top-edge categories keep the one popup top margin (no top inset on a
+                    // phone in landscape; OpenCine Fixtures/popup-top-margin.tsv).
+                    XCTAssertEqual(
+                        panel.frame.minY, app.frame.minY + MonitorCapturePopupLayout.topMargin(safeTop: 0),
+                        accuracy: 1, id)
                 } else {
                     XCTAssertGreaterThan(panel.frame.minY, app.frame.minY, id)
                 }
@@ -594,12 +604,19 @@ final class MonitorUIFlowTests: SharedAppUITestCase {
                 app.buttons["monitor.capture.\(id)"].tap()
                 let panel = app.descendants(matching: .any)["monitor.capture.panel"].firstMatch
                 XCTAssertTrue(panel.waitForExistence(timeout: 5), id)
-                XCTAssertEqual(panel.frame.minY, app.frame.minY, accuracy: 1, id)
+                // The top-edge categories keep the one popup top margin (no top inset on a
+                // phone in landscape; OpenCine Fixtures/popup-top-margin.tsv).
+                XCTAssertEqual(
+                    panel.frame.minY, app.frame.minY + MonitorCapturePopupLayout.topMargin(safeTop: 0),
+                    accuracy: 1, id)
+                XCTAssertLessThan(panel.frame.maxY, app.frame.maxY - 1, id)
                 let iso = app.buttons["monitor.capture.iso"]
                 XCTAssertTrue(iso.isHittable, id)
                 iso.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+                // Both edges keep the top margin, so the replacement shows as the bottom
+                // drawer's anchored bottom edge, not as a lower top edge.
                 let replacement = NSPredicate { _, _ in
-                    panel.exists && panel.frame.minY > self.app.frame.minY
+                    panel.exists && abs(panel.frame.maxY - self.app.frame.maxY) <= 1
                 }
                 expectation(for: replacement, evaluatedWith: app)
                 waitForExpectations(timeout: 3)
