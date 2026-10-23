@@ -7,12 +7,12 @@ New and changed
 Fixes
 
 - Shutter Angle follows exposure changes and frame rate again, and the ISO controls restore the camera's supported native ISO and Auto ISO limits.
-- Returning from a long Media visit restores the live picture. Playback keeps Pause through buffering, seeking and returning to the app.
-- Media selection, deletion, full-resolution caching and sharing stay tied to the current clips, with clearer camera-playback and filter messages.
-- Refused camera Wi-Fi joins show clear guidance and a way to open Wi-Fi settings. A mismatched watcher is asked to update the app.
+- The app no longer hangs while capture readouts update during a long session. VoiceOver no longer reaches live controls under a covering screen.
+- Returning from Media restores the live picture. Playback keeps Pause through buffering, seeking, Share and returning to the app.
+- Media deletion, caching and sharing stay tied to the current clips. Refused camera Wi-Fi joins show guidance and a way to open Wi-Fi settings.
 
 What to test
 
-- At 180 degrees/25p, check supported native ISO and Auto ISO limits in Auto. Select Manual, then 50p: 180 stays selected as 1/50 becomes 1/100. Rotate; codec, colour and card space stay readable.
-- In Media, pause and scrub a clip, switch clips, cancel a deletion and share cached clips. Return to Live View and check that the live picture resumes.
-- If the live picture drops out, use Share Diagnostics and report the time, what you were doing and whether camera controls still responded.
+- At 180 degrees/25p, check native ISO and Auto ISO limits in Auto. Select Manual, then 50p: 180 stays selected as 1/50 becomes 1/100.
+- In Media, pause a clip, share it and close the share sheet. Check it stays paused, then return to Live View and check the live picture resumes.
+- Keep a long session running with capture readouts open. If controls stall or the picture drops out, use Share Diagnostics and report the time.

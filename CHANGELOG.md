@@ -28,6 +28,10 @@ while keeping DJI camera capabilities and Pocket's familiar operating layout.
 - Watch and relay commands retain their camera/session ownership checks;
   mismatched watcher versions are told to update, and Watch capture works while
   the phone is locked.
+- iOS no longer hangs while capture readouts update during long sessions, and
+  VoiceOver no longer reaches live controls under a covering screen.
+- Android no longer freezes while the live picture rebuilds after rotating or
+  returning to the app. Playback stays paused after Share on both platforms.
 - Shared diagnostics distinguish transport, decode and presentation incidents.
   This improves investigation; it is not a claim that every dropout is fixed.
 
