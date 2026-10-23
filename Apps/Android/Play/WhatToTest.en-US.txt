@@ -14,5 +14,5 @@ Fixes
 What to test
 
 - Rotate the phone repeatedly and leave and return to the app during Live View. Check the app stays responsive and the live picture returns.
-- Select 180 degrees at 25p, switch Auto to Manual, then 50p. Keep 180 selected as shutter time changes from 1/50 to 1/100; check native ISO limits.
-- In Media, pause a clip, scrub it and tap Share: check it stays paused each time, including after the share sheet closes. Report any dropout with Share Diagnostics.
+- Select 180 degrees at 25p, switch Auto to Manual, then 50p: 180 stays as 1/50 becomes 1/100. Check the ISO drum still marks native ISO and offers native ISO choices.
+- In Media, pause a clip, scrub it and tap Share: it stays paused, even after the sheet closes. Back in Live View, check the picture resumes. Report dropouts with Share Diagnostics.

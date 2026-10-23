@@ -14,5 +14,5 @@ Fixes
 What to test
 
 - At 180 degrees/25p, check native ISO and Auto ISO limits in Auto. Select Manual, then 50p: 180 stays selected as 1/50 becomes 1/100.
-- In Media, play a clip and tap Share. Check it pauses while the share sheet is up and stays paused after you close it. Then check Live View resumes.
-- Keep a long session running with capture readouts open. If controls stall or the picture drops out, use Share Diagnostics and report the time.
+- In Media, pause a clip, then scrub and leave and return to the app: it stays paused. Play it and tap Share: it pauses and stays paused after the sheet closes.
+- With VoiceOver on, open Media over Live View: live controls underneath must not be reachable. Back in Live View after a long session, check the picture and controls still respond.
