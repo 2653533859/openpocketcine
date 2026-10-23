@@ -15,4 +15,4 @@ What to test
 
 - Rotate the phone repeatedly and leave and return to the app during Live View. Check the app stays responsive and the live picture returns.
 - Select 180 degrees at 25p, switch Auto to Manual, then 50p. Keep 180 selected as shutter time changes from 1/50 to 1/100; check native ISO limits.
-- In Media, pause, scrub and share a clip, then return to Live View. If the picture drops out, use Share Diagnostics and report the time.
+- In Media, pause a clip, scrub it and tap Share: check it stays paused each time, including after the share sheet closes. Report any dropout with Share Diagnostics.
