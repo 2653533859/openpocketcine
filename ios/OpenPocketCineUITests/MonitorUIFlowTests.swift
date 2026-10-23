@@ -25,11 +25,22 @@ final class MonitorUIFlowTests: SharedAppUITestCase {
         launch(ReviewLaunch(screen: .live, commonControls: false))
         let record = app.buttons["monitor.system.record"]
         XCTAssertTrue(record.waitForExistence(timeout: 10))
-        XCTAssertFalse(record.isEnabled)
+        // The control stays enabled for the Shooting mode hold, which no longer waits for the
+        // recording state (OpenCine MonitorCapturePolicy, #101); a press still cannot record.
         XCTAssertEqual(record.label, "Recording state unknown")
         record.press(forDuration: 0.6)
-        XCTAssertFalse(app.staticTexts["Shooting mode"].exists)
+        let mode = app.staticTexts["Shooting mode"]
+        XCTAssertTrue(mode.waitForExistence(timeout: 5), "The hold opens Shooting mode")
         XCTAssertFalse(app.buttons["Start"].exists)
+        let close = app.buttons["monitor.capture.close"]
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        close.tap()
+        let closed = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"), object: mode)
+        XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 5), .completed)
+        record.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertFalse(app.buttons["Start"].exists)
+        XCTAssertEqual(record.label, "Recording state unknown")
         capture("native-preview-recording-unknown")
     }
 
@@ -66,11 +77,21 @@ final class MonitorUIFlowTests: SharedAppUITestCase {
             let format = app.buttons["monitor.capture.format"]
             let tally = app.descendants(matching: .any)["monitor.recording.readout"].firstMatch
             XCTAssertTrue(tally.exists)
-            XCTAssertEqual(format.frame.midY, tally.frame.midY, accuracy: 1)
+            if orientation == .portrait {
+                // Portrait stacks the format over its detail in one trailing column. Only its
+                // invisible 44 pt target expands above the painted row; the painted tops stay
+                // aligned (OpenCine MonitorScreenshotLayoutTests checks the ink).
+                XCTAssertLessThanOrEqual(format.frame.minY, tally.frame.minY + 1)
+                XCTAssertGreaterThanOrEqual(format.frame.height, 44 - 0.5)
+            } else {
+                XCTAssertEqual(format.frame.midY, tally.frame.midY, accuracy: 1)
+            }
             let cameraBattery = app.descendants(matching: .any)["monitor.telemetry.camera"]
                 .firstMatch
             XCTAssertTrue(cameraBattery.exists)
-            XCTAssertTrue(cameraBattery.label.hasPrefix("Camera battery "))
+            // The shared gauge speaks its title as the label and the charge as the value.
+            XCTAssertEqual(cameraBattery.label, "Camera battery")
+            XCTAssertEqual(cameraBattery.value as? String, "68 percent")
             capture("monitor-\(orientation.rawValue)")
         }
     }
@@ -170,7 +191,7 @@ final class MonitorUIFlowTests: SharedAppUITestCase {
         let peak = app.buttons["monitor.assist.PEAK"]
         XCTAssertTrue(peak.waitForExistence(timeout: 5))
         XCTAssertTrue(peak.isHittable, "Portrait collapsed View Assist must show a favorite tool")
-        XCTAssertGreaterThanOrEqual(peak.frame.height, 50)
+        XCTAssertEqual(peak.frame.height, MonitorSystemButtonMetrics.side(tablet: UIDevice.current.userInterfaceIdiom == .pad), accuracy: 1)
         let tools = [
             app.buttons["monitor.assists.expand"],
             peak,
@@ -356,8 +377,7 @@ final class MonitorUIFlowTests: SharedAppUITestCase {
         XCTAssertTrue(panel.waitForExistence(timeout: 5))
         for (control, backLabel) in [("settings", "Back to live"), ("media", "Back")] {
             let navigation = app.buttons["monitor.system.\(control)"]
-            XCTAssertTrue(navigation.isHittable)
-            navigation.tap()
+            tapWhenReady(navigation)
             let back = app.buttons[backLabel].firstMatch
             XCTAssertTrue(back.waitForExistence(timeout: 5))
             capture("covered-picker-\(control)")
@@ -368,7 +388,8 @@ final class MonitorUIFlowTests: SharedAppUITestCase {
             XCTAssertFalse(app.buttons["monitor.capture.iso"].isHittable)
             XCTAssertFalse(navigation.isHittable)
             back.tap()
-            XCTAssertTrue(panel.isHittable, "The same picker returns after \(control)")
+            // The page closes with a transition; read the monitor once it has settled.
+            XCTAssertTrue(waitUntilReady(panel), "The same picker returns after \(control)")
             XCTAssertTrue(app.buttons["monitor.capture.close"].isHittable)
             XCTAssertTrue(app.buttons["monitor.system.record"].isHittable)
         }
@@ -500,7 +521,8 @@ final class MonitorUIFlowTests: SharedAppUITestCase {
         capture("assist-inspector-portrait")
         rotate(.landscapeRight)
         XCTAssertTrue(inspector.exists)
-        app.buttons["Zebra"].firstMatch.tap()
+        // The palette chips keep the same labels in the tree under the inspector: use its tab.
+        inspector.buttons["Zebra"].tap()
         XCTAssertTrue(app.buttons["Close Zebra"].waitForExistence(timeout: 5))
         capture("assist-inspector-landscape")
     }
@@ -517,7 +539,8 @@ final class MonitorUIFlowTests: SharedAppUITestCase {
         let initialFrame = inspector.frame
         for iteration in 0..<20 {
             for title in ["False Color", "Zebra", "Peaking"] {
-                app.buttons[title].firstMatch.tap()
+                // The palette chips under the inspector share these labels: tap the inspector's tab.
+                inspector.buttons[title].tap()
                 XCTAssertEqual(
                     app.state, .runningForeground, "Terminated at \(iteration): \(title)")
                 XCTAssertTrue(app.buttons["Close \(title)"].waitForExistence(timeout: 3))
@@ -558,7 +581,11 @@ final class MonitorUIFlowTests: SharedAppUITestCase {
                 XCTAssertEqual(panel.frame.midX, app.frame.midX, accuracy: 1, id)
                 XCTAssertLessThanOrEqual(panel.frame.maxY, app.frame.maxY + 1, id)
                 if ["format", "color", "mode"].contains(id), orientation == .landscapeLeft {
-                    XCTAssertEqual(panel.frame.minY, app.frame.minY, accuracy: 1, id)
+                    // The top-edge categories keep the one popup top margin (no top inset on a
+                    // phone in landscape; OpenCine Fixtures/popup-top-margin.tsv).
+                    XCTAssertEqual(
+                        panel.frame.minY, app.frame.minY + MonitorCapturePopupLayout.topMargin(safeTop: 0),
+                        accuracy: 1, id)
                 } else {
                     XCTAssertGreaterThan(panel.frame.minY, app.frame.minY, id)
                 }
@@ -584,12 +611,19 @@ final class MonitorUIFlowTests: SharedAppUITestCase {
                 app.buttons["monitor.capture.\(id)"].tap()
                 let panel = app.descendants(matching: .any)["monitor.capture.panel"].firstMatch
                 XCTAssertTrue(panel.waitForExistence(timeout: 5), id)
-                XCTAssertEqual(panel.frame.minY, app.frame.minY, accuracy: 1, id)
+                // The top-edge categories keep the one popup top margin (no top inset on a
+                // phone in landscape; OpenCine Fixtures/popup-top-margin.tsv).
+                XCTAssertEqual(
+                    panel.frame.minY, app.frame.minY + MonitorCapturePopupLayout.topMargin(safeTop: 0),
+                    accuracy: 1, id)
+                XCTAssertLessThan(panel.frame.maxY, app.frame.maxY - 1, id)
                 let iso = app.buttons["monitor.capture.iso"]
                 XCTAssertTrue(iso.isHittable, id)
                 iso.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+                // Both edges keep the top margin, so the replacement shows as the bottom
+                // drawer's anchored bottom edge, not as a lower top edge.
                 let replacement = NSPredicate { _, _ in
-                    panel.exists && panel.frame.minY > self.app.frame.minY
+                    panel.exists && abs(panel.frame.maxY - self.app.frame.maxY) <= 1
                 }
                 expectation(for: replacement, evaluatedWith: app)
                 waitForExpectations(timeout: 3)
@@ -1015,7 +1049,8 @@ final class MonitorUIFlowTests: SharedAppUITestCase {
             let back = app.buttons["Back to media"]
             XCTAssertTrue(back.waitForExistence(timeout: 10))
             XCTAssertTrue(back.isHittable)
-            XCTAssertEqual(back.frame.width, 54, accuracy: 1)
+            // One system button size on phone and tablet (48 pt since #447).
+            XCTAssertEqual(back.frame.width, MonitorSystemButtonMetrics.side(tablet: UIDevice.current.userInterfaceIdiom == .pad), accuracy: 1)
             for title in [
                 "Favorite clip", "Clip information", "Share clip", "Delete clip from camera",
             ] {

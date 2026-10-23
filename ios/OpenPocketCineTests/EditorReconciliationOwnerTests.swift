@@ -2,6 +2,7 @@ import Foundation
 import Network
 import Observation
 import OpenCineDJI
+import OpenCineCoreTestSupport
 import OpenCineHostedTestSupport
 import OpenPocketViewCore
 import XCTest
@@ -12,6 +13,9 @@ import OpenCineDJIApple
 /// SIMULATED real native composition with an unopened borrowed driver; no camera or radio.
 @MainActor
 final class EditorReconciliationOwnerTests: XCTestCase {
+    /// The wire fixture's editor pin clock: the 2 s hold is crossed by an advance, not a wait.
+    private let clock = ManualHostClock()
+
     @MainActor private final class Reentry { var value = false }
 
     private func borrowed() -> CameraSession {
@@ -163,7 +167,7 @@ final class EditorReconciliationOwnerTests: XCTestCase {
         }
         try await withWireFixture { session, peer in
             try await acknowledgedWhiteBalance(session, peer: peer)
-            try await Task.sleep(for: .milliseconds(2150))
+            clock.advance(by: .milliseconds(2150))  // past the 2 s editor pin
             let reentry = Reentry()
             withObservationTracking {
                 _ = session.pendingWhiteBalance
@@ -203,7 +207,7 @@ final class EditorReconciliationOwnerTests: XCTestCase {
         try await withWireFixture { session, peer in
             session.status.audioChannel = .stereo
             try await acknowledgedWhiteBalance(session, peer: peer)
-            try await Task.sleep(for: .milliseconds(2150))
+            clock.advance(by: .milliseconds(2150))  // past the 2 s editor pin
             let reentry = Reentry()
             withObservationTracking {
                 _ = session.pendingWhiteBalance
@@ -254,7 +258,7 @@ final class EditorReconciliationOwnerTests: XCTestCase {
         try await withWireFixture { session, peer in
             XCTAssertNil(session.status.audioDspBlob)
             try await acknowledgedWhiteBalance(session, peer: peer)
-            try await Task.sleep(for: .milliseconds(2150))
+            clock.advance(by: .milliseconds(2150))  // past the 2 s editor pin
             let reentry = Reentry()
             let blob = Array(UInt8(0)..<UInt8(26))
             withObservationTracking {
@@ -314,7 +318,7 @@ final class EditorReconciliationOwnerTests: XCTestCase {
         try await withWireFixture { session, peer in
             let driver = session.datalink
             try await acknowledgedWhiteBalance(session, peer: peer)
-            try await Task.sleep(for: .milliseconds(2150))
+            clock.advance(by: .milliseconds(2150))  // past the 2 s editor pin
             let reentry = Reentry()
             withObservationTracking {
                 _ = session.pendingWhiteBalance
@@ -374,6 +378,7 @@ final class EditorReconciliationOwnerTests: XCTestCase {
         let peer = try EditorReconciliationPeer()
         let driver = DjiAppleDatalink.loopbackForTesting(port: try await peer.start())
         let session = borrowed()
+        session.clock = clock.clock
         let unusedDriver = session.datalink
         session.datalink = driver
         unusedDriver?.close()

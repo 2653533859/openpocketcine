@@ -9,6 +9,7 @@ import OpenCineCameraControls
 import class OpenCineApple.CameraHotspotSystem
 import class OpenCineCore.LocalVPNNotice
 import struct OpenCineCore.SavedCamera
+import struct OpenCineCore.HostClock
 import OpenCineDJIApple
 import OpenPocketViewCore
 import UIKit
@@ -487,6 +488,8 @@ final class CameraSession {
     /// Audio GET→patch→SET round trips ride their own chain, off the SET path.
     @ObservationIgnored private lazy var cameraSettings = makeCameraSettings()
     @ObservationIgnored private lazy var editorReconciliation = makeEditorReconciliation()
+    /// The editor pins' clock (an operator's pending value holds 2 s). Tests advance a manual clock.
+    @ObservationIgnored var clock: HostClock = .live
     @ObservationIgnored private lazy var tapFocus = makeTapFocus()
     @ObservationIgnored private lazy var zoomColor = makeZoomColor()
     /// Shared owner commits actual hop state before notifying native observation.
@@ -1402,6 +1405,8 @@ final class CameraSession {
             guard let self else { return .init() }
             return .init(endpoint: self.datalink.map(ObjectIdentifier.init),
                 controlGeneration: self.controlGeneration)
+        }, now: { [weak self] in
+            self?.clock.date() ?? Date()
         }, whiteBalanceChanged: { [weak self] _, _ in
             guard let self else { return }
             self.withMutation(keyPath: \.pendingWhiteBalance) {}

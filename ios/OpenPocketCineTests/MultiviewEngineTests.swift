@@ -1,5 +1,6 @@
 import OpenCineAppKit
 import OpenCineCore
+import OpenCineCoreTestSupport
 import OpenCineMulticam
 import OpenPocketViewCore
 import SwiftUI
@@ -152,9 +153,11 @@ import OpenCineDJIApple
     func testSomeCamerasStartOneTimesOutAndNothingIsRolledBack() async throws {
         let session = linked(MultiviewUIReview.makeSession(count: 3))
         var frames: [(UUID, [UInt8])] = []
+        // The production 8 s window on a manual clock: c's timeout is an advance, not a wait.
+        let clock = ManualHostClock()
         for (index, tile) in session.recordingTiles.enumerated() {
             tile.recordingObservation = (false, Date())
-            tile.controlPort.confirmationWindow = .seconds(1)
+            tile.controlPort.clock = clock.clock
             tile.controlPort.transmit = { _, frame in
                 frames.append((tile.id, frame.payload))
                 return UInt16(index + 1)
@@ -175,6 +178,14 @@ import OpenCineDJIApple
             sender: 0, receiver: 0, seq: 1, flags: 0x80, cmdSet: 2, cmdId: 2, payload: [0])
         a.recordingObservation = (true, Date())
         b.recordingObservation = (true, Date())
+        // Each tile's confirmation loop parks on its 100 ms poll; one poll confirms a and b.
+        let polling = await HostedCondition.wait { clock.pendingSleeps == 3 }
+        XCTAssertTrue(polling, "every tile's confirmation window runs on the injected clock")
+        clock.advance(by: .milliseconds(100))
+        // Only c polls again; closing its window leaves it unconfirmed.
+        let waiting = await HostedCondition.wait { clock.pendingSleeps == 1 }
+        XCTAssertTrue(waiting, "a and b confirm on their first poll")
+        clock.advance(by: .seconds(8))
         await run.value
 
         XCTAssertEqual(a.recordingNote, "Recording")

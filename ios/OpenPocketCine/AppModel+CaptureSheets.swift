@@ -59,13 +59,9 @@ extension AppModel: CaptureSheetHost {
     var sessionPhaseLabel: String { session.phase.label }
     var bodyFamily: CameraBodyFamily { session.bodyFamily }
     var labelProfile: CameraLabelProfile { connectedBody?.captureProfile?.labels ?? .standard }
-    var audioService: CaptureAudioService? {
-        guard OsmoMonitorPresentation.capabilities(session).audio,
-            let cameraID = session.connectedCamera?.id else { return nil }
-        let snapshot = session.control.current
-        let sourceID = CaptureAudioSourceID(session: snapshot.session, epoch: snapshot.epoch)
-        let status = session.status
-        return CaptureAudioService(sourceID: sourceID, fields: [
+    /// The Osmo audio settings and their reported values.
+    static func audioFields(_ status: CameraStatus) -> [CaptureAudioField] {
+        [
             CaptureAudioField(id: .channel, title: "Channel",
                 choices: AudioChannel.allCases.map(CaptureAudioValue.channel),
                 observed: status.audioChannel.map(CaptureAudioValue.channel)),
@@ -77,8 +73,21 @@ extension AppModel: CaptureSheetHost {
                 observed: status.directionalAudio.map(CaptureAudioValue.direction)),
             CaptureAudioField(id: .vocal, title: "Vocal",
                 choices: VocalBoost.allCases.map(CaptureAudioValue.vocal),
-                observed: status.vocalBoost.map(CaptureAudioValue.vocal))
-        ], commit: { [weak self] value in
+                observed: status.vocalBoost.map(CaptureAudioValue.vocal)),
+        ]
+    }
+
+    var audioService: CaptureAudioService? {
+        #if DEBUG && targetEnvironment(simulator)
+            // The SIMULATED common-controls review stands in for a connected camera.
+            if let review = simulatedControlReview { return review.audioService }
+        #endif
+        guard OsmoMonitorPresentation.capabilities(session).audio,
+            let cameraID = session.connectedCamera?.id else { return nil }
+        let snapshot = session.control.current
+        let sourceID = CaptureAudioSourceID(session: snapshot.session, epoch: snapshot.epoch)
+        return CaptureAudioService(sourceID: sourceID, fields: Self.audioFields(session.status),
+            commit: { [weak self] value in
             guard let self, self.session.connectedCamera?.id == cameraID else { return .unavailable }
             let current = self.session.control.current
             guard CaptureAudioSourceID(session: current.session, epoch: current.epoch) == sourceID,
