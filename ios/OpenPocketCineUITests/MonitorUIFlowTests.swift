@@ -29,8 +29,15 @@ final class MonitorUIFlowTests: SharedAppUITestCase {
         // recording state (OpenCine MonitorCapturePolicy, #101); a press still cannot record.
         XCTAssertEqual(record.label, "Recording state unknown")
         record.press(forDuration: 0.6)
-        XCTAssertFalse(app.staticTexts["Shooting mode"].exists)
+        let mode = app.staticTexts["Shooting mode"]
+        XCTAssertTrue(mode.waitForExistence(timeout: 5), "The hold opens Shooting mode")
         XCTAssertFalse(app.buttons["Start"].exists)
+        let close = app.buttons["monitor.capture.close"]
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        close.tap()
+        let closed = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"), object: mode)
+        XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 5), .completed)
         record.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         XCTAssertFalse(app.buttons["Start"].exists)
         XCTAssertEqual(record.label, "Recording state unknown")
