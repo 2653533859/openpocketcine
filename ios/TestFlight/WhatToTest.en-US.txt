@@ -1,18 +1,18 @@
 New and changed
 
-- A more consistent OpenCine interface brings camera setup, settings, View Assist and media controls closer together across the apps.
-- In landscape, the colour profile sits beside the codec. Portrait readouts keep their rounded card-space values clear of the screen cutout.
-- Connection diagnostics separate incoming video, decoding and display activity to help investigate live-picture interruptions.
+- Media is much faster on large cards: listing, selecting clips, Select all and transfer progress stay responsive while clips cache.
+- The live picture runs more smoothly after connecting, because the screen no longer redraws everything as the timecode advances.
+- Tapping the storage readout steps through free space, free percentage and remaining time, with the same text in portrait and landscape.
 
 Fixes
 
-- Shutter Angle follows exposure changes and frame rate again, and the ISO controls restore the camera's supported native ISO and Auto ISO limits.
-- The app no longer hangs while capture readouts update during a long session. VoiceOver no longer reaches live controls under a covering screen.
-- Returning from Media restores the live picture. Playback keeps Pause through buffering, seeking, Share and returning to the app.
-- Media deletion, caching and sharing stay tied to the current clips. Refused camera Wi-Fi joins show guidance and a way to open Wi-Fi settings.
+- An approved camera Wi-Fi join is kept for rejoins, and a retry no longer asks to join again. Forgetting a camera setup also removes its Wi-Fi network.
+- The Local Network prompt now appears during pairing, before the camera Wi-Fi join, and Allow carries on pairing without relaunching the app.
+- Reconnecting waits while the app is in the background, so the live picture can return without Retry. The card names its 3 minute reconnect window.
+- With Full Resolution Caching on, a played clip finishes downloading after you close it and reads CACHED. The open landscape View Assist palette hides the values it covers.
 
 What to test
 
-- At 180 degrees/25p, check native ISO and Auto ISO limits in Auto. Select Manual, then 50p: 180 stays selected as 1/50 becomes 1/100.
-- In Media, pause a clip, then scrub and leave and return to the app: it stays paused. Play it and tap Share: it pauses and stays paused after the sheet closes.
-- With VoiceOver on, open Media over Live View: live controls underneath must not be reachable. Back in Live View after a long session, check the picture and controls still respond.
+- Open Media on a full card. Scroll, select clips, use Select all and cache a few. Check the screen stays responsive and progress keeps moving.
+- Delete and reinstall, then pair: the Local Network prompt comes before the Wi-Fi Join alert. Later go Home for over 3 minutes and return: live view comes back without Retry.
+- With Full Resolution Caching on, play an uncached clip a few seconds, go back and wait about 30 s: it reads CACHED. Tap the storage readout in portrait and landscape.
