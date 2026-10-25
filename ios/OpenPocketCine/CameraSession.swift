@@ -233,6 +233,8 @@ final class CameraSession {
     }
     @ObservationIgnored private var reconnectTarget: UUID?
     @ObservationIgnored private lazy var recoveryEpisode = makeRecoveryEpisode()
+    /// The scene's last reported activity; an episode made while inactive starts paused.
+    @ObservationIgnored private var sceneActive = true
     @ObservationIgnored private var recoverySnapshotStorage = DjiAppleRecoveryEpisode.Snapshot()
     @ObservationIgnored private var recoveryDeviceNameStorage = ""
     /// Also used by saved-camera discovery outside an automatic episode.
@@ -3941,6 +3943,10 @@ final class CameraSession {
     }
 
     func noteSceneBecameInactive() {
+        // iOS suspends the app in the background: recovery attempts cannot run, and the budget
+        // must not count suspended time. The shared episode holds both until the scene is back.
+        sceneActive = false
+        recoveryEpisode.pause()
         sessionHeartbeat.resetPathGrace()
         recordFeedBreadcrumb(.sceneActivity, detail: "inactive")
         gimbalControlSceneActive = false
@@ -3952,6 +3958,8 @@ final class CameraSession {
     }
 
     func noteSceneBecameActive() {
+        sceneActive = true
+        recoveryEpisode.resume()
         recordFeedBreadcrumb(.sceneActivity, detail: "active")
         gimbalControlSceneActive = true
         guard needsForegroundRecover else { return }
@@ -4294,7 +4302,7 @@ final class CameraSession {
         #else
             timing = .continuous
         #endif
-        return DjiAppleRecoveryEpisode(connectionRun: connectionRun,
+        let episode = DjiAppleRecoveryEpisode(connectionRun: connectionRun,
             discovery: .init(waitUntilPoweredOn: { [weak self] in
                 guard let self else { return false }
                 #if DEBUG
@@ -4354,6 +4362,8 @@ final class CameraSession {
             }), timing: timing, changed: { [weak self] value, id in
                 self?.publishRecovery(value, episodeID: id)
             })
+        if !sceneActive { episode.pause() }
+        return episode
     }
 
     private func recoverySighting(_ camera: DjiAppleSighting) -> DJISighting {
