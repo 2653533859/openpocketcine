@@ -885,6 +885,14 @@ final class CameraSession {
         savedCameras().first { $0.id == id.uuidString }
     }
 
+    /// Drops the camera network's iOS configuration through this session's hotspot owner.
+    func removeCameraNetwork(_ ssid: String) {
+        #if DEBUG
+            if let trace = connectionNativePeers { trace.removeNetwork(ssid); return }
+        #endif
+        DjiAppleWiFiJoiner.leave(ssid: ssid, host: networkHost)
+    }
+
     private func forgetWifiCreds(cameraId: UUID, advertisedName: String?, ssid: String?) {
         #if DEBUG
             if let trace = connectionNativePeers { trace.forget(); return }

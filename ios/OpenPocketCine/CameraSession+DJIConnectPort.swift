@@ -108,8 +108,12 @@ extension CameraSession: DJIConnectPort {
         }
     }
 
+    /// Every camera access point join keeps its iOS configuration (OpenCine
+    /// `CameraSoftAP.shouldPersistHotspot`), so forgetting the camera removes it with the password.
     func forget(cameraID: String) {
-        if let camera = savedCameras().first(where: { $0.id == cameraID }) { forgetWifiCreds(for: camera) }
+        guard let camera = savedCameras().first(where: { $0.id == cameraID }) else { return }
+        forgetWifiCreds(for: camera)
+        if let ssid = camera.lastSSID, !ssid.isEmpty { removeCameraNetwork(ssid) }
     }
 
     /// Reports the attempt's stage and wakes the port's waiter on every phase or progress change.

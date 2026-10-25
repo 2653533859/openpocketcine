@@ -568,7 +568,9 @@ final class ConnectionRunDonorTraceTests: XCTestCase {
         ])
         XCTAssertEqual(peer.join?.ssid, peer.network)
         XCTAssertEqual(peer.join?.password, "SIMULATED-PASSWORD")
-        XCTAssertFalse(peer.join?.persist ?? true)
+        // A first pairing keeps its configuration: iOS drops a join-once network 15 s after the
+        // app leaves the foreground, and the next join asked Wants to Join again (#590).
+        XCTAssertTrue(peer.join?.persist ?? false)
         XCTAssertEqual(peer.writes.filter { $0.cmdId == 0x45 }.count, 1)
         XCTAssertEqual(peer.trace.filter { $0 == "enable" }.count, 1)
         XCTAssertEqual(peer.stages, [.connectingGatt, .pairing, .pairing, .readingWifiCreds,
@@ -1505,7 +1507,8 @@ final class ConnectionDonorPeer {
                 onRegistered?()
             }, ssid: cached ? network : nil, password: cached ? "SIMULATED-PASSWORD" : nil,
             stationNetwork: station ? .init(ssid: network, password: "SIMULATED-PASSWORD", hotspot: hotspot) : nil, persist: { [unowned self] _, _ in trace.append("persist") },
-            forget: { [unowned self] in trace.append("forget") })
+            forget: { [unowned self] in trace.append("forget") },
+            removeNetwork: { [unowned self] in trace.append("remove network " + $0) })
         session.sessionHeartbeat.endpoint = .init(writeBLE: { [unowned self] in send($0) },
             registerDatalink: {}, transport: { .init() })
     }
