@@ -17,5 +17,6 @@ struct ConnectionNativePeers {
     var stationNetwork: MultiviewNetworkStore.Network?
     var persist: (String, String) -> Void
     var forget: () -> Void
+    var removeNetwork: (String) -> Void = { _ in }
 }
 #endif
