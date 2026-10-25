@@ -9,6 +9,21 @@ import OpenCineDJIApple
 
 @MainActor
 final class DJIControlLifetimeTests: XCTestCase {
+    /// Every camera access point join keeps its iOS configuration (#590), so forgetting the
+    /// camera removes that configuration with the saved password.
+    func testForgetRemovesTheCameraNetworkConfiguration() {
+        let peer = ConnectionDonorPeer(cached: true)
+        let session = peer.session()
+        defer { session.savedCameras = { [] }; session.decoder.close() }
+        let id = UUID().uuidString
+        session.savedCameras = { [SavedCamera(
+            id: id, integration: DJICameraSessionAdapter.integration, advertisedName: "OsmoPocket4P-EA4A",
+            model: "Osmo Pocket 4 Pro",
+            routes: [.init(key: "ap", kind: .cameraAccessPoint, network: "OsmoPocket4P-EA4A")])] }
+        session.forget(cameraID: id)
+        XCTAssertEqual(peer.trace, ["forget", "remove network OsmoPocket4P-EA4A"])
+    }
+
     func testOwnedShellCloseTearsDownNativeLinkAndCoverDoesNot() async {
         let session = OpenPocketCine.CameraSession()
         defer { session.disconnect() }

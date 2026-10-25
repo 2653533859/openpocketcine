@@ -885,6 +885,14 @@ final class CameraSession {
         savedCameras().first { $0.id == id.uuidString }
     }
 
+    /// Drops the camera network's iOS configuration through this session's hotspot owner.
+    func removeCameraNetwork(_ ssid: String) {
+        #if DEBUG
+            if let trace = connectionNativePeers { trace.removeNetwork(ssid); return }
+        #endif
+        DjiAppleWiFiJoiner.leave(ssid: ssid, host: networkHost)
+    }
+
     private func forgetWifiCreds(cameraId: UUID, advertisedName: String?, ssid: String?) {
         #if DEBUG
             if let trace = connectionNativePeers { trace.forget(); return }
@@ -1326,7 +1334,7 @@ final class CameraSession {
                 case .hopPreparing:
                     self.editorReconciliation.clearColor()
                     guard self.zoomColor.admits(authority) else { return }
-                    self.controlNote = "D-Log \u{2014} D-Log2 cannot zoom"
+                    self.controlNote = "D-Log: D-Log2 cannot zoom"
                     guard self.zoomColor.admits(authority) else { return }
                     ControlLiveLog.line("zoom: hold 0xB8 until D-Log2 → D-Log")
                 case .nativeISO(let from, let to):
