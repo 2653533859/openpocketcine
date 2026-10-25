@@ -48,7 +48,8 @@ struct MediaLibraryView: View {
             open: { presented = $0 }, share: { records, token in
                 guard library.isCurrent(token) else { return }
                 deliveryFiles = records.map { record in session.libraryFile(record) }
-            }, thumbnail: { context in
+            }, cachingActive: { !(session.mediaLibraryOwner?.hostProgress.isEmpty ?? true) },
+            thumbnail: { context in
                 let record = context.record
                 let file = session.libraryFile(record)
                 let grade = MediaCacheGrade.resolve(hasOriginal: context.cached?.originalURL != nil,
