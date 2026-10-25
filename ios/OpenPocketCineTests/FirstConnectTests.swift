@@ -883,6 +883,40 @@ final class SessionRecoveryDonorTraceTests: XCTestCase {
         print("SIMULATED RECOVERY budget: \(peer.trace)")
     }
 
+    /// Hardware pass 7.2a follow-up: iOS suspends the app in the background, but the continuous
+    /// budget clock kept counting, so a return after more than 180 s met "tap Retry" without a
+    /// single attempt. The scene going inactive holds attempts and the budget until it is active.
+    func testSceneInactiveHoldsRecoveryAttemptsAndBudgetUntilActive() async {
+        let clock = SessionRecoveryDonorClock()
+        let peer = ConnectionDonorPeer(cached: true)
+        peer.recoveryClock = clock
+        let session = await peer.establishedRecoverySession(clock: clock)
+        peer.advertisesRecoveryCamera = false
+        defer { session.disconnect(); clock.cancelAll(); session.decoder.close() }
+        session.noteSceneBecameInactive()
+        let began = clock.time
+        session.beginSessionRecovery(reason: "SIMULATED drop while backgrounded")
+        // Ten minutes away, in steps so every task the episode starts can sleep and wake.
+        while clock.time < began + 600 {
+            await clock.settle()
+            clock.advance(to: clock.time + 10)
+        }
+        await clock.settle()
+        XCTAssertFalse(peer.trace.contains("scan"), "No attempt while the scene is inactive")
+        XCTAssertEqual(session.sessionRecovery, .retrying(attempt: 1, maxAttempts: 8))
+        XCTAssertTrue(session.holdsMonitor)
+        let resumed = clock.time
+        session.noteSceneBecameActive()
+        let finished = await clock.drive {
+            if case .waitingForOperator = session.sessionRecovery { return true }
+            return false
+        }
+        XCTAssertTrue(finished)
+        XCTAssertTrue(peer.trace.contains("scan"))
+        XCTAssertEqual(clock.time - resumed, 180, accuracy: 1e-6, "The budget counts active time only")
+        print("SIMULATED RECOVERY scene pause: \(peer.trace)")
+    }
+
     func testEpisodeRequiresFreshSourceAndPresentationAfterRegisteredBoundary() async {
         let clock = SessionRecoveryDonorClock()
         let peer = ConnectionDonorPeer(cached: true)
