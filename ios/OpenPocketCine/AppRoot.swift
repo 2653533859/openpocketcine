@@ -941,7 +941,7 @@ struct AppRoot: View {
             AppModelDiagnosticsAnchor.model = model
             DiagnosticCenter.shared.onCopiedForTestFlight = { [weak model] in
                 model?.session.controlNote =
-                    "Diagnostics copied — paste into TestFlight feedback"
+                    "Diagnostics copied. Paste into TestFlight feedback"
             }
             model.prepareStartup()
             model.activateWatchRelay()
