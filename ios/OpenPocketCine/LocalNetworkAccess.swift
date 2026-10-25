@@ -16,13 +16,12 @@ enum LocalNetworkAccess {
     static var status: CameraNetworkPermissionState { privacy.state }
 
     /// Browse our own Bonjour type (listed in `NSBonjourServices`) while pairing, so the
-    /// system prompt appears while the operator approves on the camera instead of while
-    /// the datalink handshake is already timing out. The prompt outlives the 30 s probe;
-    /// the datalink re-detects.
+    /// system prompt appears while the operator approves on the camera instead of after the
+    /// camera Wi-Fi join (hardware pass 5.1). The shared request uses the legacy browse that
+    /// raises the prompt on device; the prompt outlives its 30 s probe and the datalink
+    /// re-detects.
     static func requestEarly() {
-        guard !privacy.isProbing else { return }
-        privacy.start(.init(browseType: WatcherRelayProtocol.serviceType, includePeerToPeer: false,
-            lifetime: .seconds(30)))
+        privacy.requestBeforeCameraJoin(serviceType: WatcherRelayProtocol.serviceType)
     }
 
     static func note(_ evidence: DjiAppleLocalNetworkEvidence, source: String) {
