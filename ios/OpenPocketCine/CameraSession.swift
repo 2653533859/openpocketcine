@@ -1336,7 +1336,7 @@ final class CameraSession {
                 case .hopPreparing:
                     self.editorReconciliation.clearColor()
                     guard self.zoomColor.admits(authority) else { return }
-                    self.controlNote = "D-Log \u{2014} D-Log2 cannot zoom"
+                    self.controlNote = "D-Log: D-Log2 cannot zoom"
                     guard self.zoomColor.admits(authority) else { return }
                     ControlLiveLog.line("zoom: hold 0xB8 until D-Log2 → D-Log")
                 case .nativeISO(let from, let to):
