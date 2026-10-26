@@ -23,6 +23,7 @@ Fixes
 - On a Pocket 3 that reports no shutter list, Speed offers the standard shutter speeds and sets them.
 - The live top bar readouts get their dark glow back, so they stay readable over bright pictures.
 - Playback keeps Pause through buffering, scrubbing and Share.
+- Playback stays smoother on large cards; scopes and audio meters update without redrawing the whole player.
 - Clip deletion, caching and sharing several cached clips work together on the current selection. The selection bar shows the whole count.
 - With Full Resolution Caching on, a played clip finishes downloading after you close it and reads CACHED. TalkBack reads that setting as one switch.
 - Shared clips keep their DJI file names instead of arriving with long random names.
@@ -34,4 +35,4 @@ What to test
 - Rotate the phone repeatedly and leave and return to the app during Live View. Check the app stays responsive and the live picture returns.
 - In Live View, go Home, record 60 to 90 s with the system camera app, then return: the picture comes back by itself with no Retry.
 - At 180 degrees/25p in Auto, check native ISO and Auto ISO limits. Select Manual, then 50p: 180 stays selected as 1/50 becomes 1/100.
-- With Full Resolution Caching on, play an uncached clip a few seconds, go back and wait about 30 s: it reads CACHED. Share two cached clips and check their names.
+- With Full Resolution Caching on, play an uncached clip briefly, go back and wait: it reads CACHED. Play with scopes or audio meters, then Share two clips and check their names.
