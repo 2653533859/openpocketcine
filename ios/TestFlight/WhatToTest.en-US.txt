@@ -25,6 +25,8 @@ Fixes
 - The app no longer hangs while capture readouts update during a long session.
 - Using a volume button as the remote shutter is protected against a rare unexpected quit.
 - Playback keeps Pause through buffering, seeking, Share and returning to the app.
+- Playback controls and media details stay smoother on large cards, and playback scopes update more evenly.
+- Wide clips keep their correct brightness through LUTs, zebra, false color and scopes instead of looking crushed.
 - Media selection, deletion, caching and sharing stay tied to the current clips, and sharing several cached clips works together.
 - With Full Resolution Caching on, a played clip finishes downloading after you close it and reads CACHED.
 - VoiceOver no longer reaches live controls under a covering screen or the hidden buttons of a collapsed landscape palette.
@@ -36,4 +38,4 @@ What to test
 - Delete and reinstall, then pair: the Local Network prompt comes before the Wi-Fi Join alert. Forget the camera setup, pair again and check it joins.
 - During Live View, go Home for over 3 minutes and return, then stay in Media for 30 minutes and return: the picture comes back each time without Retry.
 - At 180 degrees/25p in Auto, check native ISO and Auto ISO limits. Select Manual, then 50p: 180 stays selected as 1/50 becomes 1/100.
-- With Full Resolution Caching on, play an uncached clip a few seconds, go back and wait about 30 s: it reads CACHED. Pause, scrub and Share a clip: it stays paused.
+- With Full Resolution Caching on, play an uncached clip briefly, go back and wait: it reads CACHED. Try a wide clip with LUT and scopes: controls stay smooth, brightness natural and Pause holds.
