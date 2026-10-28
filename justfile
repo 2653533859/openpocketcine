@@ -17,7 +17,7 @@ setup:
 # Run every repository quality check that this tree currently supports.
 # `swift-lint` is available as `just lint` after `just format`; the existing tree is not
 # yet fully swift-format clean, so it is not a merge gate.
-check: hygiene testflight-notes android-play-notes ios-test-script-test typos lint-md check-links check-editorconfig lint-actions secrets sentry-test ios-privacy-test connection-stress-test swift-test handbook-build
+check: hygiene testflight-notes android-play-notes ci-timing-test ios-test-script-test typos lint-md check-links check-editorconfig lint-actions secrets sentry-test ios-privacy-test connection-stress-test swift-test handbook-build
 
 # Exercise the actual Cloud archive hook with synthetic packaged privacy values.
 ios-privacy-test:
@@ -28,6 +28,10 @@ sentry-test:
     OPC_APP_ROOT=. OPC_APP_NAME=OpenPocketCine bash ../OpenCine/scripts/sentry/sentry-test.sh
     python3 tools/ios-package-resolved-check.py
     bash scripts/ios-package-resolved-test.sh
+
+# Test the CI job-summary timing tables (scripts/ci-test-timing.py) on recorded output shapes.
+ci-timing-test:
+    python3 scripts/ci-test-timing-test.py
 
 # Test how scripts/ios-test.sh splits options between the build and the test run.
 ios-test-script-test:
