@@ -54,8 +54,17 @@ toolchain_bin="$(dirname "$swift_real")"
 [[ -x "$toolchain_bin/llvm-objcopy" ]] || fail "llvm-objcopy is missing beside $swift_real"
 [[ -x "$toolchain_bin/llvm-objdump" ]] || fail "llvm-objdump is missing beside $swift_real"
 
-if ! "$swift_cmd" sdk list 2>/dev/null | grep -Fxq "$SDK_ID"; then
-  "$swift_cmd" sdk install "$SDK_URL" --checksum "$SDK_CHECKSUM"
+sdk_installed() {
+  "$swift_cmd" sdk list 2>/dev/null | grep -Fxq "$SDK_ID"
+}
+if ! sdk_installed; then
+  # `swift sdk install` has crashed on a hosted runner after the download (signal 11 in
+  # swift-package, 2026-10-28). Install once more when the SDK is still not listed; the checks
+  # below still fail when the installed SDK is incomplete.
+  if ! "$swift_cmd" sdk install "$SDK_URL" --checksum "$SDK_CHECKSUM" && ! sdk_installed; then
+    echo "warning: swift sdk install failed; trying once more" >&2
+    "$swift_cmd" sdk install "$SDK_URL" --checksum "$SDK_CHECKSUM"
+  fi
 fi
 
 sdk_home=""
