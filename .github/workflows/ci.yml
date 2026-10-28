@@ -106,6 +106,9 @@ jobs:
           ./scripts/android-release-notes-test.sh
           ./scripts/prepare-android-testers-test.sh
 
+      - name: iOS test recipe options
+        run: ./scripts/ios-test-test.sh
+
       - name: Spell check
         uses: crate-ci/typos@7f9d0819ca1c008ade73f4b41fa9d258d48f605b # v1.51.1
 

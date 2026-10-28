@@ -212,7 +212,7 @@ just setup          # install meta-check tools (macOS / Homebrew)
 just                # list all recipes
 just check          # run repository quality checks
 just test           # run Swift package tests
-just native-check   # run Swift tests and build the native iOS app
+just native-check   # run Swift tests, then build and test the native iOS app
 just android-check  # build, test, and lint Android
 just handbook       # docs at http://127.0.0.1:4321/
 ```

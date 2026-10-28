@@ -11,7 +11,7 @@ platforms it touches; a skipped job counts as passed in the gate.
 
 | Job | Checks |
 | --- | --- |
-| Meta checks | pin drift warning, gitleaks, hygiene, Sentry configuration, privacy and stress harness tests, tester notes format, typos, Markdown, offline links, EditorConfig, actionlint |
+| Meta checks | pin drift warning, gitleaks, hygiene, Sentry configuration, privacy and stress harness tests, tester notes format, `ios-test` option tests, typos, Markdown, offline links, EditorConfig, actionlint |
 | Native Swift/iOS | Swift packages, one `build-for-testing`, unit tests without rebuilding (parallel, two workers), Watch build; SwiftPM and compilation caches from main |
 | Android | `assembleDebug test lint`, monitor-ui tests, release registrar check |
 | Protocol handbook | static site build and links |
