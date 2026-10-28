@@ -17,7 +17,7 @@ setup:
 # Run every repository quality check that this tree currently supports.
 # `swift-lint` is available as `just lint` after `just format`; the existing tree is not
 # yet fully swift-format clean, so it is not a merge gate.
-check: hygiene testflight-notes android-play-notes ci-timing-test ios-test-script-test typos lint-md check-links check-editorconfig lint-actions secrets sentry-test ios-privacy-test connection-stress-test swift-test handbook-build
+check: hygiene testflight-notes android-play-notes ci-timing-test ios-test-script-test swift-android-install-test typos lint-md check-links check-editorconfig lint-actions secrets sentry-test ios-privacy-test connection-stress-test swift-test handbook-build
 
 # Exercise the actual Cloud archive hook with synthetic packaged privacy values.
 ios-privacy-test:
@@ -36,6 +36,10 @@ ci-timing-test:
 # Test how scripts/ios-test.sh splits options between the build and the test run.
 ios-test-script-test:
     ./scripts/ios-test-test.sh
+
+# Test how scripts/ci-install-swift-android.sh recovers from a failed Swift SDK install.
+swift-android-install-test:
+    ./scripts/ci-install-swift-android-test.sh
 
 # Reject tracked proprietary, secret-bearing, generated, or machine-specific files.
 hygiene:
