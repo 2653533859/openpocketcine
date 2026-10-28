@@ -21,8 +21,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * A2-32 product ruling 2026-10-16, SIMULATED (no camera): the remote shutter row is in Operator Setup >
- * Controls with Z's wording, on by default like Z, and the operator's choice survives a new app model.
+ * SIMULATED (no camera): the remote shutter row is in Operator Setup > Controls, is opt-in,
+ * and the operator's choice survives a new app model.
  */
 @RunWith(AndroidJUnit4::class)
 class RemoteShutterSettingTest {
@@ -55,15 +55,15 @@ class RemoteShutterSettingTest {
                     val title = find(row) { it.contentDescription != null }
                     assertEquals("Bluetooth Remote Shutter", title?.contentDescription?.toString())
                     assertTrue(row.isClickable, "The tagged switch owns the toggle action")
-                    assertEquals("On", row.stateDescription?.toString(), "On by default, like OpenZCine")
+                    assertEquals("Off", row.stateDescription?.toString(), "Bluetooth Remote Shutter is opt-in")
                     assertTrue(row.performAction(AccessibilityNodeInfo.ACTION_CLICK))
                     settle()
-                    assertEquals("Off", remoteShutterRow().stateDescription?.toString())
-                    assertEquals(false, OperatorPrefs.remoteShutterEnabled(context))
+                    assertEquals("On", remoteShutterRow().stateDescription?.toString())
+                    assertEquals(true, OperatorPrefs.remoteShutterEnabled(context))
                     scenario.onActivity { model?.close(); model = null }
                     scenario.recreate()
                     mount()
-                    assertEquals("Off", remoteShutterRow().stateDescription?.toString(), "The choice persists")
+                    assertEquals("On", remoteShutterRow().stateDescription?.toString(), "The choice persists")
                 } finally { scenario.onActivity { model?.close() } }
             }
         } finally {

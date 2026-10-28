@@ -13,7 +13,9 @@ import com.opencapture.opencine.appkit.MonitorDisplayMode
 
 
 /** The operator's choices in this app's existing preferences file and keys. */
-object OperatorPrefs : OperatorPreferenceStore(file = "openpocketcine.operator", keyPrefix = "OpenPocketCine.") {
+object OperatorPrefs : OperatorPreferenceStore(
+    file = "openpocketcine.operator", keyPrefix = "OpenPocketCine.", remoteShutterDefault = false,
+) {
     private val FEED_UPSCALER = key("feedUpscaler")
 
     fun feedUpscaler(context: Context): MonitorGlesUpscaler =
