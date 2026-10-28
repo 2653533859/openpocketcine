@@ -388,8 +388,11 @@ in frame or cancels. L1/R1 jump zoom out/in. L2/R2 hold-to-zoom
 (deeper is faster). D-pad up/down ISO, left/right shutter. A toast
 says Gamepad connected or disconnected; unplug rests the stick.
 Operator Setup → Controls → Gamepad shows Connected / Not connected.
-Choose **Gimbal joystick → Left / Right** in the same Controls tab. D-pad shutter
-changes also update the shutter-angle readout when angle display is selected.
+Choose **Gimbal joystick → Left / Right** in the same Controls tab.
+**Bluetooth Remote Shutter** is off by default. When explicitly enabled, a paired remote or
+the phone's media buttons toggle recording while live view is in front. Turn it off if
+recording starts unexpectedly, then send a problem report with the remote setup.
+D-pad shutter changes also update the shutter-angle readout when angle display is selected.
 A selected angle is retained when changing frame rate: 180° changes shutter time
 to 1/50 at 25 fps or 1/100 at 50 fps after the camera confirms the new format.
 A gimbal stop pulses only after the head moves then stalls (Haptics

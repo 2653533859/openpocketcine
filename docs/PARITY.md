@@ -86,6 +86,12 @@ The unchanged UI test still requires adjacent edges within 0.5 points and
 on the private simulator. Android consumer checks pass; physical settings
 layout remains untested on both platforms.
 
+Pocket's Bluetooth Remote Shutter is opt-in on both shells. An absent preference reads off;
+explicit saved on and off choices are preserved. On iOS, delayed volume reports are ignored
+unless their captured value still matches the live system volume, preventing a stale report
+from becoming another record toggle after debounce. The portable stale-event regression and
+Pocket iOS preference tests pass; Android instrumented and physical checks remain pending.
+
 ## Apple transaction ownership (P2)
 
 The iOS control exchange now lives in OpenCineDJIApple. This Apple OS workflow keeps the

@@ -11,7 +11,7 @@ final class OperatorPreferencesAdoptionTests: XCTestCase {
         "HeadTrackingEnabled", "GimbalStickSensitivity", "VirtualJoystickInvertPan",
         "VirtualJoystickInvertTilt", "VirtualJoystickDeadzonePercent", "VirtualJoystickResponseCurve",
         "VirtualJoystickSize", "GimbalRamp", "GimbalDoubleTap", "ShareThisFeed", "ControlRequests",
-        "BroadcastPriority", "AssistToolUsage.v1",
+        "BroadcastPriority", "AssistToolUsage.v1", "RemoteShutter",
     ]
 
     private func preservingStoredChoices(_ body: () throws -> Void) rethrows {
@@ -34,6 +34,7 @@ final class OperatorPreferencesAdoptionTests: XCTestCase {
             XCTAssertEqual(OperatorPrefs.gimbalRamp, .off)
             XCTAssertEqual(OperatorPrefs.gimbalDoubleTap, .recenter)
             XCTAssertFalse(OperatorPrefs.shareThisFeed)
+            XCTAssertFalse(OperatorPrefs.remoteShutterEnabled, "Bluetooth Remote Shutter is opt-in")
             XCTAssertTrue(OperatorPrefs.controlRequests)
             XCTAssertEqual(OperatorPrefs.broadcastPriority, 0)
             XCTAssertEqual(OperatorPrefs.assistToolUsage, MonitorToolUsage())
@@ -52,6 +53,8 @@ final class OperatorPreferencesAdoptionTests: XCTestCase {
             defaults.set(-4, forKey: "OpenPocketCine.VirtualJoystickDeadzonePercent")
             defaults.set("future-curve", forKey: "OpenPocketCine.VirtualJoystickResponseCurve")
             defaults.set(7, forKey: "OpenPocketCine.GimbalRamp")
+            defaults.set(true, forKey: "OpenPocketCine.RemoteShutter")
+            XCTAssertTrue(OperatorPrefs.remoteShutterEnabled, "An explicit saved On survives the new default")
             XCTAssertFalse(OperatorPrefs.controlRequests)
             XCTAssertEqual(OperatorPrefs.broadcastPriority, 3)
             XCTAssertEqual(OperatorPrefs.gimbalStickSensitivity, 5)
