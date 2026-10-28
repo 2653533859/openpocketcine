@@ -354,11 +354,28 @@ jobs:
           if-no-files-found: warn
 
   android:
-    name: Android
+    name: Android (${{ matrix.part }})
     needs: changes
     if: ${{ needs.changes.outputs.android == 'true' && !github.event.repository.private }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Three Gradle invocations on parallel runners instead of one serial step. Together they
+    # schedule exactly the task graph of the former single step (docs/ci.md); each stages the
+    # Swift core itself. The gate sees one `android` result: failure if any part fails, so every
+    # part stays required.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - part: JVM tests
+            tasks: test :opencine:monitor-ui:testDebugUnitTest
+          - part: debug build and lint
+            tasks: assembleDebug lint :opencine:monitor-ui:lint
+          # R8 only runs in the release bundle, and :app:verifyReleaseComponentRegistrars
+          # (OpenCine's dex check) fails when it strips the ML Kit ComponentRegistrar
+          # constructors (OPENPOCKETCINE-ANDROID-18). Unsigned without the Play keystore.
+          - part: release bundle
+            tasks: :app:verifyReleaseComponentRegistrars
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -389,14 +406,16 @@ jobs:
       - name: Install Swift Android SDK
         run: ./scripts/ci-install-swift-android.sh
 
-      # The release bundle is built on every pull request, as OpenZCine does: R8 only runs there, and
-      # :app:verifyReleaseComponentRegistrars (OpenCine's dex check) fails when it strips the ML Kit
-      # ComponentRegistrar constructors (OPENPOCKETCINE-ANDROID-18). Unsigned without the Play keystore.
-      - name: Build, unit-test, lint, and verify the release bundle
+      # The release bundle part runs on every pull request, as OpenZCine does.
+      - name: Gradle, ${{ matrix.part }}
         working-directory: Apps/Android
         env:
           SWIFT_ANDROID_SDK_ID: swift-6.3.3-RELEASE_android
-        run: ./gradlew assembleDebug test lint :opencine:monitor-ui:testDebugUnitTest :opencine:monitor-ui:lint :app:verifyReleaseComponentRegistrars
+          TASKS: ${{ matrix.tasks }}
+        run: |
+          set -euo pipefail
+          read -ra tasks <<< "$TASKS"
+          ./gradlew "${tasks[@]}"
 
   handbook:
     name: Protocol handbook
