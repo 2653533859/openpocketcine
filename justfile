@@ -17,7 +17,7 @@ setup:
 # Run every repository quality check that this tree currently supports.
 # `swift-lint` is available as `just lint` after `just format`; the existing tree is not
 # yet fully swift-format clean, so it is not a merge gate.
-check: hygiene testflight-notes android-play-notes typos lint-md check-links check-editorconfig lint-actions secrets sentry-test ios-privacy-test connection-stress-test swift-test handbook-build
+check: hygiene testflight-notes android-play-notes ci-timing-test ios-test-script-test swift-android-install-test typos lint-md check-links check-editorconfig lint-actions secrets sentry-test ios-privacy-test connection-stress-test swift-test handbook-build
 
 # Exercise the actual Cloud archive hook with synthetic packaged privacy values.
 ios-privacy-test:
@@ -28,6 +28,18 @@ sentry-test:
     OPC_APP_ROOT=. OPC_APP_NAME=OpenPocketCine bash ../OpenCine/scripts/sentry/sentry-test.sh
     python3 tools/ios-package-resolved-check.py
     bash scripts/ios-package-resolved-test.sh
+
+# Test the CI job-summary timing tables (scripts/ci-test-timing.py) on recorded output shapes.
+ci-timing-test:
+    python3 scripts/ci-test-timing-test.py
+
+# Test how scripts/ios-test.sh splits options between the build and the test run.
+ios-test-script-test:
+    ./scripts/ios-test-test.sh
+
+# Test how scripts/ci-install-swift-android.sh recovers from a failed Swift SDK install.
+swift-android-install-test:
+    ./scripts/ci-install-swift-android-test.sh
 
 # Reject tracked proprietary, secret-bearing, generated, or machine-specific files.
 hygiene:
@@ -145,21 +157,17 @@ ios-build: ios-generate
 ios-device-build *args: ios-generate
     xcodebuild -project ios/OpenPocketCine.xcodeproj -scheme OpenPocketCine -destination 'generic/platform=iOS' -allowProvisioningUpdates {{args}} build
 
-# Run the iOS suite on IOS_TEST_DEVICE_ID, falling back to the first available iPhone.
+# Extra xcodebuild options are allowed: `just ios-test -only-testing:OpenPocketCineTests/SomeTests`
+# builds once and runs one suite (scripts/ios-test.sh says which options reach which call).
+# Build the iOS app and tests once for IOS_TEST_DEVICE_ID (or the first iPhone), then test there.
 ios-test *args: ios-generate
-    #!/usr/bin/env bash
-    set -euo pipefail
-    device_id="${IOS_TEST_DEVICE_ID:-}"
-    if [ -z "$device_id" ]; then
-        device_id="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/ && !found { print $2; found = 1 }')"
-    fi
-    if [ -z "$device_id" ]; then
-        echo "No available iPhone simulator found." >&2
-        exit 1
-    fi
-    xcodebuild -project ios/OpenPocketCine.xcodeproj -scheme OpenPocketCine \
-      -destination "platform=iOS Simulator,id=$device_id" \
-      {{args}} test
+    ./scripts/ios-test.sh {{args}}
+
+# That one build also makes the arm64 and x86_64 app `ios-build` makes, so `native-check` needs no
+# second app build.
+# Like ios-test, but build once for the generic simulator (all simulator architectures).
+ios-test-all-archs *args: ios-generate
+    IOS_TEST_BUILD_DESTINATION='generic/platform=iOS Simulator' ./scripts/ios-test.sh {{args}}
 
 # UI 2.0 interaction and screenshot checks, isolated from camera hardware.
 ios-ui-test device *args: ios-generate
@@ -191,9 +199,11 @@ ios-feed-stress device seed="20260914" limit="300" record="0": ios-generate
 watch-build: ios-generate
     xcodebuild -project ios/OpenPocketCine.xcodeproj -scheme OpenPocketCineWatch -destination 'generic/platform=watchOS Simulator' CODE_SIGNING_ALLOWED=NO build
 
-# Run all native production checks that do not require camera hardware.
 # Swift format lint remains optional until the existing tree is fully formatted.
-native-check: swift-test ios-test ios-build watch-build
+# No separate `ios-build`: `ios-test-all-archs` builds the same generic simulator app once, with
+# the tests. Run `just check native-check` so `swift-test`, which both gates share, runs once.
+# Run all native production checks that do not require camera hardware.
+native-check: swift-test ios-test-all-archs watch-build
 
 # Format production Swift sources.
 format: swift-format

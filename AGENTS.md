@@ -102,8 +102,9 @@ whatever code exists today and cost every later change (and every agent) time an
 ## Verification
 
 - `just check` — full repository quality gate.
-- `just native-check` — Swift lint/test plus iOS simulator build and tests.
+- `just native-check`: Swift package tests, one iOS simulator build of the app and its tests (all simulator architectures), the unit tests without rebuilding, and the Watch build.
 - `just android-check` — Gradle assembleDebug, unit tests, lint.
+- Run the gates you need in **one** `just` invocation, for example `just check native-check`: just runs a recipe that several gates share (`swift-test`) once per invocation, while `just check` followed by `just native-check` runs the Swift package tests twice.
 - `just android-device-test` — instrumentation suite on an attached device. CI has no emulator, so nothing else runs it.
 - **physical:** operator-visible work is proven on a real iPhone or Android device for the platform changed. Simulator has no BLE or camera Wi-Fi. Compile-only is not done.
 
