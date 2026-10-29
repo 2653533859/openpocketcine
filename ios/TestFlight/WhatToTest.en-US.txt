@@ -2,9 +2,9 @@ Since open beta build 128
 
 New and changed
 
-- Camera setup, settings, View Assist and Media controls are closer to the other OpenCine apps, with the same look and behavior.
+- Camera setup, settings, View Assist and Media controls look and behave like the other OpenCine apps.
 - Media is much faster on large cards: listing, selecting clips, Select all and transfer progress stay responsive while clips cache.
-- The live picture runs more smoothly after connecting, because the screen no longer redraws everything as the timecode advances.
+- The live picture runs more smoothly after connecting: the screen no longer redraws everything as the timecode advances.
 - Tapping the storage readout steps through free space, free percentage and remaining time, with the same text in portrait and landscape.
 - In landscape, the colour profile sits beside the codec. In portrait, readouts use a three-column grid and the format readout lines up with the clock.
 - Offline, Media says the camera is disconnected and shows the clips cached on this phone. An empty filter says No matching clips.
@@ -28,7 +28,7 @@ Fixes
 - Playback controls and media details stay smoother on large cards, and playback scopes update more evenly.
 - Wide clips keep their correct brightness through LUTs, zebra, false color and scopes instead of looking crushed.
 - Media selection, deletion, caching and sharing stay tied to the current clips, and sharing several cached clips works together.
-- With Full Resolution Caching on, a played clip finishes downloading after you close it and reads CACHED.
+- With Full Resolution Caching on, a played clip finishes downloading after you close it and reads CACHED. Sharing it meanwhile waits for that download.
 - VoiceOver no longer reaches live controls under a covering screen or the hidden buttons of a collapsed landscape palette.
 - The open landscape View Assist palette hides the camera values it covers. Portrait card-space labels keep their full value near the cutout.
 
